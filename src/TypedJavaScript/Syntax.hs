@@ -1,5 +1,5 @@
 -- |JavaScript's syntax.
-module WebBits.JavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
+module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
          ForInit(..),ForInInit(..)) where
@@ -15,6 +15,9 @@ data JavaScript a
   deriving (Show,Data,Typeable,Eq,Ord)
 
 data Id a = Id a String deriving (Show,Eq,Ord,Data,Typeable)
+
+data Type = Int
+    deriving (Show,Eq)
 
 -- http://developer.mozilla.org/en/docs/
 --   Core_JavaScript_1.5_Reference:Operators:Operator_Precedence
@@ -36,7 +39,8 @@ data PrefixOp = PrefixInc | PrefixDec | PrefixLNot | PrefixBNot | PrefixPlus
 data PostfixOp 
   = PostfixInc | PostfixDec
   deriving (Show,Data,Typeable,Eq,Ord)
-  
+
+--property within an object literal
 data Prop a 
   = PropId a (Id a) | PropString a String | PropNum a Integer
   deriving (Show,Data,Typeable,Eq,Ord)
@@ -57,12 +61,12 @@ data Expression a
   | PostfixExpr a PostfixOp (Expression a)
   | PrefixExpr a PrefixOp (Expression a)
   | InfixExpr a InfixOp (Expression a) (Expression a)
-  | CondExpr a (Expression a) (Expression a) (Expression a)
-  | AssignExpr a AssignOp (Expression a) (Expression a)
+  | CondExpr a (Expression a) (Expression a) (Expression a) --ternary operator
+  | AssignExpr a AssignOp (Expression a) (Expression a) --
   | ParenExpr a (Expression a)
   | ListExpr a [Expression a]
   | CallExpr a (Expression a) [Expression a]
-  | FuncExpr a [(Id a)] (Statement a)
+  | FuncExpr a [(Id a, Type)] (Statement a)
   deriving (Show,Data,Typeable,Eq,Ord)
 
 data CaseClause a 
@@ -85,11 +89,10 @@ data ForInit a
   deriving (Show,Data,Typeable,Eq,Ord)
 
 data ForInInit a
- = ForInVar (Id a)
+ = ForInVar (Id a) (Maybe Type)
  | ForInNoVar (Id a)
  deriving (Show,Data,Typeable,Eq,Ord)
-  
-  
+
 data Statement a
   = BlockStmt a [Statement a]
   | EmptyStmt a
