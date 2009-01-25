@@ -79,7 +79,8 @@ data CatchClause a
   deriving (Show,Data,Typeable,Eq,Ord)
 
 data VarDecl a 
-  = VarDecl a (Id a) (Maybe (Expression a)) 
+  = VarDecl a (Id a) Type 
+  | VarDeclExpr a (Id a) (Maybe Type) (Expression a)
   deriving (Show,Data,Typeable,Eq,Ord)
   
 data ForInit a
@@ -114,7 +115,7 @@ data Statement a
       (Maybe (Statement a)) {-finally-}
   | ThrowStmt a (Expression a)
   | ReturnStmt a (Maybe (Expression a))
-  | WithStmt a (Expression a) (Statement a)
+  --| WithStmt a (Expression a) (Statement a)
   | VarDeclStmt a [VarDecl a]
-  | FunctionStmt a (Id a) {-name-} [(Id a)] {-args-} (Statement a) {-body-}
+  | FunctionStmt a (Id a) {-name-} [(Id a) Type] {-args-} (Statement a) {-body-}
   deriving (Show,Data,Typeable,Eq,Ord)  
