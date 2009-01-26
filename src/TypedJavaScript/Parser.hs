@@ -236,8 +236,17 @@ parseReturnStmt = do
 parseVarDecl = do
   pos <- getPosition
   id <- identifier
-  init <- (reservedOp "=" >> liftM Just parseExpression) <|> (return Nothing)
-  return (VarDecl pos id init)
+  -- one of: a :: type
+  --         a :: type = X
+  --         a = X
+  
+  (do reservedOp "::"
+      thetype <- parseType
+      return (do reservedOp "="
+                 expr <- parseExpression
+                 return (VarDeclExpr pos id (Just thetype) expr)) <|> (do return (do return (VarDecl pos id thetype)))) <|> 
+    (do expr <- parseExpression <?> ":: or ="
+        return (do return (VarDeclExpr pos id Nothing expr)))
 
 parseVarDeclStmt:: StatementParser st
 parseVarDeclStmt = do 
@@ -246,6 +255,23 @@ parseVarDeclStmt = do
   decls <- parseVarDecl `sepBy` comma
   optional semi
   return (VarDeclStmt pos decls)
+  
+  {-
+data VarDecl a 
+  = VarDecl a (Id a) (Type a)
+  | VarDeclExpr a (Id a) (Maybe (Type a)) (Expression a)
+  
+    
+  parseType :: TypeParser st
+parseType = do
+  reservedOp "::"
+  pos <- getPosition
+  (reserved "int" >> return (TInt pos)) <|> (reserved "string" >> return (TString pos))
+
+parseMaybeType :: MaybeTypeParser st
+parseMaybeType = do
+  (do t <- parseType
+      return (Just t)) <|> (return Nothing)-}
 
 parseFunctionStmt:: StatementParser st
 parseFunctionStmt = do
