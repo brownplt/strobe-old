@@ -233,21 +233,21 @@ parseReturnStmt = do
   optional semi
   return (ReturnStmt pos expr)
 
+-- one of: a :: type
+--         a :: type = X
+--         a = X
+parseVarDecl ::  CharParser st (VarDecl SourcePos)
 parseVarDecl = do
   pos <- getPosition
   id <- identifier
-  -- one of: a :: type
-  --         a :: type = X
-  --         a = X
-  
-  (do reservedOp "::"
-      thetype <- parseType
-      return (do reservedOp "="
-                 expr <- parseExpression
-                 return (VarDeclExpr pos id (Just thetype) expr)) <|> (do return (do return (VarDecl pos id thetype)))) <|> 
-    (do expr <- parseExpression <?> ":: or ="
-        return (do return (VarDeclExpr pos id Nothing expr)))
-
+  thetype <- parseMaybeType
+  (do reservedOp "="
+      expr <- parseExpression
+      return (VarDeclExpr pos id thetype expr)) <|>
+    (do case thetype of
+             Maybe atype -> return (VarDecl pos id atype)
+             Nothing -> return Nothing) <?> "type annotation"
+    
 parseVarDeclStmt:: StatementParser st
 parseVarDeclStmt = do 
   pos <- getPosition
