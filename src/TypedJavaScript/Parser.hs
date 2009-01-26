@@ -41,7 +41,7 @@ identifier =
 
 parseType :: TypeParser st
 parseType = do
-  reservedOp "::"
+  reservedOp "::" <?> "type annotation (:: followed by a type)"
   pos <- getPosition
   (reserved "int" >> return (TInt pos)) <|> (reserved "string" >> return (TString pos))
 
