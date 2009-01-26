@@ -16,7 +16,7 @@ data JavaScript a
 
 data Id a = Id a String deriving (Show,Eq,Ord,Data,Typeable)
 
-data Type = Int
+data Type a = Int
     deriving (Show,Eq)
 
 -- http://developer.mozilla.org/en/docs/
@@ -33,7 +33,8 @@ data AssignOp = OpAssign | OpAssignAdd | OpAssignSub | OpAssignMul | OpAssignDiv
   deriving (Show,Data,Typeable,Eq,Ord)
 
 data PrefixOp = PrefixInc | PrefixDec | PrefixLNot | PrefixBNot | PrefixPlus
-  | PrefixMinus | PrefixTypeof | PrefixVoid | PrefixDelete
+  | PrefixMinus | PrefixTypeof -- | PrefixVoid 
+  | PrefixDelete
   deriving (Show,Data,Typeable,Eq,Ord)
   
 data PostfixOp 
@@ -41,6 +42,7 @@ data PostfixOp
   deriving (Show,Data,Typeable,Eq,Ord)
 
 --property within an object literal
+--TODO: remove PropString?
 data Prop a 
   = PropId a (Id a) | PropString a String | PropNum a Integer
   deriving (Show,Data,Typeable,Eq,Ord)
@@ -66,7 +68,8 @@ data Expression a
   | ParenExpr a (Expression a)
   | ListExpr a [Expression a]
   | CallExpr a (Expression a) [Expression a]
-  | FuncExpr a [(Id a, Type)] (Statement a)
+  | FuncExpr a [(Id a, Type a)] (Statement a)
+  | TypeofExpr a (Expression a) -- the <> operator (<5> evaluates to int)
   deriving (Show,Data,Typeable,Eq,Ord)
 
 data CaseClause a 
@@ -79,7 +82,7 @@ data CatchClause a
   deriving (Show,Data,Typeable,Eq,Ord)
 
 data VarDecl a 
-  = VarDecl a (Id a) Type 
+  = VarDecl a (Id a) (Type a)
   | VarDeclExpr a (Id a) (Maybe Type) (Expression a)
   deriving (Show,Data,Typeable,Eq,Ord)
   
@@ -117,5 +120,9 @@ data Statement a
   | ReturnStmt a (Maybe (Expression a))
   --| WithStmt a (Expression a) (Statement a)
   | VarDeclStmt a [VarDecl a]
-  | FunctionStmt a (Id a) {-name-} [(Id a) Type] {-args-} (Statement a) {-body-}
+  | FunctionStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Statement a) {-body-}
+  | ConstructorStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Statement a) {-body-}
+  --TODO: add generics to functions?
+  | TypeStmt a (Id a) (Type a)
+  | ExternalStmt a (Id a) (Type a)
   deriving (Show,Data,Typeable,Eq,Ord)  
