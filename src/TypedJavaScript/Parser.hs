@@ -245,8 +245,8 @@ parseVarDecl = do
       expr <- parseExpression
       return (VarDeclExpr pos id thetype expr)) <|>
     (do case thetype of
-             Maybe atype -> return (VarDecl pos id atype)
-             Nothing -> return Nothing) <?> "type annotation"
+             Just atype -> return (VarDecl pos id atype)
+             Nothing -> error "expected type annotation") <?> "type annotation"
     
 parseVarDeclStmt:: StatementParser st
 parseVarDeclStmt = do 
@@ -277,9 +277,12 @@ parseFunctionStmt:: StatementParser st
 parseFunctionStmt = do
   pos <- getPosition
   name <- try (reserved "function" >> identifier) -- ambiguity with FuncExpr
-  args <- parens (identifier `sepBy` comma)
+  args <- parens ((do id <- identifier 
+                      thetype <- parseType
+                      return (id, thetype)) `sepBy` comma)
+  rettype <- parseMaybeType --maybe require '->' instead of '::' ?                    
   body <- parseBlockStmt <?> "function body in { ... }"
-  return (VarDeclStmt pos [VarDeclExpr pos name Nothing (FuncExpr pos Nothing args Nothing body)])
+  return (VarDeclStmt pos [VarDeclExpr pos name Nothing (FuncExpr pos Nothing args rettype body)])
                
 parseStatement:: StatementParser st
 parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt 
@@ -340,10 +343,17 @@ parseArrayLit = liftM2 ArrayLit getPosition (squares (parseExpression `sepBy` co
 parseFuncExpr = do
   pos <- getPosition
   reserved "function"
-  args <- parens (identifier `sepBy` comma)
+  args <- parens ((do id <- identifier 
+                      thetype <- parseType
+                      return (id, thetype)) `sepBy` comma)
   body <- parseBlockStmt
-  return $ FuncExpr pos args body
+  rettype <- parseMaybeType
+  return $ FuncExpr pos Nothing args rettype body
 
+{- FuncExpr a (Maybe (Type a)) {- type of this -} 
+               [(Id a, Type a)] {- args -} 
+               (Maybe (Type a)) {- ret type -} 
+               (Statement a)    {- body -} -}
 --{{{ parsing strings
 
 escapeChars =
