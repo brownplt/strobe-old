@@ -17,7 +17,7 @@ data JavaScript a
 data Id a = Id a String deriving (Show,Eq,Ord,Data,Typeable)
 
 data Type a = Int
-    deriving (Show,Eq)
+    deriving (Show,Eq,Data,Typeable,Ord)
 
 -- http://developer.mozilla.org/en/docs/
 --   Core_JavaScript_1.5_Reference:Operators:Operator_Precedence
