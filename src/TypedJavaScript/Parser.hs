@@ -13,9 +13,9 @@ module TypedJavaScript.Parser(parseScript,parseExpression
    , parseAssignExpr
    ) where
 
-import WebBits.JavaScript.Lexer hiding (identifier)
-import qualified WebBits.JavaScript.Lexer as Lexer
-import WebBits.JavaScript.Syntax
+import TypedJavaScript.Lexer hiding (identifier)
+import qualified TypedJavaScript.Lexer as Lexer
+import TypedJavaScript.Syntax
 import Text.ParserCombinators.Parsec
 import Text.ParserCombinators.Parsec.Expr
 import Control.Monad(liftM,liftM2)
@@ -27,14 +27,28 @@ import Data.Char
 -- We parameterize the parse tree over source-locations.
 type ParsedStatement = Statement SourcePos
 type ParsedExpression = Expression SourcePos
-
+type ParsedType = Type SourcePos
+type MaybeParsedType = Maybe (Type SourcePos)
 
 -- These parsers can store some arbitrary state
 type StatementParser state = CharParser state ParsedStatement
 type ExpressionParser state = CharParser state ParsedExpression
+type TypeParser state = CharParser state ParsedType
+type MaybeTypeParser state = CharParser state MaybeParsedType
 
 identifier =
   liftM2 Id getPosition Lexer.identifier
+
+parseType :: TypeParser st
+parseType = do
+  reservedOp "::"
+  pos <- getPosition
+  (reserved "int" >> return (TInt pos)) <|> (reserved "string" >> return (TString pos))
+
+parseMaybeType :: MaybeTypeParser st
+parseMaybeType = do
+  (do t <- parseType
+      return (Just t)) <|> (return Nothing)
 
 --{{{ Statements
 
@@ -46,7 +60,6 @@ identifier =
 -- must be whatever statement the reserved-word indicates.  If we fail after the
 -- reserved-word, we truly have a syntax error.  Since input has been consumed,
 -- <|> will not try its alternate in parseExpression, and we will fail.
-
 parseIfStmt:: StatementParser st  
 parseIfStmt = do
   pos <- getPosition
@@ -151,11 +164,15 @@ parseExpressionStmt = do
   optional semi
   return (ExprStmt pos expr)
 
-
 parseForInStmt:: StatementParser st
 parseForInStmt =
-  let parseInit = (reserved "var" >> liftM ForInVar identifier)
-                  <|> (liftM ForInNoVar identifier)
+  let parseInit = (do reserved "var"
+                      id <- identifier
+                      maybet <- parseMaybeType
+                      return (ForInVar id maybet)) <|>
+                  (do id <- identifier
+                      maybet <- parseMaybeType
+                      return (ForInNoVar id maybet))
     in do pos <- getPosition
           -- Lookahead, so that we don't clash with parseForStmt
           (init,expr) <- try (do reserved "for"
@@ -216,14 +233,6 @@ parseReturnStmt = do
   optional semi
   return (ReturnStmt pos expr)
 
-parseWithStmt:: StatementParser st
-parseWithStmt = do
-  pos <- getPosition
-  reserved "with"
-  context <- parseParenExpr
-  stmt <- parseStatement
-  return (WithStmt pos context stmt)
-
 parseVarDecl = do
   pos <- getPosition
   id <- identifier
@@ -244,13 +253,13 @@ parseFunctionStmt = do
   name <- try (reserved "function" >> identifier) -- ambiguity with FuncExpr
   args <- parens (identifier `sepBy` comma)
   body <- parseBlockStmt <?> "function body in { ... }"
-  return (FunctionStmt pos name args body)
-
+  return (VarDeclStmt pos [VarDeclExpr pos name Nothing (FuncExpr pos Nothing args Nothing body)])
+               
 parseStatement:: StatementParser st
 parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt 
   <|> parseDoWhileStmt <|> parseContinueStmt <|> parseBreakStmt 
   <|> parseBlockStmt <|> parseEmptyStmt <|> parseForInStmt <|> parseForStmt
-  <|> parseTryStmt <|> parseThrowStmt <|> parseReturnStmt <|> parseWithStmt 
+  <|> parseTryStmt <|> parseThrowStmt <|> parseReturnStmt
   <|> parseVarDeclStmt  <|> parseFunctionStmt
   -- labelled, expression and the error message always go last, in this order
   <|> parseLabelledStmt <|> parseExpressionStmt <?> "statement"
@@ -267,7 +276,7 @@ parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt
 -- Aren't expression tables nice?  Well, we can't quite use them, because of 
 -- JavaScript's ternary (?:) operator.  We have to use two expression tables.
 -- We use one expression table for the assignment operators that bind looser 
--- than ?: (assignTable).  The terms of assignTable are ternary expressions 
+-- than ?: (assignTable).  The terms of assignTable are ternary expVarDeclStmt a [VarDecl a]ressions 
 -- (parseTernaryExpr).  parseTernaryExpr left-factors the left-recursive
 -- production for ?:, and is defined over the second expression table, 
 -- exprTable, which consists of operators that bind tighter than ?:.  The terms
@@ -548,7 +557,6 @@ parsePrefixedExpr = do
                       (try (lexeme $ char '+' >> notFollowedBy (char '+')) >>
                        return PrefixPlus) <|>
                       (reserved "typeof" >> return PrefixTypeof) <|>
-                      (reserved "void" >> return PrefixVoid) <|>
                       (reserved "delete" >> return PrefixDelete)
   case op of
     Nothing -> prefixIncDecExpr  -- new is treated as a simple expr

@@ -2,7 +2,7 @@
 module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
-         ForInit(..),ForInInit(..)) where
+         ForInit(..),ForInInit(..),Type(..)) where
 
 import Text.ParserCombinators.Parsec(SourcePos) -- used by data JavaScript
 import Data.Generics(Data,Typeable)
@@ -16,7 +16,7 @@ data JavaScript a
 
 data Id a = Id a String deriving (Show,Eq,Ord,Data,Typeable)
 
-data Type a = Int
+data Type a = TInt a | TString a
     deriving (Show,Eq,Data,Typeable,Ord)
 
 -- http://developer.mozilla.org/en/docs/
@@ -64,12 +64,15 @@ data Expression a
   | PrefixExpr a PrefixOp (Expression a)
   | InfixExpr a InfixOp (Expression a) (Expression a)
   | CondExpr a (Expression a) (Expression a) (Expression a) --ternary operator
-  | AssignExpr a AssignOp (Expression a) (Expression a) --
+  | AssignExpr a AssignOp (Expression a) (Expression a)
   | ParenExpr a (Expression a)
-  | ListExpr a [Expression a]
+  | ListExpr a [Expression a] -- expressions separated by ',' 
   | CallExpr a (Expression a) [Expression a]
-  | FuncExpr a [(Id a, Type a)] (Statement a)
-  | TypeofExpr a (Expression a) -- the <> operator (<5> evaluates to int)
+  | FuncExpr a (Maybe (Type a)) {- type of this -} 
+               [(Id a, Type a)] {- args -} 
+               (Maybe (Type a)) {- ret type -} 
+               (Statement a)    {- body -}
+  -- | StaticTypeofExpr a (Expression a) -- the <> operator (<5> evaluates to int)
   deriving (Show,Data,Typeable,Eq,Ord)
 
 data CaseClause a 
@@ -83,7 +86,7 @@ data CatchClause a
 
 data VarDecl a 
   = VarDecl a (Id a) (Type a)
-  | VarDeclExpr a (Id a) (Maybe Type) (Expression a)
+  | VarDeclExpr a (Id a) (Maybe (Type a)) (Expression a)
   deriving (Show,Data,Typeable,Eq,Ord)
   
 data ForInit a
@@ -93,8 +96,8 @@ data ForInit a
   deriving (Show,Data,Typeable,Eq,Ord)
 
 data ForInInit a
- = ForInVar (Id a) (Maybe Type)
- | ForInNoVar (Id a)
+ = ForInVar (Id a) (Maybe (Type a))
+ | ForInNoVar (Id a) (Maybe (Type a))
  deriving (Show,Data,Typeable,Eq,Ord)
 
 data Statement a
@@ -118,11 +121,15 @@ data Statement a
       (Maybe (Statement a)) {-finally-}
   | ThrowStmt a (Expression a)
   | ReturnStmt a (Maybe (Expression a))
-  --| WithStmt a (Expression a) (Statement a)
+  -- | WithStmt a (Expression a) (Statement a)
   | VarDeclStmt a [VarDecl a]
-  | FunctionStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Statement a) {-body-}
+  -- | FunctionStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Maybe (Type a)) {-ret type-}  (Statement a) {-body-}
   | ConstructorStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Statement a) {-body-}
-  --TODO: add generics to functions?
-  | TypeStmt a (Id a) (Type a)
-  | ExternalStmt a (Id a) (Type a)
+  -- TODO: add generics to functions?
+  -- | TypeStmt a (Id a) (Type a)
   deriving (Show,Data,Typeable,Eq,Ord)  
+
+{- data Toplevel a
+  =  ExternalStmt a (Id a) (Type a) -}
+
+
