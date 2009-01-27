@@ -16,8 +16,14 @@ data JavaScript a
 
 data Id a = Id a String deriving (Show,Eq,Ord,Data,Typeable)
 
-data Type a = TInt a | TString a | TExpr a (Expression a) | TObject a [(Id a, Type a)] | 
-              TBool a | TDouble a
+data Type a = TInt a | TString a | TExpr a (Expression a) | TObject a [(Id a, Type a)]
+              | TBool a | TDouble a
+              | TFunc a (Maybe (Type a)) {- type of this -} 
+                        [Type a] {- required args -} 
+                        [Type a] {- optional args -}
+                        (Maybe (Type a)) {- optional var arg -}
+                        (Maybe (Type a)) {- ret type -}
+              
     deriving (Show,Eq,Data,Typeable,Ord)
 
 -- http://developer.mozilla.org/en/docs/
@@ -72,7 +78,7 @@ data Expression a
   | FuncExpr a (Maybe (Type a)) {- type of this -} 
                [(Id a, Type a)] {- required args -} 
                [(Id a, Type a)] {- optional args -}
-               (Maybe (Type a)) {- optional var arg -}
+               (Maybe (Id a, Type a)) {- optional var arg -}
                (Maybe (Type a)) {- ret type -} 
                (Statement a)    {- body -}
   -- | StaticTypeofExpr a (Expression a) -- the <> operator (<5> evaluates to int)
@@ -132,7 +138,7 @@ data Statement a
   | ConstructorStmt a (Id a) {-name-} 
                       [(Id a, Type a)] {- required args -}
                       [(Id a, Type a)] {- optional args -}
-                      (Maybe (Type a)) {- optional var arg -}
+                      (Maybe (Id a, Type a)) {- optional var arg -}
                       (Statement a) {-body-}
   | TypeStmt a (Id a) (Type a) -- e.g. type Point :: {x :: int, y :: int};
   deriving (Show,Data,Typeable,Eq,Ord)  

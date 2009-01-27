@@ -39,19 +39,54 @@ type MaybeTypeParser state = CharParser state MaybeParsedType
 identifier =
   liftM2 Id getPosition Lexer.identifier
 
+parseTypeNoColons :: TypeParser st
+parseTypeNoColons = do
+  pos <- getPosition
+  (reserved "int" >> return (TInt pos))
+    <|> (reserved "string" >> return (TString pos))
+    <|> (reserved "double" >> return (TDouble pos))
+    <|> (reserved "bool" >> return (TBool pos)) 
+    <|> parens (do thistype <- (do tt <- parseTypeNoColons
+                                   reservedOp ":"
+                                   return (Just tt)) <|> (return Nothing)
+                   reqargs <- parseTypeNoColons `sepBy` comma
+                   optargs <- (do comma
+                                  theargs <- ((do t <- parseTypeNoColons 
+                                                  reservedOp "?"
+                                                  return t) `sepBy` comma)
+                                  return theargs) <|> (return [])
+                   vararg <- (do comma
+                                 thearg <- (do t <- parseTypeNoColons
+                                               reservedOp "..."
+                                               return (Just t))
+                                 return thearg) <|> (return Nothing)
+                   reservedOp "->"
+                   rettype <- (do t <- parseTypeNoColons; return (Just t))-- <|> Nothing
+                   return (TFunc pos thistype reqargs optargs vararg rettype))
+    <|> (do expr <- angles parseExpression; return (TExpr pos expr)) -- <> operator
+    <|> (do fields <- braces ((do id <- identifier                   -- object type
+                                  fieldtype <- parseType
+                                  return (id, fieldtype)) `sepBy` comma)
+            return (TObject pos fields))                     
+
+{-  args <- parens ((do id <- identifier 
+                        thetype <- parseType
+                        return (id, thetype)) `sepBy` comma) -}
+
+
+{-  --must be able to parse all the following functions:    
+    (->)
+    (T -> T)
+    (T? -> T)
+    (T, T? -> T)
+    (T, T,T,    T?,T?,T?,   T... -> T) -}
+            
+
 parseType :: TypeParser st
 parseType = do
   reservedOp "::" <?> "type annotation (:: followed by a type)"
-  pos <- getPosition
-  (reserved "int" >> return (TInt pos)) <|> 
-    (reserved "string" >> return (TString pos)) <|>
-    (reserved "double" >> return (TDouble pos)) <|>
-    (reserved "bool" >> return (TBool pos)) <|>    
-    (do expr <- angles parseExpression; return (TExpr pos expr)) <|> -- <> operator
-    (do fields <- braces ((do id <- identifier
-                              fieldtype <- parseType
-                              return (id, fieldtype)) `sepBy` comma)
-        return (TObject pos fields))                     
+  t <- parseTypeNoColons
+  return t
 
 parseMaybeType :: MaybeTypeParser st
 parseMaybeType = do
@@ -300,7 +335,9 @@ parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt
   <|> parseBlockStmt <|> parseEmptyStmt <|> parseForInStmt <|> parseForStmt
   <|> parseTryStmt <|> parseThrowStmt <|> parseReturnStmt
   <|> parseVarDeclStmt  <|> parseFunctionStmt
-  <|> parseTypeStmt <|> parseConstructorStmt -- added for tJS
+  -- added for tJS
+  <|> parseTypeStmt <|> parseConstructorStmt 
+  
   -- labelled, expression and the error message always go last, in this order
   <|> parseLabelledStmt <|> parseExpressionStmt <?> "statement"
 
