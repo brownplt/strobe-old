@@ -45,7 +45,13 @@ parseType = do
   pos <- getPosition
   (reserved "int" >> return (TInt pos)) <|> 
     (reserved "string" >> return (TString pos)) <|>
-    (do expr <- angles parseExpression; return (TExpr pos expr)) -- <> operator
+    (reserved "double" >> return (TDouble pos)) <|>
+    (reserved "bool" >> return (TBool pos)) <|>    
+    (do expr <- angles parseExpression; return (TExpr pos expr)) <|> -- <> operator
+    (do fields <- braces ((do id <- identifier
+                              fieldtype <- parseType
+                              return (id, fieldtype)) `sepBy` comma)
+        return (TObject pos fields))                     
 
 parseMaybeType :: MaybeTypeParser st
 parseMaybeType = do
@@ -268,7 +274,25 @@ parseFunctionStmt = do
                       return (id, thetype)) `sepBy` comma)
   rettype <- parseMaybeType --maybe require '->' instead of '::' ?                    
   body <- parseBlockStmt <?> "function body in { ... }"
-  return (VarDeclStmt pos [VarDeclExpr pos name Nothing (FuncExpr pos Nothing args rettype body)])
+  return (VarDeclStmt pos [VarDeclExpr pos name Nothing (FuncExpr pos Nothing args [] Nothing rettype body)])
+parseConstructorStmt :: StatementParser st
+parseConstructorStmt = do
+  pos <- getPosition
+  name <- try (reserved "constructor" >> identifier) -- TODO: remove this 'try'?
+  args <- parens ((do id <- identifier 
+                      thetype <- parseType
+                      return (id, thetype)) `sepBy` comma)
+  body <- parseBlockStmt <?> "function body in { ... }"
+  return (ConstructorStmt pos name args [] Nothing body)
+
+parseTypeStmt :: StatementParser st
+parseTypeStmt = do
+  pos <- getPosition
+  reserved "type"
+  id <- identifier
+  thetype <- parseType
+  semi
+  return (TypeStmt pos id thetype)
                
 parseStatement:: StatementParser st
 parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt 
@@ -276,6 +300,7 @@ parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt
   <|> parseBlockStmt <|> parseEmptyStmt <|> parseForInStmt <|> parseForStmt
   <|> parseTryStmt <|> parseThrowStmt <|> parseReturnStmt
   <|> parseVarDeclStmt  <|> parseFunctionStmt
+  <|> parseTypeStmt <|> parseConstructorStmt -- added for tJS
   -- labelled, expression and the error message always go last, in this order
   <|> parseLabelledStmt <|> parseExpressionStmt <?> "statement"
 
@@ -334,7 +359,7 @@ parseFuncExpr = do
                       return (id, thetype)) `sepBy` comma)
   body <- parseBlockStmt
   rettype <- parseMaybeType
-  return $ FuncExpr pos Nothing args rettype body
+  return $ FuncExpr pos Nothing args [] Nothing rettype body
 
 {- FuncExpr a (Maybe (Type a)) {- type of this -} 
                [(Id a, Type a)] {- args -} 

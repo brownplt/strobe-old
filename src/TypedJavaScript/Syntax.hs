@@ -16,7 +16,8 @@ data JavaScript a
 
 data Id a = Id a String deriving (Show,Eq,Ord,Data,Typeable)
 
-data Type a = TInt a | TString a | TExpr a (Expression a)
+data Type a = TInt a | TString a | TExpr a (Expression a) | TObject a [(Id a, Type a)] | 
+              TBool a | TDouble a
     deriving (Show,Eq,Data,Typeable,Ord)
 
 -- http://developer.mozilla.org/en/docs/
@@ -69,7 +70,9 @@ data Expression a
   | ListExpr a [Expression a] -- expressions separated by ',' 
   | CallExpr a (Expression a) [Expression a]
   | FuncExpr a (Maybe (Type a)) {- type of this -} 
-               [(Id a, Type a)] {- args -} 
+               [(Id a, Type a)] {- required args -} 
+               [(Id a, Type a)] {- optional args -}
+               (Maybe (Type a)) {- optional var arg -}
                (Maybe (Type a)) {- ret type -} 
                (Statement a)    {- body -}
   -- | StaticTypeofExpr a (Expression a) -- the <> operator (<5> evaluates to int)
@@ -123,12 +126,18 @@ data Statement a
   | ReturnStmt a (Maybe (Expression a))
   -- | WithStmt a (Expression a) (Statement a)
   | VarDeclStmt a [VarDecl a]
+  -- FunctionStatements turn into expressions with an assignment. 
+  -- TODO: add generics to functions/constructors?
   -- | FunctionStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Maybe (Type a)) {-ret type-}  (Statement a) {-body-}
-  | ConstructorStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Statement a) {-body-}
-  -- TODO: add generics to functions?
-  -- | TypeStmt a (Id a) (Type a)
+  | ConstructorStmt a (Id a) {-name-} 
+                      [(Id a, Type a)] {- required args -}
+                      [(Id a, Type a)] {- optional args -}
+                      (Maybe (Type a)) {- optional var arg -}
+                      (Statement a) {-body-}
+  | TypeStmt a (Id a) (Type a) -- e.g. type Point :: {x :: int, y :: int};
   deriving (Show,Data,Typeable,Eq,Ord)  
 
+--external statements should only go in the top-level
 {- data Toplevel a
   =  ExternalStmt a (Id a) (Type a) -}
 
