@@ -3,7 +3,7 @@
  -}
 module TypedJavaScript.Lexer(lexeme,identifier,reserved,operator,
 	reservedOp,charLiteral, stringLiteral,natural,integer,float,naturalOrFloat,
-  decimal,hexadecimal,octal,symbol,whiteSpace,parens,
+  decimal,hexadecimal,octal,symbol,whiteSpace,parens,angles,
   braces,brackets,squares,semi,comma,colon,dot, identifierStart) where
 
 import Prelude hiding (lex)
@@ -52,8 +52,9 @@ hexadecimal = T.hexadecimal lex
 octal = T.octal lex	
 symbol = T.symbol lex	
 whiteSpace = T.whiteSpace lex	
-parens = T.parens	 lex
-braces = T.braces	 lex
+parens = T.parens lex
+braces = T.braces lex
+angles = T.angles lex
 squares = T.squares lex	
 semi = T.semi	 lex
 comma = T.comma	 lex

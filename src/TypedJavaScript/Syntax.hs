@@ -16,7 +16,7 @@ data JavaScript a
 
 data Id a = Id a String deriving (Show,Eq,Ord,Data,Typeable)
 
-data Type a = TInt a | TString a
+data Type a = TInt a | TString a | TExpr a (Expression a)
     deriving (Show,Eq,Data,Typeable,Ord)
 
 -- http://developer.mozilla.org/en/docs/

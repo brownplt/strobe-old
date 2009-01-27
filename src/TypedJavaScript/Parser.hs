@@ -43,7 +43,9 @@ parseType :: TypeParser st
 parseType = do
   reservedOp "::" <?> "type annotation (:: followed by a type)"
   pos <- getPosition
-  (reserved "int" >> return (TInt pos)) <|> (reserved "string" >> return (TString pos))
+  (reserved "int" >> return (TInt pos)) <|> 
+    (reserved "string" >> return (TString pos)) <|>
+    (do expr <- angles parseExpression; return (TExpr pos expr)) -- <> operator
 
 parseMaybeType :: MaybeTypeParser st
 parseMaybeType = do
