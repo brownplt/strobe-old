@@ -50,12 +50,12 @@ parseTypeNoColons = do
                                        reservedOp ":"
                                        return (Just tt)) <|> (return Nothing)
                    reqargs <- parseTypeNoColons `sepBy` comma
-                   optargs <- (do comma                       --'try' to make sure we don't eat the vararg, if there is one
-                                  theargs <- (try (do t <- parseTypeNoColons 
+                   optargs <- (do comma                       
+                                  theargs <- (try (do t <- parseTypeNoColons  --try to not eat the vararg if there is one
                                                       reservedOp "?"
                                                       return t)) `sepBy` comma
                                   return theargs) <|> (return [])
-                   vararg <- (do comma
+                   vararg <- (do comma --TODO: will the comma be here after the optargs? see how `sepBy` works.
                                  thearg <- (do t <- parseTypeNoColons
                                                reservedOp "..."
                                                return (Just t))
