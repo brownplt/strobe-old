@@ -50,11 +50,11 @@ parseTypeNoColons = do
                                        reservedOp ":"
                                        return (Just tt)) <|> (return Nothing)
                    reqargs <- parseTypeNoColons `sepBy` comma
-                   optargs <- try (do comma                       --'try' to make sure we don't eat the vararg, if there is one
-                                      theargs <- ((do t <- parseTypeNoColons 
+                   optargs <- (do comma                       --'try' to make sure we don't eat the vararg, if there is one
+                                  theargs <- (try (do t <- parseTypeNoColons 
                                                       reservedOp "?"
-                                                      return t) `sepBy` comma)
-                                      return theargs) <|> (return [])
+                                                      return t)) `sepBy` comma
+                                  return theargs) <|> (return [])
                    vararg <- (do comma
                                  thearg <- (do t <- parseTypeNoColons
                                                reservedOp "..."
@@ -67,20 +67,7 @@ parseTypeNoColons = do
     <|> (do fields <- braces ((do id <- identifier                   -- object type
                                   fieldtype <- parseType
                                   return (id, fieldtype)) `sepBy` comma)
-            return (TObject pos fields))                     
-
-{-  args <- parens ((do id <- identifier 
-                        thetype <- parseType
-                        return (id, thetype)) `sepBy` comma) -}
-
-
-{-  --must be able to parse all the following functions:    
-    (->)
-    (T -> T)
-    (T? -> T)
-    (T, T? -> T)
-    (T, T,T,    T?,T?,T?,   T... -> T) -}
-            
+            return (TObject pos fields))
 
 parseType :: TypeParser st
 parseType = do
