@@ -46,22 +46,22 @@ parseTypeNoColons = do
     <|> (reserved "string" >> return (TString pos))
     <|> (reserved "double" >> return (TDouble pos))
     <|> (reserved "bool" >> return (TBool pos)) 
-    <|> parens (do thistype <- (do tt <- parseTypeNoColons
-                                   reservedOp ":"
-                                   return (Just tt)) <|> (return Nothing)
+    <|> parens (do thistype <- try (do tt <- parseTypeNoColons    --'try' to make sure we don't eat the first required arg
+                                       reservedOp ":"
+                                       return (Just tt)) <|> (return Nothing)
                    reqargs <- parseTypeNoColons `sepBy` comma
-                   optargs <- (do comma
-                                  theargs <- ((do t <- parseTypeNoColons 
-                                                  reservedOp "?"
-                                                  return t) `sepBy` comma)
-                                  return theargs) <|> (return [])
+                   optargs <- try (do comma                       --'try' to make sure we don't eat the vararg, if there is one
+                                      theargs <- ((do t <- parseTypeNoColons 
+                                                      reservedOp "?"
+                                                      return t) `sepBy` comma)
+                                      return theargs) <|> (return [])
                    vararg <- (do comma
                                  thearg <- (do t <- parseTypeNoColons
                                                reservedOp "..."
                                                return (Just t))
                                  return thearg) <|> (return Nothing)
                    reservedOp "->"
-                   rettype <- (do t <- parseTypeNoColons; return (Just t))-- <|> Nothing
+                   rettype <- (do t <- parseTypeNoColons; return (Just t)) <|> (return Nothing)
                    return (TFunc pos thistype reqargs optargs vararg rettype))
     <|> (do expr <- angles parseExpression; return (TExpr pos expr)) -- <> operator
     <|> (do fields <- braces ((do id <- identifier                   -- object type
