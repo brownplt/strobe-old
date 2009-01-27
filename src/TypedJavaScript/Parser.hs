@@ -233,20 +233,21 @@ parseReturnStmt = do
   optional semi
   return (ReturnStmt pos expr)
 
--- one of: a :: type
---         a :: type = X
+-- a vardecl is one of: 
 --         a = X
+--         a :: type = X
+--         a :: type
 parseVarDecl ::  CharParser st (VarDecl SourcePos)
 parseVarDecl = do
   pos <- getPosition
   id <- identifier
-  thetype <- parseMaybeType
-  (do reservedOp "="
+  (do reservedOp "="  --expression with no type annotation
       expr <- parseExpression
-      return (VarDeclExpr pos id thetype expr)) <|>
-    (do case thetype of
-             Just atype -> return (VarDecl pos id atype)
-             Nothing -> error "expected type annotation") <?> "type annotation"
+      return (VarDeclExpr pos id Nothing expr)) <|>
+    (do thetype <- parseType <?> "expression or type annotation" 
+        (do expr <- parseExpression                               --expression with type
+            return (VarDeclExpr pos id (Just thetype) expr)) <|> 
+              (do return (VarDecl pos id thetype)))               --just type, no expression
     
 parseVarDeclStmt:: StatementParser st
 parseVarDeclStmt = do 
@@ -256,23 +257,6 @@ parseVarDeclStmt = do
   optional semi
   return (VarDeclStmt pos decls)
   
-  {-
-data VarDecl a 
-  = VarDecl a (Id a) (Type a)
-  | VarDeclExpr a (Id a) (Maybe (Type a)) (Expression a)
-  
-    
-  parseType :: TypeParser st
-parseType = do
-  reservedOp "::"
-  pos <- getPosition
-  (reserved "int" >> return (TInt pos)) <|> (reserved "string" >> return (TString pos))
-
-parseMaybeType :: MaybeTypeParser st
-parseMaybeType = do
-  (do t <- parseType
-      return (Just t)) <|> (return Nothing)-}
-
 parseFunctionStmt:: StatementParser st
 parseFunctionStmt = do
   pos <- getPosition
