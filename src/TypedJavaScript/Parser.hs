@@ -39,6 +39,7 @@ type MaybeTypeParser state = CharParser state MaybeParsedType
 identifier =
   liftM2 Id getPosition Lexer.identifier
 
+-- TODO: simple question - why is there no 'return' in this function?
 parseTypeNoColons :: TypeParser st
 parseTypeNoColons = do
   pos <- getPosition
@@ -46,6 +47,15 @@ parseTypeNoColons = do
     <|> (reserved "string" >> return (TString pos))
     <|> (reserved "double" >> return (TDouble pos))
     <|> (reserved "bool" >> return (TBool pos)) 
+    -- identifier with optional generic brackets
+    <|> (do id <- identifier
+            generics <- (angles (parseTypeNoColons `sepBy` comma)) <|> (return [])
+            return (TId pos id generics))
+    -- function
+    -- TODO: an easier way to do this might be to parse each type as having
+    -- an optional modifier - either blank, ?, or ...
+    -- then verify that the order they were parsed in is blanks, then ?s, then at most one ...
+    -- would that be a good way to represent the AST as well?
     <|> parens (do thistype <- try (do tt <- parseTypeNoColons    --'try' to make sure we don't eat the first required arg
                                        reservedOp ":"
                                        return (Just tt)) <|> (return Nothing)
