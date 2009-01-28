@@ -1,8 +1,6 @@
-var x :: int;
-var point :: {x :: int, y :: int};
+type f :: (int ?int int ... ->);
+type f :: (int, ?int int ... ->);
+type f :: (int, ?int, int ... ->);
+type f :: (int ?int, int ... ->);
 
-var f :: (int -> int);
-
-function hithere(a, b, c) :: (int, int ? int, string ? Array<int> -> double) {
-    return 5;
-}
+//function hithere(a, b, c) :: ({}: int, int, ?int, ?string, Array<int>... -> double) {}

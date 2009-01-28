@@ -53,16 +53,15 @@ parseTypeNoColons = do
             return (TId pos id generics))
 
     -- function
-    -- ([thistype:] trequired[, *] [? toptional[, *]] [... tvararg] -> [treturn])
+    -- ([thistype:] trequired[, *] [?toptional[, *]] [tvararg ...] -> [treturn])
+    -- TODO: this is a bit lax for now, as it lets you omit a comma between req and optional types
     <|> (parens (do thistype <- try (do tt <- parseTypeNoColons    --'try' to make sure we don't eat the first required arg
                                         reservedOp ":"
                                         return (Just tt)) <|> (return Nothing)
-                    reqargs <- parseTypeNoColons `sepBy` comma
-                    optargs <- (do reservedOp "?"
-                                   theargs <- parseTypeNoColons `sepBy` comma
-                                   return theargs) <|> (return [])
-                    vararg <- (do reservedOp "?"
-                                  thearg <- parseTypeNoColons
+                    reqargs <- parseTypeNoColons `sepEndBy` comma
+                    optargs <- ((do reservedOp "?"; parseTypeNoColons) `sepEndBy` comma) <|> (return [])
+                    vararg <- (do thearg <- parseTypeNoColons
+                                  reservedOp "..."
                                   return (Just thearg)) <|> (return Nothing)
                     reservedOp "->"
                     rettype <- (liftM Just parseTypeNoColons) <|> (return Nothing)
