@@ -77,11 +77,8 @@ data Expression a
   | ParenExpr a (Expression a)
   | ListExpr a [Expression a] -- expressions separated by ',' 
   | CallExpr a (Expression a) [Expression a]
-  | FuncExpr a (Maybe (Type a)) {- type of this -} 
-               [(Id a, Type a)] {- required args -} 
-               [(Id a, Type a)] {- optional args -}
-               (Maybe (Id a, Type a)) {- optional var arg -}
-               (Maybe (Type a)) {- ret type -} 
+  | FuncExpr a [Id a] {- arg names -} 
+               (Type a)
                (Statement a)    {- body -}
   -- | StaticTypeofExpr a (Expression a) -- the <> operator (<5> evaluates to int)
   deriving (Show,Data,Typeable,Eq,Ord)

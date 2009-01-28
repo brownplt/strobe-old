@@ -5,4 +5,6 @@ import TypedJavaScript.Parser
 import TypedJavaScript.Lexer
 
 main = do
-  putStrLn "Placeholder for the Typed JavaScript compiler"
+  strscript <- getContents
+  putStrLn $ show $ parseString strscript
+

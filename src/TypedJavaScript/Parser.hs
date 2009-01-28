@@ -51,32 +51,25 @@ parseTypeNoColons = do
     <|> (do id <- identifier
             generics <- (angles (parseTypeNoColons `sepBy` comma)) <|> (return [])
             return (TId pos id generics))
+
     -- function
-    -- TODO: an easier way to do this might be to parse each type as having
-    -- an optional modifier - either blank, ?, or ...
-    -- then verify that the order they were parsed in is blanks, then ?s, then at most one ...
-    -- would that be a good way to represent the AST as well?
+    -- ([thistype:] trequired[, *][, toptional?[, *]][, tvararity...] -> [treturn])
     <|> parens (do thistype <- try (do tt <- parseTypeNoColons    --'try' to make sure we don't eat the first required arg
                                        reservedOp ":"
                                        return (Just tt)) <|> (return Nothing)
                    reqargs <- parseTypeNoColons `sepBy` comma
-                   optargs <- (do comma                       
-                                  theargs <- (try (do t <- parseTypeNoColons  --try to not eat the vararg if there is one
-                                                      reservedOp "?"
-                                                      return t)) `sepBy` comma
-                                  return theargs) <|> (return [])
-                   vararg <- (do comma --TODO: will the comma be here after the optargs? see how `sepBy` works.
-                                 thearg <- (do t <- parseTypeNoColons
-                                               reservedOp "..."
-                                               return (Just t))
-                                 return thearg) <|> (return Nothing)
+                   optargs <- (try (do comma
+                                       theargs <- brackets (parseTypeNoColons `sepBy` comma)
+                                       return theargs)) <|> (return [])
+                   vararg <- (do comma
+                                 t <- parseTypeNoColons
+                                 reservedOp "..."
+                                 return (Just t)) <|> (return Nothing)
                    reservedOp "->"
-                   rettype <- (do t <- parseTypeNoColons; return (Just t)) <|> (return Nothing)
+                   rettype <- (liftM Just parseTypeNoColons) <|> (return Nothing)
                    return (TFunc pos thistype reqargs optargs vararg rettype))
     <|> (do expr <- angles parseExpression; return (TExpr pos expr)) -- <> operator
-    <|> (do fields <- braces ((do id <- identifier                   -- object type
-                                  fieldtype <- parseType
-                                  return (id, fieldtype)) `sepBy` comma)
+    <|> (do fields <- braces $ (liftM2 (,) identifier parseType) `sepBy` comma -- structural object type
             return (TObject pos fields))
 
 parseType :: TypeParser st
@@ -296,17 +289,18 @@ parseVarDeclStmt = do
   decls <- parseVarDecl `sepBy` comma
   optional semi
   return (VarDeclStmt pos decls)
-  
+
+-- TODO: add support for thistype, and optional and var args.
 parseFunctionStmt:: StatementParser st
 parseFunctionStmt = do
   pos <- getPosition
   name <- try (reserved "function" >> identifier) -- ambiguity with FuncExpr
-  args <- parens ((do id <- identifier 
-                      thetype <- parseType
-                      return (id, thetype)) `sepBy` comma)
-  rettype <- parseMaybeType --maybe require '->' instead of '::' ?                    
-  body <- parseBlockStmt <?> "function body in { ... }"
-  return (VarDeclStmt pos [VarDeclExpr pos name Nothing (FuncExpr pos Nothing args [] Nothing rettype body)])
+  args <- parens (identifier `sepBy` comma)
+  functype <- parseType <?> "function type annotation"
+  body <- parseBlockStmt
+  --transform a function statement into an assignment and a funcexpr
+  return (VarDeclStmt pos [VarDeclExpr pos name Nothing (FuncExpr pos args functype body)])
+
 parseConstructorStmt :: StatementParser st
 parseConstructorStmt = do
   pos <- getPosition
@@ -371,7 +365,6 @@ parseNullLit = do
   reserved "null"
   return (NullLit pos)
 
-
 parseBoolLit:: ExpressionParser st
 parseBoolLit = do
     pos <- getPosition
@@ -384,21 +377,19 @@ parseVarRef = liftM2 VarRef getPosition identifier
 
 parseArrayLit:: ExpressionParser st
 parseArrayLit = liftM2 ArrayLit getPosition (squares (parseExpression `sepBy` comma))
+
+-- function hii(a, b, c, d, e) :: (int, int, [string, string], vart... -> int) {
+--     return 5;
+-- }
   
 parseFuncExpr = do
   pos <- getPosition
   reserved "function"
-  args <- parens ((do id <- identifier 
-                      thetype <- parseType
-                      return (id, thetype)) `sepBy` comma)
+  args <- parens (identifier `sepBy` comma)
+  functype <- parseType <?> "function type annotation"
   body <- parseBlockStmt
-  rettype <- parseMaybeType
-  return $ FuncExpr pos Nothing args [] Nothing rettype body
+  return $ FuncExpr pos args functype body
 
-{- FuncExpr a (Maybe (Type a)) {- type of this -} 
-               [(Id a, Type a)] {- args -} 
-               (Maybe (Type a)) {- ret type -} 
-               (Statement a)    {- body -} -}
 --{{{ parsing strings
 
 escapeChars =
