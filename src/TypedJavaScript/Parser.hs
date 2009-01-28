@@ -53,24 +53,23 @@ parseTypeNoColons = do
             return (TId pos id generics))
 
     -- function
-    -- ([thistype:] trequired[, *][, toptional?[, *]][, tvararity...] -> [treturn])
-    <|> parens (do thistype <- try (do tt <- parseTypeNoColons    --'try' to make sure we don't eat the first required arg
-                                       reservedOp ":"
-                                       return (Just tt)) <|> (return Nothing)
-                   reqargs <- parseTypeNoColons `sepBy` comma
-                   optargs <- (try (do comma
-                                       theargs <- brackets (parseTypeNoColons `sepBy` comma)
-                                       return theargs)) <|> (return [])
-                   vararg <- (do comma
-                                 t <- parseTypeNoColons
-                                 reservedOp "..."
-                                 return (Just t)) <|> (return Nothing)
-                   reservedOp "->"
-                   rettype <- (liftM Just parseTypeNoColons) <|> (return Nothing)
-                   return (TFunc pos thistype reqargs optargs vararg rettype))
+    -- ([thistype:] trequired[, *] [? toptional[, *]] [... tvararg] -> [treturn])
+    <|> (parens (do thistype <- try (do tt <- parseTypeNoColons    --'try' to make sure we don't eat the first required arg
+                                        reservedOp ":"
+                                        return (Just tt)) <|> (return Nothing)
+                    reqargs <- parseTypeNoColons `sepBy` comma
+                    optargs <- (do reservedOp "?"
+                                   theargs <- parseTypeNoColons `sepBy` comma
+                                   return theargs) <|> (return [])
+                    vararg <- (do reservedOp "?"
+                                  thearg <- parseTypeNoColons
+                                  return (Just thearg)) <|> (return Nothing)
+                    reservedOp "->"
+                    rettype <- (liftM Just parseTypeNoColons) <|> (return Nothing)
+                    return (TFunc pos thistype reqargs optargs vararg rettype)) <?> "function type")
     <|> (do expr <- angles parseExpression; return (TExpr pos expr)) -- <> operator
-    <|> (do fields <- braces $ (liftM2 (,) identifier parseType) `sepBy` comma -- structural object type
-            return (TObject pos fields))
+    <|> ((do fields <- braces $ (liftM2 (,) identifier parseType) `sepBy` comma -- structural object type
+             return (TObject pos fields)) <?> "object type")
 
 parseType :: TypeParser st
 parseType = do

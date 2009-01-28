@@ -1,0 +1,8 @@
+var x :: int;
+var point :: {x :: int, y :: int};
+
+var f :: (int -> int);
+
+function hithere(a, b, c) :: (int, int ? int, string ? Array<int> -> double) {
+    return 5;
+}
