@@ -60,6 +60,9 @@ instance PrettyPrintable (Type a) where
         Just t -> pp t <> colon
   pp (TInt _) = text "int"
   pp (TString _) = text "string"
+  pp (TDouble _) = text "double"
+  pp (TExpr _ x) = brackets (pp x)
+  pp (TObject _ fields) = text "{" $+$ (hsep $ punctuate (text ",\n") $ map (\(id,t) -> (pp id <+> text "::" <+> pp t)) fields) $+$ text "}"
   pp (TId _ id []) = pp id
   pp (TId _ constr args) = 
     pp constr <> brackets (hsep $ punctuate comma $ map pp args)
@@ -284,7 +287,7 @@ instance PrettyPrintable (Expression a) where
   pp (CallExpr _ f args) =
     pp f <> (parens.commaSep) args
   pp (FuncExpr _ args t body) =
-    text "function" <+> (parens.commaSep) args <+> pp t $$ inBlock body
+    text "function" <+> (parens.commaSep) args <+> text "::" <+> pp t $$ inBlock body
 
 instance PrettyPrintable (JavaScript a) where
   pp (Script _ stmts) =
