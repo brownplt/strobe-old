@@ -1,7 +1,6 @@
--- |Pretty-printing Typed JavaScript.  This module doesn't export any names, but
--- importing it declares PrettyPrintable instances for TypedJavaScript.Syntax.
+-- |Pretty-printing Typed JavaScript.
 module TypedJavaScript.PrettyPrint
-  (
+  ( PrettyPrintable (..)
   ) where
 
 import Text.PrettyPrint.HughesPJ
@@ -34,9 +33,23 @@ inParens expr                 = parens (pp expr)
 commaSep:: (PrettyPrintable a) => [a] -> Doc
 commaSep = hsep.(punctuate comma).(map pp)
 
+{-
+data Type a = TInt a | TString a | TExpr a (Expression a) | TObject a [(Id a, Type a)]
+              | TBool a | TDouble a
+              | TFunc a (Maybe (Type a)) {- type of this -} 
+                        [Type a] {- required args -} 
+                        [Type a] {- optional args -}
+                        (Maybe (Type a)) {- optional var arg -}
+                        (Type a) {- ret type -}
+              | TId a -- an Id defined through a 'type' statement
+                    (Id a) 
+                    [Type a] --generic instantiation (e.g. Array<int> --> TId a (Id a "Array") [TInt a]
+    deriving (Show,Eq,Data,Typeable,Ord)
+-}
+
 instance PrettyPrintable (Type a) where
   pp (TFunc _ this reqs opts vararg ret) = 
-    ppThis <+> ppArgs <+> ppVararg <+> text "->" <+> pp ret where
+    parens $ ppThis <+> ppArgs <+> ppVararg <+> text "->" <+> pp ret where
       ppArgs = hsep $ punctuate comma $ 
         map pp reqs ++ map (\t -> text "?" <> pp t) opts
       ppVararg = case vararg of
@@ -45,6 +58,11 @@ instance PrettyPrintable (Type a) where
       ppThis = case this of
         Nothing -> empty
         Just t -> pp t <> colon
+  pp (TInt _) = text "int"
+  pp (TString _) = text "string"
+  pp (TId _ id []) = pp id
+  pp (TId _ constr args) = 
+    pp constr <> brackets (hsep $ punctuate comma $ map pp args)
 
 instance PrettyPrintable (Id a) where
   pp (Id _ str) = text str
@@ -77,6 +95,7 @@ instance PrettyPrintable (VarDecl a) where
     pp id <+> ppt t <+> equals <+> pp expr
 
 instance PrettyPrintable (Statement a) where
+  pp (TypeStmt _ id t) = text "type" <+> pp id <+> ppt (Just t) <> semi
   pp (BlockStmt _ stmts) =
     text "{" $+$ nest 2 (vcat (map pp stmts)) $+$ text "}"
   pp (EmptyStmt _) =

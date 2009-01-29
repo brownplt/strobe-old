@@ -44,6 +44,7 @@ parseTypeNoColons :: TypeParser st
 parseTypeNoColons = do
   pos <- getPosition
   (reserved "int" >> return (TInt pos))
+    <|> (reserved "void" >> return (TId pos (Id pos "void") []))
     <|> (reserved "string" >> return (TString pos))
     <|> (reserved "double" >> return (TDouble pos))
     <|> (reserved "bool" >> return (TBool pos)) 
