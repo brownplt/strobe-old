@@ -22,7 +22,7 @@ data Type a = TInt a | TString a | TExpr a (Expression a) | TObject a [(Id a, Ty
                         [Type a] {- required args -} 
                         [Type a] {- optional args -}
                         (Maybe (Type a)) {- optional var arg -}
-                        (Maybe (Type a)) {- ret type -}
+                        (Type a) {- ret type -}
               | TId a -- an Id defined through a 'type' statement
                     (Id a) 
                     [Type a] --generic instantiation (e.g. Array<int> --> TId a (Id a "Array") [TInt a]

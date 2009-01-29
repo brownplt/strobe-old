@@ -64,7 +64,8 @@ parseTypeNoColons = do
                                   reservedOp "..."
                                   return (Just thearg)) <|> (return Nothing)
                     reservedOp "->"
-                    rettype <- (liftM Just parseTypeNoColons) <|> (return Nothing)
+                    rettype <- parseTypeNoColons <|> 
+                               (return $ TId pos (Id pos "void") [])
                     return (TFunc pos thistype reqargs optargs vararg rettype)) <?> "function type")
     <|> (do expr <- angles parseExpression; return (TExpr pos expr)) -- <> operator
     <|> ((do fields <- braces $ (liftM2 (,) identifier parseType) `sepBy` comma -- structural object type
