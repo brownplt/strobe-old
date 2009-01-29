@@ -1,6 +1,8 @@
 #!/bin/sh
 
-if [ `hostname -d` = "ilab.cs.brown.edu" ] || 
+if [ `hostname` = "wanderlust.local" ]; then
+  RUNGHC="/usr/bin/runghc"
+elif [ `hostname -d` = "ilab.cs.brown.edu" ] || 
    [ `hostname -d` = "cs.brown.edu" ]; then
   RUNGHC="/pro/plt/ghc/latest/bin/runghc"
 else
