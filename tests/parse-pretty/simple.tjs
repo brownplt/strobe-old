@@ -1,0 +1,6 @@
+type f :: (int ?int int ... ->);
+type f :: (int, ?int int ... ->);
+type f :: (int, ?int, int ... ->);
+type f :: (int ?int, int ... ->);
+
+//function hithere(a, b, c) :: ({}: int, int, ?int, ?string, Array<int>... -> double) {}
