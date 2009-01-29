@@ -61,11 +61,12 @@ instance PrettyPrintable (Type a) where
   pp (TInt _) = text "int"
   pp (TString _) = text "string"
   pp (TDouble _) = text "double"
-  pp (TExpr _ x) = brackets (pp x)
-  pp (TObject _ fields) = text "{" $+$ (hsep $ punctuate (text ",\n") $ map (\(id,t) -> (pp id <+> text "::" <+> pp t)) fields) $+$ text "}"
+  pp (TBool _) = text "bool"
+  pp (TExpr _ x) = text "<" <> (pp x) <> text ">"
+  pp (TObject _ fields) = braces $ (hsep $ punctuate comma $ map (\(id,t) -> (pp id <+> text "::" <+> pp t)) fields)
   pp (TId _ id []) = pp id
   pp (TId _ constr args) = 
-    pp constr <> brackets (hsep $ punctuate comma $ map pp args)
+    pp constr <> text "<" <> (hsep $ punctuate comma $ map pp args) <> text ">"
 
 instance PrettyPrintable (Id a) where
   pp (Id _ str) = text str
