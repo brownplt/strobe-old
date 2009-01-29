@@ -1,0 +1,4 @@
+#!/bin/sh
+# Symlink to this from .git/hooks
+
+./Setup.lhs test
