@@ -39,20 +39,16 @@ type MaybeTypeParser state = CharParser state MaybeParsedType
 identifier =
   liftM2 Id getPosition Lexer.identifier
 
--- TODO: simple question - why is there no 'return' in this function?
+-- TODO: parens should not be part of functions, but a general thing.
 parseTypeNoColons :: TypeParser st
 parseTypeNoColons = do
   pos <- getPosition
-  (reserved "int" >> return (TInt pos))
-    <|> (reserved "void" >> return (TId pos (Id pos "void") []))
-    <|> (reserved "string" >> return (TString pos))
-    <|> (reserved "double" >> return (TDouble pos))
-    <|> (reserved "bool" >> return (TBool pos)) 
+  (reserved "int" >> return (TId pos "int"))
+    <|> (reserved "void" >> return (TId pos "void"))
+    <|> (reserved "string" >> return (TId pos "string"))
+    <|> (reserved "double" >> return (TId pos "double"))
+    <|> (reserved "bool" >> return (TId pos "bool")) 
     -- identifier with optional generic brackets
-    <|> (do id <- identifier
-            generics <- (angles (parseTypeNoColons `sepBy` comma)) <|> (return [])
-            return (TId pos id generics))
-
     -- function
     -- ([thistype:] trequired[, *] [?toptional[, *]] [tvararg ...] -> [treturn])
     -- TODO: this is a bit lax for now, as it lets you omit a comma between req and optional types
@@ -66,11 +62,15 @@ parseTypeNoColons = do
                                   return (Just thearg)) <|> (return Nothing)
                     reservedOp "->"
                     rettype <- parseTypeNoColons <|> 
-                               (return $ TId pos (Id pos "void") [])
+                               (return $ TId pos "void")
                     return (TFunc pos thistype reqargs optargs vararg rettype)) <?> "function type")
     <|> (do expr <- angles parseExpression; return (TExpr pos expr)) -- <> operator
     <|> ((do fields <- braces $ (liftM2 (,) identifier parseType) `sepBy` comma -- structural object type
              return (TObject pos fields)) <?> "object type")
+    <|> (do id <- parseTypeNoColons --TODO: make it not run forever
+            generics <- (angles (parseTypeNoColons `sepBy` comma)) <|> (return [])
+            return (TApp pos id generics))
+
 
 parseType :: TypeParser st
 parseType = do

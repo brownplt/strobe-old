@@ -16,16 +16,14 @@ data JavaScript a
 
 data Id a = Id a String deriving (Show,Eq,Ord,Data,Typeable)
 
-data Type a = TInt a | TString a | TExpr a (Expression a) | TObject a [(Id a, Type a)]
-              | TBool a | TDouble a
+data Type a = TExpr a (Expression a) | TObject a [(Id a, Type a)]
               | TFunc a (Maybe (Type a)) {- type of this -} 
                         [Type a] {- required args -} 
                         [Type a] {- optional args -}
                         (Maybe (Type a)) {- optional var arg -}
                         (Type a) {- ret type -}
-              | TId a -- an Id defined through a 'type' statement
-                    (Id a) 
-                    [Type a] --generic instantiation (e.g. Array<int> --> TId a (Id a "Array") [TInt a]
+              | TId a String -- an Id defined through a 'type' statement
+              | TApp a (Type a) [Type a]
     deriving (Show,Eq,Data,Typeable,Ord)
 
 -- http://developer.mozilla.org/en/docs/
