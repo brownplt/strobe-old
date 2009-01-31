@@ -74,7 +74,7 @@ instance PrettyPrintable (ForInit a) where
   
 instance PrettyPrintable (ForInInit a) where
   pp (ForInVar id t)   = text "var" <+> pp id <+> ppt (Just t)
-  pp (ForInNoVar id t) = pp id <+> ppt (Just t)
+  pp (ForInNoVar id t) = pp id <+> ppt t
 
 --{{{ Pretty-printing statements
 

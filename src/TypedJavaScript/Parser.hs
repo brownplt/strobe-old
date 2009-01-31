@@ -204,8 +204,8 @@ parseForInStmt =
                       t <- parseType
                       return (ForInVar id t)) <|>
                   (do id <- identifier
-                      t <- parseType
-                      return (ForInNoVar id t))
+                      maybet <- parseMaybeType
+                      return (ForInNoVar id maybet))
     in do pos <- getPosition
           -- Lookahead, so that we don't clash with parseForStmt
           (init,expr) <- try (do reserved "for"

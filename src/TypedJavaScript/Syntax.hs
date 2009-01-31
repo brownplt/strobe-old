@@ -106,7 +106,7 @@ data ForInInit a
  -- Without a type declaration, we can't return a 'RawEnv' without some
  -- type inference.  Save type inference for later.
  = ForInVar (Id a) (Type a)
- | ForInNoVar (Id a) (Type a)
+ | ForInNoVar (Id a) (Maybe (Type a))
  deriving (Show,Data,Typeable,Eq,Ord)
 
 data Statement a
