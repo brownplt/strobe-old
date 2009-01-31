@@ -201,11 +201,11 @@ parseForInStmt:: StatementParser st
 parseForInStmt =
   let parseInit = (do reserved "var"
                       id <- identifier
-                      maybet <- parseMaybeType
-                      return (ForInVar id maybet)) <|>
+                      t <- parseType
+                      return (ForInVar id t)) <|>
                   (do id <- identifier
-                      maybet <- parseMaybeType
-                      return (ForInNoVar id maybet))
+                      t <- parseType
+                      return (ForInNoVar id t))
     in do pos <- getPosition
           -- Lookahead, so that we don't clash with parseForStmt
           (init,expr) <- try (do reserved "for"

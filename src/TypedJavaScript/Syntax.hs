@@ -102,8 +102,11 @@ data ForInit a
   deriving (Show,Data,Typeable,Eq,Ord)
 
 data ForInInit a
- = ForInVar (Id a) (Maybe (Type a))
- | ForInNoVar (Id a) (Maybe (Type a))
+ -- |These terms introduce a name to the enclosing function's environment.
+ -- Without a type declaration, we can't return a 'RawEnv' without some
+ -- type inference.  Save type inference for later.
+ = ForInVar (Id a) (Type a)
+ | ForInNoVar (Id a) (Type a)
  deriving (Show,Data,Typeable,Eq,Ord)
 
 data Statement a
