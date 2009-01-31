@@ -15,7 +15,7 @@ module TypedJavaScript.Environment
 import Data.Generics
 import Data.List (foldl')
 
-import Text.ParserCombinators.Parsec(SourcePos) -- used by data JavaScript
+import Text.ParserCombinators.Parsec(SourcePos)
 import TypedJavaScript.Syntax
 
 -- |Similar to 'everything'.  'everythingBut' descends into 'term' only if
