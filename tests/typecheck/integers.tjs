@@ -1,0 +1,14 @@
+/*type A :: int;
+
+var a :: A = 5;
+var b :: int = 6;
+var c :: int;
+var d = 7;
+
+c = d + a + b;*/
+
+
+var a :: int = 6;
+var b :: int;
+var c = 5;
+

@@ -1,0 +1,6 @@
+//
+var a :: int = 6;
+var b :: int;
+var c = 5;
+
+
