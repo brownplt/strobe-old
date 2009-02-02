@@ -49,12 +49,12 @@ data Type a = TInt a | TString a | TExpr a (Expression a) | TObject a [(Id a, Ty
 
 instance PrettyPrintable (Type a) where
   pp (TFunc _ this reqs opts vararg ret) = 
-    parens $ ppThis <+> ppArgs <+> ppVararg <+> text "->" <+> pp ret where
+    parens $ ppThis <+> ppArgs <> ppVararg <+> text "->" <+> pp ret where
       ppArgs = hsep $ punctuate comma $ 
-        map pp reqs ++ map (\t -> text "?" <> pp t) opts
+        map pp reqs ++ map (\t -> pp t <> text "?") opts
       ppVararg = case vararg of
         Nothing -> empty
-        Just t  -> comma <> pp t <+> text "..."
+        Just t  -> comma <+> pp t <> text "..."
       ppThis = case this of
         Nothing -> empty
         Just t -> pp t <> colon
@@ -259,7 +259,10 @@ instance PrettyPrintable (Expression a) where
     (brackets.commaSep) xs
   pp (ObjectLit _ xs) = 
     braces (hsep (punctuate comma (map pp' xs))) where
-      pp' (n,v) = pp n <> colon <+> pp v
+      pp' (n,mt,v) = pp n <+> ppMaybe mt <+> colon <+> pp v
+      ppMaybe mt = case mt of
+        (Just t) -> text "::" <+> pp t
+        Nothing  -> empty
   pp (ThisRef _) = text "this"
   pp (VarRef _ id) = pp id
   pp (DotRef _ expr id) =

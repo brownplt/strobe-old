@@ -39,38 +39,91 @@ type MaybeTypeParser state = CharParser state MaybeParsedType
 identifier =
   liftM2 Id getPosition Lexer.identifier
 
--- TODO: parens should not be part of functions, but a general thing.
+
+{- 
+  To make this easy:
+  
+  type = [simpletype : ] funcarg ,* -> [type]
+       | simpletype
+  
+  funcarg = simpletype argsfx
+  argsfx = 
+         | ?
+         | ...
+
+  simpletype = identifier [< type, + >]   --plain id, or generic
+             | { identifier :: simpletype ,* }  --object. 'simpletype' instead of 'type' because ',' would be interpreted as a function
+             | < expression >             --typeof
+             | ( type )                   --parenthesised
+   
+  =================
+         
+  Then some additional computation is done to ensure that args are in the order: required, optional, and at most 1 var.
+  This method should be simpler than building it into the parser directly.
+-}
+
+--helpers for parseTypeNoColons:
+data ArgType = ReqArg | OptArg | VarArg
+
+parseTypeSimple :: TypeParser st 
+parseTypeSimple = do
+  pos <- getPosition
+  (do (Id idpos idstr) <- identifier
+      (do innertypes <- angles (parseTypeNoColons `sepBy` comma)
+          if length innertypes == 0 
+            then fail "generic application must have at least one type" 
+            else return (TApp pos (TId idpos idstr) innertypes))
+        <|> (return (TId idpos idstr)))
+    <|> ((do fields <- braces $ (liftM2 (,) identifier (do reservedOp "::"; parseTypeSimple)) `sepBy` comma -- structural object type
+             return (TObject pos fields)) <?> "object type")
+    <|> ((do expr <- angles parseExpression; return (TExpr pos expr)) <?> "<> operator") -- <> operator
+    <|> ((parens parseTypeNoColons) <?> "parentheses") -- parens
+parseReturnType :: TypeParser st
+parseReturnType = do
+  reservedOp "->" 
+  pos <- getPosition
+  parseTypeNoColons <|> (return $ TId pos "undefined")
+
+processArgs :: [(Type a, ArgType)] -> ([Type a], [Type a], Maybe (Type a))
+processArgs [] = ([], [], Nothing)
+processArgs [(t, mod)] = 
+  case mod of 
+    ReqArg -> ([t], [], Nothing)
+    OptArg -> ([], [t], Nothing)
+    VarArg -> ([], [], Just t)
+processArgs ((t, mod):(t2, mod2):rest) = 
+  case mod of
+    ReqArg -> let (r,o,v) = processArgs $ (t2,mod2):rest in (t:r, o, v)
+    OptArg -> case mod2 of
+                ReqArg -> error "Can't have required argument after optional argument"
+                _      -> let (r,o,v) = processArgs $ (t2,mod2):rest in (r, t:o, v)
+    VarArg -> error "vararg can't be followed by anything"
+
+-- main parsing functions:
 parseTypeNoColons :: TypeParser st
 parseTypeNoColons = do
   pos <- getPosition
-  (reserved "int" >> return (TId pos "int"))
-    <|> (reserved "void" >> return (TId pos "void"))
-    <|> (reserved "string" >> return (TId pos "string"))
-    <|> (reserved "double" >> return (TId pos "double"))
-    <|> (reserved "bool" >> return (TId pos "bool")) 
-    -- identifier with optional generic brackets
-    -- function
-    -- ([thistype:] trequired[, *] [?toptional[, *]] [tvararg ...] -> [treturn])
-    -- TODO: this is a bit lax for now, as it lets you omit a comma between req and optional types
-    <|> (parens (do thistype <- try (do tt <- parseTypeNoColons    --'try' to make sure we don't eat the first required arg
-                                        reservedOp ":"
-                                        return (Just tt)) <|> (return Nothing)
-                    reqargs <- parseTypeNoColons `sepEndBy` comma
-                    optargs <- ((do reservedOp "?"; parseTypeNoColons) `sepEndBy` comma) <|> (return [])
-                    vararg <- (do thearg <- parseTypeNoColons
-                                  reservedOp "..."
-                                  return (Just thearg)) <|> (return Nothing)
-                    reservedOp "->"
-                    rettype <- parseTypeNoColons <|> 
-                               (return $ TId pos "void")
-                    return (TFunc pos thistype reqargs optargs vararg rettype)) <?> "function type")
-    <|> (do expr <- angles parseExpression; return (TExpr pos expr)) -- <> operator
-    <|> ((do fields <- braces $ (liftM2 (,) identifier parseType) `sepBy` comma -- structural object type
-             return (TObject pos fields)) <?> "object type")
-    <|> (do id <- parseTypeNoColons --TODO: make it not run forever
-            generics <- (angles (parseTypeNoColons `sepBy` comma)) <|> (return [])
-            return (TApp pos id generics))
-
+  thistype <- try (do tt <- parseTypeSimple    --'try' to make sure we don't eat the first required arg
+                      reservedOp ":"
+                      return (Just tt)) <|> (return Nothing)
+  args <- (do st <- parseTypeSimple
+              (reservedOp "?" >> return (st,OptArg))
+                <|> (reservedOp "..." >> return (st,VarArg))
+                <|> (return (st,ReqArg))) `sepBy` comma
+  case args of
+    [] -> do
+      rettype <- parseReturnType
+      return $ TFunc pos thistype [] [] Nothing rettype
+    [(argt, mod)] -> (do rettype <- parseReturnType
+                         let (r,o,v) = processArgs [(argt, mod)]
+                           in return $ TFunc pos thistype r o v rettype)
+                       <|> (case mod of
+                              ReqArg -> return argt -- non-function
+                              OptArg -> fail "unexpected ?"  --TODO: fix these fails, they're very confusing.
+                              VarArg -> fail "unexpected ...")
+    args' -> (do rettype <- parseReturnType
+                 let (r,o,v) = processArgs args'
+                   in return $ TFunc pos thistype r o v rettype)
 
 parseType :: TypeParser st
 parseType = do
@@ -480,8 +533,9 @@ parseObjectLit =
                 <|> (liftM2 PropId getPosition identifier)
                 <|> (liftM2 PropNum getPosition decimal)
         colon
+        typeannot <- parseMaybeType
         val <- parseAssignExpr
-        return (name,val)
+        return (name,typeannot,val)
     in do pos <- getPosition
           props <- braces (parseProp `sepEndBy` comma) <?> "object literal"
           return $ ObjectLit pos props
