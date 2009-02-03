@@ -39,6 +39,7 @@ type MaybeTypeParser state = CharParser state MaybeParsedType
 identifier =
   liftM2 Id getPosition Lexer.identifier
 
+-- TODO: check object types and literals to ensure unique property names.
 
 {- 
   To make this easy:

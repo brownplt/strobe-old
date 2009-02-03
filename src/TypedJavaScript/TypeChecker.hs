@@ -43,14 +43,32 @@ coreVarEnv :: Env
 coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
 
 --TODO: deal with TApp, add syntax for defining them , etc.
-  
+
+-- TODO: Allow ! to work on anything, or just booleans?
+-- Same goes for -, +, etc. 
+{- alternative:
+   case t of
+      (TApp _ (TId _ "int") []) -> return t
+      (TApp _ (TId _ "double") []) -> return t
+      _ -> fail $ "Expected int or double, got: " ++ (show xtype) -}
+
+numberContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
+numberContext vars types t = do 
+  case t of
+    TApp _ (TId _ "int") [] -> return t
+    _                       -> return $ types ! "double"
+    
+
+boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
+boolContext vars types t = return $ types ! "bool"
+
 -- we need two environments - one mapping variable id's to their types, and
 -- one matching type id's to their type. types gets extended with external and type statements.
 -- this function reduces everything to TObject, TFunc, or a base-case TId.
 typeOfExpr :: (Monad m) => Env -> Env -> (Expression SourcePos) -> m (Type SourcePos)
 typeOfExpr vars types expr = case expr of
   StringLit a _      -> return $ types ! "string"
-  RegexpLit a _ _ _  -> return $ types ! "Regex"
+  RegexpLit a _ _ _  -> return $ types ! "RegExp"
   NumLit a _         -> return $ types ! "double"
   IntLit a _         -> return $ types ! "int"
   BoolLit a _        -> return $ types ! "bool"
@@ -66,9 +84,47 @@ typeOfExpr vars types expr = case expr of
   DotRef a expr id   -> fail "NYI"
   BracketRef a xc xk -> fail "NYI"
   NewExpr a xcon xvars -> fail "NYI"
-  PostfixExpr a op x -> fail "NYI"
-  PrefixExpr a op x -> fail "NYI"
+  
+{- 
+data InfixOp = OpLT | OpLEq | OpGT | OpGEq  | OpIn  | OpInstanceof | OpEq | OpNEq
+             | OpStrictEq | OpStrictNEq | OpLAnd | OpLOr 
+             | OpMul | OpDiv | OpMod  | OpSub | OpLShift | OpSpRShift
+             | OpZfRShift | OpBAnd | OpBXor | OpBOr | OpAdd
+    deriving (Show,Data,Typeable,Eq,Ord,Enum)
+
+data AssignOp = OpAssign | OpAssignAdd | OpAssignSub | OpAssignMul | OpAssignDiv
+  | OpAssignMod | OpAssignLShift | OpAssignSpRShift | OpAssignZfRShift
+  | OpAssignBAnd | OpAssignBXor | OpAssignBOr
+  deriving (Show,Data,Typeable,Eq,Ord)
+
+data PrefixOp = PrefixInc | PrefixDec | PrefixLNot | PrefixBNot | PrefixPlus
+  | PrefixMinus | PrefixTypeof -- | PrefixVoid 
+  | PrefixDelete
+  deriving (Show,Data,Typeable,Eq,Ord)
+  
+data PostfixOp 
+  = PostfixInc | PostfixDec
+  deriving (Show,Data,Typeable,Eq,Ord) 
+-}
+  
+  PostfixExpr a op x -> do
+    xtype <- typeOfExpr vars types x
+    numberContext vars types xtype
+  
+  PrefixExpr a op x -> do
+    xtype <- typeOfExpr vars types x
+    case op of
+      PrefixInc -> numberContext vars types xtype
+      PrefixDec -> numberContext vars types xtype
+      PrefixLNot -> boolContext vars types xtype
+      PrefixBNot -> numberContext vars types xtype
+      PrefixPlus -> numberContext vars types xtype
+      PrefixMinus -> numberContext vars types xtype
+      PrefixTypeof -> return $ types ! "string"
+      PrefixDelete -> return $ types ! "bool" --TODO: remove delete?
+
   InfixExpr a op l r -> fail "NYI"
+  
   CondExpr a c t e -> fail "NYI"
   AssignExpr a op lhs rhs -> fail "NYI"
 
