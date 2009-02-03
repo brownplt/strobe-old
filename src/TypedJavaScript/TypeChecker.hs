@@ -24,11 +24,11 @@ import TypedJavaScript.Environment
 --       "string" -> TApp (TID "String") []
 type Env = Map String (Type SourcePos)
 
-resolveType :: Env -> Env -> (Type SourcePos) -> Type SourcePos
+resolveType :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 resolveType vars types t = case t of
-  TId _ s -> types ! s
+  TId _ s -> return $ types ! s
   TExpr _ x -> typeOfExpr vars types x
-  _ -> t
+  _ -> return t
 
 corePos = initialPos "core"
 
@@ -47,40 +47,42 @@ coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
 -- we need two environments - one mapping variable id's to their types, and
 -- one matching type id's to their type. types gets extended with external and type statements.
 -- this function reduces everything to TObject, TFunc, or a base-case TId.
-typeOfExpr :: Env -> Env -> (Expression SourcePos) -> Type SourcePos
+typeOfExpr :: (Monad m) => Env -> Env -> (Expression SourcePos) -> m (Type SourcePos)
 typeOfExpr vars types expr = case expr of
-  {-StringLit a _      -> types ! "string"
-  RegexpLit a _ _ _  -> types ! "Regex"
-  NumLit a _         -> types ! "double"
-  IntLit a _         -> types ! "int"
-  BoolLit a _        -> types ! "bool"
-  NullLit a          -> types ! "undefined"  --TODO: should null just be undefined?
+  StringLit a _      -> return $ types ! "string"
+  RegexpLit a _ _ _  -> return $ types ! "Regex"
+  NumLit a _         -> return $ types ! "double"
+  IntLit a _         -> return $ types ! "int"
+  BoolLit a _        -> return $ types ! "bool"
+  NullLit a          -> return $ types ! "undefined"  --TODO: should null just be undefined?
 
-  ArrayLit a exprs   -> error "NYI"
-  ObjectLit a props  -> error "NYI"
+  ArrayLit a exprs   -> fail "NYI"
+  ObjectLit a props  -> fail "NYI"
 
 -- [(Prop a, Maybe (Type a), Expression a)]
-  ThisRef a          -> vars ! "this"
-  VarRef a (Id _ s)  -> vars ! s
+  ThisRef a          -> return $ vars ! "this"
+  VarRef a (Id _ s)  -> return $ vars ! s
 
-  DotRef a expr id   -> error "NYI"
-  BracketRef a xc xk -> error "NYI"
-  NewExpr a xcon xvars -> error "NYI"
-  PostfixExpr a op x -> error "NYI"
-  PrefixExpr a op x -> error "NYI"
-  InfixExpr a op l r -> error "NYI"
-  CondExpr a c t e -> error "NYI"
-  AssignExpr a op lhs rhs -> error "NYI"
+  DotRef a expr id   -> fail "NYI"
+  BracketRef a xc xk -> fail "NYI"
+  NewExpr a xcon xvars -> fail "NYI"
+  PostfixExpr a op x -> fail "NYI"
+  PrefixExpr a op x -> fail "NYI"
+  InfixExpr a op l r -> fail "NYI"
+  CondExpr a c t e -> fail "NYI"
+  AssignExpr a op lhs rhs -> fail "NYI"
 
   ParenExpr a x -> typeOfExpr vars types expr
-  ListExpr a exprs -> last $ map (typeOfExpr vars types) exprs
+  ListExpr a exprs -> do
+    typelist <- mapM (typeOfExpr vars types) exprs
+    return $ last typelist
   
-  CallExpr a funcexpr argexprs -> error "NYI"
-  FuncExpr a argnames functype bodystmt -> 
-    case resolveType vars types functype of
-      TFunc a thistype reqargs optargs vararg rettype -> error "NYI"
-      _ -> error "Function must have a function type."-}
-  _ -> error "This error is not being shown."
+  CallExpr a funcexpr argexprs -> fail "NYI"
+  FuncExpr a argnames functype bodystmt -> do
+    functype <- resolveType vars types functype
+    case functype of
+      TFunc a thistype reqargs optargs vararg rettype -> fail "NYI"
+      _ -> fail "Function must have a function type."
 
 {-      
               TExpr a (Expression a) | TObject a [(Id a, Type a)]
@@ -93,39 +95,50 @@ typeOfExpr vars types expr = case expr of
               | TApp a (Type a) [Type a]
  -}
 
-typeCheckStmt :: Env -> Env -> (Statement SourcePos) -> Bool
+typeCheckStmt :: (Monad m) => Env -> Env -> (Statement SourcePos) -> m Bool
 typeCheckStmt vars types stmt = case stmt of 
-  BlockStmt pos stmts -> all (typeCheckStmt vars types) stmts
-  EmptyStmt pos -> True
+  BlockStmt pos stmts -> do
+    results <- mapM (typeCheckStmt vars types) stmts
+    return $ all id results
+  EmptyStmt pos -> return True
   ExprStmt  pos expr -> do
-    let z = typeOfExpr vars types expr
-    True
-  IfStmt pos c t e -> 
-     case typeOfExpr vars types c of
-       TId _ "bool" -> all (typeCheckStmt vars types) [t, e]
-       _ -> error "test expression must be a boolean"
-  IfSingleStmt pos c t ->
-     case typeOfExpr vars types c of
+    typeOfExpr vars types expr
+    return True
+  IfStmt pos c t e -> do
+     ctype <- typeOfExpr vars types c
+     case ctype of
+       TId _ "bool" -> do
+         results <- mapM (typeCheckStmt vars types) [t, e]
+         return $ all id results
+       _ -> fail "test expression must be a boolean"
+  IfSingleStmt pos c t -> do
+     ctype <- typeOfExpr vars types c
+     case ctype of
        TId _ "bool" -> (typeCheckStmt vars types t)
-       _ -> error "test expression must be a boolean"
+       _ -> fail "test expression must be a boolean"
   SwitchStmt pos expr clauses -> do
-     let _ = typeOfExpr vars types expr 
-     all (\c -> case c of 
-                   CaseClause pos expr stmts -> do
-                       let _ = typeOfExpr vars types expr
-                       all (typeCheckStmt vars types) stmts
-                   CaseDefault pos stmts -> all (typeCheckStmt vars types) stmts)
-         clauses
+     typeOfExpr vars types expr 
+     results <- mapM (\c -> do case c of 
+                                CaseClause pos expr stmts -> do
+                                  typeOfExpr vars types expr
+                                  results <- mapM (typeCheckStmt vars types) stmts
+                                  return $ all id results
+                                CaseDefault pos stmts -> do
+                                  results <- mapM (typeCheckStmt vars types) stmts
+                                  return $ all id results)
+                clauses
+     return $ all id results
   WhileStmt pos expr statement -> do
-     let _ = typeOfExpr vars types expr
+     typeOfExpr vars types expr
      typeCheckStmt vars types statement
   DoWhileStmt pos statement expr -> do
-     let res = typeCheckStmt vars types statement
-     let _ = typeOfExpr vars types expr
-     res
-  BreakStmt _ _ -> True
-  ContinueStmt _ _ -> True
+     res <- typeCheckStmt vars types statement
+     typeOfExpr vars types expr
+     return res
+  BreakStmt _ _ -> return True
+  ContinueStmt _ _ -> return True
   LabelledStmt _ _ stmt -> typeCheckStmt vars types stmt
+  
   --ForInStmt
 
 {-
@@ -164,7 +177,7 @@ data Statement a
   
   -}
 
-typeCheckStmts :: Env -> Env -> [(Statement SourcePos)] -> Bool
+typeCheckStmts :: (Monad m) => Env -> Env -> [(Statement SourcePos)] -> m Bool
 typeCheckStmts vars types stmts = typeCheckStmt vars types $ BlockStmt (initialPos "[]") stmts
 
 

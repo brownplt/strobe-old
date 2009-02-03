@@ -26,6 +26,6 @@ main = do
   putStrLn "-----------------------"
   putStrLn $ show $ globalEnv $ statements
   putStrLn "Type checking..."
-  let success = typeCheckStmts coreTypeEnv coreVarEnv statements
+  success <- typeCheckStmts coreTypeEnv coreVarEnv statements
   putStrLn $ show $ success
   
