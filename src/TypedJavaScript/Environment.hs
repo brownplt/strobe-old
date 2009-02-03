@@ -64,7 +64,7 @@ globalEnv globalStatements =
   everythingBut (++) (mkQ True isNotFuncExpr) query globalStatements where
 
     query :: GenericQ RawEnv
-    query = mkQ [] collectVarDecl
+    query = mkQ [] (collectVarDecl `extQ` collectForInInit)
 
     isNotFuncExpr :: Expression SourcePos -> Bool
     isNotFuncExpr (FuncExpr{}) = False
@@ -81,7 +81,7 @@ globalEnv globalStatements =
     -- We require variables to be declared.  So, without the var, we assume
     -- that the id is already in the environment.  While type-checking, verify
     -- that it is and ensure the declared type matches.
-    collectForInInit (ForInNoVar _ _) = []
+    collectForInInit (ForInNoVar _) = []
 
 -- |The environment of a function, excluding the functions arguments.
 -- Signals an error if the expression is not a 'FuncExpr'

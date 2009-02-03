@@ -7,14 +7,25 @@ import TypedJavaScript.Lexer
 import Text.PrettyPrint.HughesPJ ( render, vcat )
 import TypedJavaScript.PrettyPrint (pp)
 
+import TypedJavaScript.Environment
+import TypedJavaScript.TypeChecker
+
 pretty :: [ParsedStatement] -> String
 pretty stmts = render $ vcat $ map pp stmts
 
 main = do
   strscript <- getContents
-  putStrLn $ show $ parseString strscript
+  let statements = parseString strscript
+  putStrLn $ show $ statements
   putStrLn ""
   putStrLn "Pretty-printed version:"
   putStrLn "-----------------------"
-  putStrLn $ pretty $ parseString strscript
-
+  putStrLn $ pretty $ statements
+  putStrLn "-----------------------"
+  putStrLn "Global environment:"
+  putStrLn "-----------------------"
+  putStrLn $ show $ globalEnv $ statements
+  putStrLn "Type checking..."
+  let success = typeCheckStmts coreTypeEnv coreVarEnv statements
+  putStrLn $ show $ success
+  

@@ -257,8 +257,7 @@ parseForInStmt =
                       t <- parseType
                       return (ForInVar id t)) <|>
                   (do id <- identifier
-                      maybet <- parseMaybeType
-                      return (ForInNoVar id maybet))
+                      return (ForInNoVar id))
     in do pos <- getPosition
           -- Lookahead, so that we don't clash with parseForStmt
           (init,expr) <- try (do reserved "for"
@@ -331,7 +330,8 @@ parseVarDecl = do
       expr <- parseExpression
       return (VarDeclExpr pos id Nothing expr)) <|>
     (do thetype <- parseType <?> "expression or type annotation" 
-        (do expr <- parseExpression                               --expression with type
+        (do reserved "="
+            expr <- parseExpression                               --expression with type
             return (VarDeclExpr pos id (Just thetype) expr)) <|> 
               (do return (VarDecl pos id thetype)))               --just type, no expression
     
@@ -343,7 +343,6 @@ parseVarDeclStmt = do
   optional semi
   return (VarDeclStmt pos decls)
 
--- TODO: add support for thistype, and optional and var args.
 parseFunctionStmt:: StatementParser st
 parseFunctionStmt = do
   pos <- getPosition

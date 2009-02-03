@@ -1,15 +1,17 @@
--- |
--- Maintainer: arjun@cs.brown.edu
---
--- Determine the environment of a JavaScript function.
 module TypedJavaScript.TypeChecker
   (
+    typeOfExpr,
     typeCheckStmt,
-    typeOfExpr
+    typeCheckStmts,
+    Env,
+    coreTypeEnv,
+    coreVarEnv,
   ) where
 
 import Data.Generics
 import Data.List (foldl')
+import qualified Data.Map as M
+import Data.Map(Map, (!))
 
 import Text.ParserCombinators.Parsec(SourcePos)
 import Text.ParserCombinators.Parsec.Pos
@@ -17,48 +19,49 @@ import TypedJavaScript.Syntax
 import TypedJavaScript.Environment
 
 -- ----------------------------------------------------------------------------
-type Env = [(Id SourcePos, Type SourcePos)]
+-- TODO: use Data.Map
+--       get rid of resolveType
+--       "string" -> TApp (TID "String") []
+type Env = Map String (Type SourcePos)
 
-lookupEnv :: Env -> String -> Type SourcePos
-lookupEnv [] s = error "lookupEnv: empty environment"
-lookupEnv ((Id pos idname,t):rest) s = 
-  if idname == s
-    then t
-    else lookupEnv rest s
+resolveType :: Env -> Env -> (Type SourcePos) -> Type SourcePos
+resolveType vars types t = case t of
+  TId _ s -> types ! s
+  TExpr _ x -> typeOfExpr vars types x
+  _ -> t
+
+corePos = initialPos "core"
+
+-- TODO: figure out what to do with global.
+globalObjectType = TObject corePos []
+
+coreTypeEnv :: Env
+coreTypeEnv = M.fromList $ (map (\s -> (s, (TApp corePos (TId corePos s) [])))
+                                ["string", "double", "int", "bool", "undefined"]) ++
+                           [("@global", globalObjectType)]
+coreVarEnv :: Env
+coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
 
 --TODO: deal with TApp, add syntax for defining them , etc.
-
---resolve a type by reducing TId and TExpr to other types 
---if we have a TId, look it up until we get to one of the base types
-resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
-resolveType vars types t = case t of
-  TId a id -> case id of
-    "string" -> t
-    "double" -> t
-    "int" -> t
-    "bool" -> t
-    "undefined" -> t
-    _ -> resolveType vars types $ lookupEnv types id
-  TExpr a expr -> resolveType vars types $ typeOfExpr vars types expr
-  other -> other
   
 -- we need two environments - one mapping variable id's to their types, and
 -- one matching type id's to their type. types gets extended with external and type statements.
 -- this function reduces everything to TObject, TFunc, or a base-case TId.
 typeOfExpr :: Env -> Env -> (Expression SourcePos) -> Type SourcePos
 typeOfExpr vars types expr = case expr of
-  StringLit a _      -> TId a "string"
-  RegexpLit a _ _ _  -> TId a "Regex"
-  NumLit a _         -> TId a "double"
-  IntLit a _         -> TId a "int"
-  BoolLit a _        -> TId a "bool"
-  NullLit a          -> TId a "undefined"  --TODO: should null just be undefined?
+  {-StringLit a _      -> types ! "string"
+  RegexpLit a _ _ _  -> types ! "Regex"
+  NumLit a _         -> types ! "double"
+  IntLit a _         -> types ! "int"
+  BoolLit a _        -> types ! "bool"
+  NullLit a          -> types ! "undefined"  --TODO: should null just be undefined?
 
   ArrayLit a exprs   -> error "NYI"
   ObjectLit a props  -> error "NYI"
 
-  ThisRef a          -> resolveType vars types $ lookupEnv vars "this"
-  VarRef a (Id _ s)  -> resolveType vars types $ lookupEnv vars s
+-- [(Prop a, Maybe (Type a), Expression a)]
+  ThisRef a          -> vars ! "this"
+  VarRef a (Id _ s)  -> vars ! s
 
   DotRef a expr id   -> error "NYI"
   BracketRef a xc xk -> error "NYI"
@@ -70,13 +73,14 @@ typeOfExpr vars types expr = case expr of
   AssignExpr a op lhs rhs -> error "NYI"
 
   ParenExpr a x -> typeOfExpr vars types expr
-  ListExpr a exprs -> typeOfExpr vars types $ last exprs
+  ListExpr a exprs -> last $ map (typeOfExpr vars types) exprs
   
   CallExpr a funcexpr argexprs -> error "NYI"
   FuncExpr a argnames functype bodystmt -> 
     case resolveType vars types functype of
       TFunc a thistype reqargs optargs vararg rettype -> error "NYI"
-      _ -> error "Function must have a function type."
+      _ -> error "Function must have a function type."-}
+  _ -> error "This error is not being shown."
 
 {-      
               TExpr a (Expression a) | TObject a [(Id a, Type a)]
@@ -93,9 +97,8 @@ typeCheckStmt :: Env -> Env -> (Statement SourcePos) -> Bool
 typeCheckStmt vars types stmt = case stmt of 
   BlockStmt pos stmts -> all (typeCheckStmt vars types) stmts
   EmptyStmt pos -> True
-  -- TODO: figure out how to throw proper errors
   ExprStmt  pos expr -> do
-    let _ = typeOfExpr vars types expr
+    let z = typeOfExpr vars types expr
     True
   IfStmt pos c t e -> 
      case typeOfExpr vars types c of
@@ -124,6 +127,7 @@ typeCheckStmt vars types stmt = case stmt of
   ContinueStmt _ _ -> True
   LabelledStmt _ _ stmt -> typeCheckStmt vars types stmt
   --ForInStmt
+
 {-
 data Statement a
   = BlockStmt a [Statement a]
@@ -162,4 +166,7 @@ data Statement a
 
 typeCheckStmts :: Env -> Env -> [(Statement SourcePos)] -> Bool
 typeCheckStmts vars types stmts = typeCheckStmt vars types $ BlockStmt (initialPos "[]") stmts
+
+
+
 

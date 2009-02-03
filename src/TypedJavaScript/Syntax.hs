@@ -58,6 +58,7 @@ data Expression a
   = StringLit a String
   | RegexpLit a String Bool {- global? -} Bool {- case-insensitive? -}
   | NumLit a Double -- pg. 5 of ECMA-262
+  | IntLit a Int    -- int/double distinction. TODO: parse these.
   | BoolLit a Bool
   | NullLit a
   | ArrayLit a [Expression a]
@@ -106,7 +107,7 @@ data ForInInit a
  -- Without a type declaration, we can't return a 'RawEnv' without some
  -- type inference.  Save type inference for later.
  = ForInVar (Id a) (Type a)
- | ForInNoVar (Id a) (Maybe (Type a))
+ | ForInNoVar (Id a) 
  deriving (Show,Data,Typeable,Eq,Ord)
 
 data Statement a
