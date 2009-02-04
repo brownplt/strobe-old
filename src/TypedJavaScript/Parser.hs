@@ -23,7 +23,8 @@ import Control.Monad.Trans (MonadIO,liftIO)
 import Numeric(readDec,readOct,readHex)
 import Data.Char(chr)
 import Data.Char
-
+import Data.List(nub)
+ 
 -- We parameterize the parse tree over source-locations.
 type ParsedStatement = Statement SourcePos
 type ParsedExpression = Expression SourcePos
@@ -38,8 +39,6 @@ type MaybeTypeParser state = CharParser state MaybeParsedType
 
 identifier =
   liftM2 Id getPosition Lexer.identifier
-
--- TODO: check object types and literals to ensure unique property names.
 
 {- 
   To make this easy:
@@ -58,7 +57,7 @@ identifier =
              | ( type )                   --parenthesised
    
   =================
-         
+         TODO
   Then some additional computation is done to ensure that args are in the order: required, optional, and at most 1 var.
   This method should be simpler than building it into the parser directly.
 -}
@@ -77,7 +76,7 @@ parseTypeSimple = do
         <|> (return (TId idpos idstr)))
     <|> ((do fields <- braces $ (liftM2 (,) identifier (do reservedOp "::"; parseTypeSimple)) `sepBy` comma -- structural object type
              return (TObject pos fields)) <?> "object type")
-    <|> ((do expr <- angles parseExpression; return (TExpr pos expr)) <?> "<> operator") -- <> operator
+    -- <|> ((do expr <- angles parseExpression; return (TExpr pos expr)) <?> "<> operator") -- <> operator
     <|> ((parens parseTypeNoColons) <?> "parentheses") -- parens
 parseReturnType :: TypeParser st
 parseReturnType = do
@@ -521,7 +520,7 @@ parseRegexpLit = do
   flags <- parseFlags
   spaces -- crucial for Parsec.Token parsers
   return $ flags (RegexpLit pos pat)
-          
+
 parseObjectLit:: ExpressionParser st
 parseObjectLit =
   let parseProp = do
@@ -536,9 +535,13 @@ parseObjectLit =
         typeannot <- parseMaybeType
         val <- parseAssignExpr
         return (name,typeannot,val)
+      propName = \(p, _, _) -> p
     in do pos <- getPosition
           props <- braces (parseProp `sepEndBy` comma) <?> "object literal"
-          return $ ObjectLit pos props
+          let props' = map propName props
+          if props' /= nub props' 
+            then fail "Object literals can't have duplicate property names in tJS"
+            else return $ ObjectLit pos props
 
 --{{{ Parsing numbers.  From pg. 17-18 of ECMA-262.
 

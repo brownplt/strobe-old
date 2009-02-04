@@ -58,7 +58,7 @@ instance PrettyPrintable (Type a) where
       ppThis = case this of
         Nothing -> empty
         Just t -> pp t <> colon
-  pp (TExpr _ x) = text "<" <> (pp x) <> text ">"
+  -- pp (TExpr _ x) = text "<" <> (pp x) <> text ">"
   pp (TObject _ fields) = braces $ (hsep $ punctuate comma $ map (\(id,t) -> (pp id <+> text "::" <+> pp t)) fields)
   pp (TId _ id) = text id
   pp (TApp _ constr args) = 

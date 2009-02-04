@@ -14,9 +14,9 @@ data JavaScript a
   = Script a [Statement a] 
   deriving (Show,Data,Typeable,Eq,Ord)
 
-data Id a = Id a String deriving (Show,Eq,Ord,Data,Typeable)
+data Id a = Id a String deriving (Show,Ord,Data,Typeable)
 
-data Type a = TExpr a (Expression a) | TObject a [(Id a, Type a)]
+data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)               
               | TFunc a (Maybe (Type a)) {- type of this -} 
                         [Type a] {- required args -} 
                         [Type a] {- optional args -}
@@ -24,7 +24,21 @@ data Type a = TExpr a (Expression a) | TObject a [(Id a, Type a)]
                         (Type a) {- ret type -}
               | TId a String -- an Id defined through a 'type' statement
               | TApp a (Type a) [Type a]
-    deriving (Show,Eq,Data,Typeable,Ord)
+    deriving (Show,Data,Typeable,Ord)
+
+--equalities:
+instance Eq (Id a) where
+  Id _ s1 == Id _ s2 = s1 == s2
+
+instance Eq (Type a) where
+  TObject _ props == TObject _ props2 = all id (zipWith (==) props props2)
+  TId _ s == TId _ s2                 = s == s2
+  TApp _ c1 v1 == TApp _ c2 v2        = c1 == c2 && v1 == v2
+  TFunc _ tt1 req1 opt1 var1 ret1 ==
+    TFunc _ tt2 req2 opt2 var2 ret2   = tt1 == tt2 && req1 == req2 && 
+                                        opt1 == opt2 && var1 == var2 && 
+                                        ret1 == ret2
+  t1 == t2                            = False
 
 -- http://developer.mozilla.org/en/docs/
 --   Core_JavaScript_1.5_Reference:Operators:Operator_Precedence
@@ -52,7 +66,14 @@ data PostfixOp
 --TODO: remove PropString?
 data Prop a 
   = PropId a (Id a) | PropString a String | PropNum a Integer
-  deriving (Show,Data,Typeable,Eq,Ord)
+  deriving (Show,Data,Typeable,Ord)
+
+instance Eq (Prop a) where
+  x == y = (toStr x) == (toStr y) where
+    toStr = \p -> case p of 
+                      PropId _ (Id _ s) -> s
+                      PropString _ s -> s
+                      PropNum _ i -> show i
 
 data Expression a
   = StringLit a String
@@ -147,5 +168,8 @@ data Statement a
 --external statements should only go in the top-level
 {- data Toplevel a
   =  ExternalStmt a (Id a) (Type a) -}
+  
+
+
 
 

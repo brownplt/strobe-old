@@ -27,7 +27,7 @@ type Env = Map String (Type SourcePos)
 resolveType :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 resolveType vars types t = case t of
   TId _ s -> return $ types ! s
-  TExpr _ x -> typeOfExpr vars types x
+  -- TExpr _ x -> typeOfExpr vars types x
   _ -> return t
 
 corePos = initialPos "core"
@@ -52,13 +52,13 @@ coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
       (TApp _ (TId _ "double") []) -> return t
       _ -> fail $ "Expected int or double, got: " ++ (show xtype) -}
 
+-- in pJS, anything can be used in a number and bool context without anything crashing.
 numberContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 numberContext vars types t = do 
   case t of
     TApp _ (TId _ "int") [] -> return t
     _                       -> return $ types ! "double"
     
-
 boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 boolContext vars types t = return $ types ! "bool"
 
@@ -125,10 +125,21 @@ data PostfixOp
 
   InfixExpr a op l r -> fail "NYI"
   
-  CondExpr a c t e -> fail "NYI"
+  CondExpr a c t e -> do
+    ctype <- typeOfExpr vars types c
+    cbtype <- boolContext vars types ctype
+    if (cbtype /= (types ! "bool"))
+      then fail $ "expected bool, got " ++ show ctype
+      else do
+        ttype <- typeOfExpr vars types t
+        etype <- typeOfExpr vars types e
+        if (ttype /= etype) 
+          then fail $ "then and else must have the same type in a ternary expression"
+          else return ttype
+    
   AssignExpr a op lhs rhs -> fail "NYI"
 
-  ParenExpr a x -> typeOfExpr vars types expr
+  ParenExpr a x -> typeOfExpr vars types x
   ListExpr a exprs -> do
     typelist <- mapM (typeOfExpr vars types) exprs
     return $ last typelist
