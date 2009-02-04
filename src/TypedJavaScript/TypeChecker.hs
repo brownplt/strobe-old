@@ -55,10 +55,9 @@ coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
 
 -- in pJS, anything can be used in a number and bool context without anything crashing.
 numberContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
-numberContext vars types t = do 
-  case t of
-    TApp _ (TId _ "int") [] -> return t
-    _                       -> return $ types ! "double"
+numberContext vars types t
+   | t == (types ! "int") = return t
+   | otherwise            = return $ types ! "double"
 
 --TODO: this always returns the bool type. not sure how to notate that in the type sig.    
 boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
@@ -87,7 +86,9 @@ typeOfExpr vars types expr = case expr of
   BracketRef a xc xk -> fail "NYI"
   NewExpr a xcon xvars -> fail "NYI"
   
-{- 
+{- February 2009 (show all)  	
+next >
+Sun 	Mon 	Tue 	Wed 	Thu 	Fri
 data InfixOp = OpLT | OpLEq | OpGT | OpGEq  | OpIn  | OpInstanceof | OpEq | OpNEq
              | OpStrictEq | OpStrictNEq | OpLAnd | OpLOr 
              | OpMul | OpDiv | OpMod  | OpSub | OpLShift | OpSpRShift
@@ -125,25 +126,26 @@ data PostfixOp
       PrefixTypeof -> return $ types ! "string"
       PrefixDelete -> return $ types ! "bool" --TODO: remove delete?
 
-  InfixExpr a op l r -> let
-      numstobool = do --more efficient if this function is lifted and takes args?
-        numberContext vars types l
-        numberContext vars types r
-        return $ types ! "bool"
-    in case op of
+  InfixExpr a op l r -> do
+    ltype <- typeOfExpr vars types l
+    rtype <- typeOfExpr vars types r
+    let numstobool = do --more efficient if this function is lifted and takes args?
+          numberContext vars types ltype
+          numberContext vars types rtype
+          return $ types ! "bool"
+    case op of
       OpLT -> numstobool
       OpLEq -> numstobool
       OpGT -> numstobool
-      OpZomg -> numstobool
       OpGEq -> numstobool
       OpIn -> fail "NYI"
       OpInstanceof -> fail "NYI"
       OpEq -> fail "NYI"
       OpNEq -> fail "NYI"
-      OpRofl -> fail "NYI"
-      OpStrictEq -> types ! "bool"
-      OpStrictNEq -> types ! "bool"
-      OpLAnd -> 
+      OpStrictEq -> return $ types ! "bool"
+      OpStrictNEq -> return $ types ! "bool"
+
+      --OpLAnd -> 
   {- OpLAnd | OpLOr 
              | OpMul | OpDiv | OpMod  | OpSub | OpLShift | OpSpRShift
              | OpZfRShift | OpBAnd | OpBXor | OpBOr | OpAdd -}
