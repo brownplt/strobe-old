@@ -12,6 +12,7 @@ import Data.Generics
 import Data.List (foldl')
 import qualified Data.Map as M
 import Data.Map(Map, (!))
+import Control.Monad(liftM)
 
 import Text.ParserCombinators.Parsec(SourcePos)
 import Text.ParserCombinators.Parsec.Pos
@@ -58,7 +59,8 @@ numberContext vars types t = do
   case t of
     TApp _ (TId _ "int") [] -> return t
     _                       -> return $ types ! "double"
-    
+
+--TODO: this always returns the bool type. not sure how to notate that in the type sig.    
 boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 boolContext vars types t = return $ types ! "bool"
 
@@ -123,19 +125,38 @@ data PostfixOp
       PrefixTypeof -> return $ types ! "string"
       PrefixDelete -> return $ types ! "bool" --TODO: remove delete?
 
-  InfixExpr a op l r -> fail "NYI"
-  
+  InfixExpr a op l r -> let
+      numstobool = do --more efficient if this function is lifted and takes args?
+        numberContext vars types l
+        numberContext vars types r
+        return $ types ! "bool"
+    in case op of
+      OpLT -> numstobool
+      OpLEq -> numstobool
+      OpGT -> numstobool
+      OpZomg -> numstobool
+      OpGEq -> numstobool
+      OpIn -> fail "NYI"
+      OpInstanceof -> fail "NYI"
+      OpEq -> fail "NYI"
+      OpNEq -> fail "NYI"
+      OpRofl -> fail "NYI"
+      OpStrictEq -> types ! "bool"
+      OpStrictNEq -> types ! "bool"
+      OpLAnd -> 
+  {- OpLAnd | OpLOr 
+             | OpMul | OpDiv | OpMod  | OpSub | OpLShift | OpSpRShift
+             | OpZfRShift | OpBAnd | OpBXor | OpBOr | OpAdd -}
+             
+  --TODO: what about monads let's you do let x = 5 without an "in" ?
   CondExpr a c t e -> do
-    ctype <- typeOfExpr vars types c
-    cbtype <- boolContext vars types ctype
-    if (cbtype /= (types ! "bool"))
-      then fail $ "expected bool, got " ++ show ctype
-      else do
-        ttype <- typeOfExpr vars types t
-        etype <- typeOfExpr vars types e
-        if (ttype /= etype) 
-          then fail $ "then and else must have the same type in a ternary expression"
-          else return ttype
+    ctype <- typeOfExpr vars types c 
+    boolContext vars types ctype --boolContext will fail if something goes wrong
+    ttype <- typeOfExpr vars types t
+    etype <- typeOfExpr vars types e
+    if (ttype /= etype) 
+      then fail $ "then and else must have the same type in a ternary expression"
+      else return ttype
     
   AssignExpr a op lhs rhs -> fail "NYI"
 
