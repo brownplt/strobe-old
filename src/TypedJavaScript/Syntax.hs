@@ -24,8 +24,12 @@ data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)
                         (Type a) {- ret type -}
               | TId a String -- an Id defined through a 'type' statement
               | TApp a (Type a) [Type a]
-    deriving (Show,Data,Typeable,Ord)
+    deriving (Data,Typeable,Ord, Show)
 
+--printing:
+--instance Show (Type a) where
+--  show (TApp _ (TId _ s) []) = show (s ++ "<>")
+  
 --equalities:
 instance Eq (Id a) where
   Id _ s1 == Id _ s2 = s1 == s2

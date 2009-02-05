@@ -541,6 +541,7 @@ parseObjectLit =
       propName = \(p, _, _) -> p
     in do pos <- getPosition
           props <- braces (parseProp `sepEndBy` comma) <?> "object literal"
+          -- TODO: move this check to the type checker.
           let props' = map propName props
           if props' /= nub props'
             then fail "Object literals can't have duplicate property names in tJS"

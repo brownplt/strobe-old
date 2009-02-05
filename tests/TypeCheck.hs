@@ -23,12 +23,14 @@ import TypedJavaScript.Parser (parseType,parseExpression)
 import TypedJavaScript.TypeChecker (typeOfExpr,coreTypeEnv,coreVarEnv,
   resolveType)
 import TypedJavaScript.Test
+import TypedJavaScript.PrettyPrint
 
 assertType :: Expression SourcePos -> Type SourcePos -> Assertion
 assertType expr expectedType = do
   actualType <- typeOfExpr coreVarEnv coreTypeEnv expr
-  resolvedType <- resolveType coreVarEnv coreTypeEnv expectedType
+  let resolvedType = resolveType coreVarEnv coreTypeEnv expectedType
   -- Assumes equality for types is defined modulo annotation (SourcePos)
+  -- TODO: check a subtype, instead of strict equality?
   assertEqual "type mismatch" actualType resolvedType
 
 assertTypeError :: Expression SourcePos -> Assertion
@@ -36,10 +38,10 @@ assertTypeError expr = do
   result <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
   case result of
     Left (err::(E.SomeException)) -> return () -- error expected
-    Right exprType -> assertFailure (show exprType)
+    Right exprType -> assertFailure ("Expected fail, got: " ++ (show $ pp exprType))
 
 parseTestCase :: CharParser st Test
-parseTestCase = do
+parseTestCase = (do
   expr <- parseExpression
   let typeOK = do
         expectedType <- parseType -- requires a prefixed ::
@@ -49,8 +51,8 @@ parseTestCase = do
                         -- expression parser.
         reserved "fails"
         return $ TestCase (assertTypeError expr)
-  typeOK <|> typeError
-
+  typeOK <|> typeError) <|> (do return $ TestCase $ assertEqual "empty test case" True True)
+  
 readTestFile :: FilePath -> IO Test
 readTestFile path = do
   result <- parseFromFile (parseTestCase `endBy` semi) path
@@ -59,7 +61,6 @@ readTestFile path = do
     Left err -> return $ TestCase (assertFailure (show err))
     Right tests -> return $ TestList tests
     
-
 main = do
   testPaths <- getPathsWithExtension ".test" "type-check"
   testCases <- mapM readTestFile testPaths

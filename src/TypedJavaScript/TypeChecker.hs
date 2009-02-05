@@ -22,11 +22,6 @@ import TypedJavaScript.Environment
 -- ----------------------------------------------------------------------------
 type Env = Map String (Type SourcePos)
 
-resolveType :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
-resolveType vars types t = case t of
-  TId _ s -> return $ types ! s
-  _ -> return t
-
 corePos = initialPos "core"
 
 -- TODO: figure out what to do with global.
@@ -66,6 +61,18 @@ boolContext vars types t
 isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
 isSubType vars types t1 t2 = (t1 == t2)
 
+-- recursively resolve the type down to TApp, or a TFunc and a TObject containing
+-- only resolved types
+-- TODO: is it fine that this ISNT a Monad?
+resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
+resolveType vars types t = case t of
+  TId _ s -> types ! s
+  TFunc pos this reqargs optargs vararg rettype -> do
+    let rt = (resolveType vars types)
+        rtm = maybe Nothing (Just . rt)
+    TFunc pos (rtm this) (map rt reqargs) (map rt optargs) (rtm vararg) (rt rettype)
+  _ -> t
+
 -- we need two environments - one mapping variable id's to their types, and
 -- one matching type id's to their type. types gets extended with external and type statements.
 -- this function reduces everything to TObject, TFunc, or a base-case TApp.
@@ -82,7 +89,7 @@ typeOfExpr vars types expr = case expr of
   ObjectLit a props  -> fail "NYI"
 
   ThisRef a          -> return $ vars ! "this"
-  VarRef a (Id _ s)  -> return $ vars ! s
+  VarRef a (Id _ s)  -> maybe (fail ("unbound ID: " ++ s)) return (M.lookup s vars)
 
   DotRef a expr id   -> fail "NYI"
   BracketRef a xc xk -> fail "NYI"
@@ -228,8 +235,8 @@ data PostfixOp
               else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " ++ show funcargtype
       _ -> fail $ "Expected function with 1 arg, got " ++ show functype
 
-  FuncExpr a argnames functype bodystmt -> do
-    functype <- resolveType vars types functype
+  FuncExpr a argnames functype' bodystmt -> do
+    let functype = resolveType vars types functype'
     case functype of
       TFunc _ _ [argtype] _ _ rettype -> do
         if length argnames /= 1 
@@ -263,7 +270,7 @@ typeCheckStmt vars types stmt = case stmt of
   ExprStmt  pos expr -> do
     typeOfExpr vars types expr
     return True
-  {-IfStmt pos c t e -> do
+  {-IfStmt pos c t e -> do --TODO: add bool context checking here
      ctype <- typeOfExpr vars types c
      case ctype of
        TId _ "bool" -> do
@@ -277,7 +284,7 @@ typeCheckStmt vars types stmt = case stmt of
        _ -> fail "test expression must be a boolean"-}
   SwitchStmt pos expr clauses -> do
      typeOfExpr vars types expr 
-     -- TODO: ensure only one default clause?
+     -- TODO: ensure only one default clause
      results <- mapM (\c -> do case c of 
                                 CaseClause pos expr stmts -> do
                                   typeOfExpr vars types expr
@@ -288,13 +295,15 @@ typeCheckStmt vars types stmt = case stmt of
                                   return $ all id results)
                 clauses
      return $ all id results
-  WhileStmt pos expr statement -> do --TODO: add bool context checking here
+     
+  {- WhileStmt pos expr statement -> do --TODO: add bool context checking here
      typeOfExpr vars types expr
      typeCheckStmt vars types statement
   DoWhileStmt pos statement expr -> do
      res <- typeCheckStmt vars types statement
      typeOfExpr vars types expr
-     return res
+     return res -}
+   
   BreakStmt _ _ -> return True
   ContinueStmt _ _ -> return True
   LabelledStmt _ _ stmt -> typeCheckStmt vars types stmt
