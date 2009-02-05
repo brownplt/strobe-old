@@ -29,7 +29,7 @@ data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)
 --equalities:
 instance Eq (Id a) where
   Id _ s1 == Id _ s2 = s1 == s2
-
+-- TODO: Add a type for constructors.
 instance Eq (Type a) where
   TObject _ props == TObject _ props2 = all id (zipWith (==) props props2)
   TId _ s == TId _ s2                 = s == s2
