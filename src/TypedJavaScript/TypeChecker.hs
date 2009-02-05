@@ -236,7 +236,8 @@ data PostfixOp
           then fail $ "Inconsistent function definition - argument number mismatch in arglist and type"
           else case bodystmt of
             BlockStmt _ [ReturnStmt _ (Just expr)] -> do
-              exprtype <- typeOfExpr (M.insert (argnames !! 0) argtype vars) types expr
+              let (Id _ arg0) = argnames !! 0
+              exprtype <- typeOfExpr (M.insert arg0 argtype vars) types expr
               if isSubType vars types exprtype rettype
                 then return functype
                 else fail $ (show exprtype) ++ " is not a subtype of the expected return type, " ++ show rettype
