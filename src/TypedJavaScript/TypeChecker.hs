@@ -55,7 +55,7 @@ numberContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePo
 numberContext vars types t
    | t == (types ! "int")    = return t
    | t == (types ! "double") = return t
-   | otherwise               = fail $ "expected int or double, got " ++ show t
+   | otherwise               = fail $ "expected int or double, got " ++ (show t) ++ ", (types!'double')==" ++ show (types ! "double")
 
 boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 boolContext vars types t

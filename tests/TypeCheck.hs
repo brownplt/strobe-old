@@ -1,7 +1,7 @@
 -- |Type-checker test cases.  The .test files in the type-check directory are
 -- parsed as:
 --
--- tests ::= test
+-- tests ::= test ;
 --         | test ; tests
 --
 -- test ::= expression :: type
@@ -9,7 +9,7 @@
 --
 -- expression and type are defined in TypedJavaScript.Parser.
 --
--- Note that there is no trailing ';' at the end of a list of tests.
+-- Note that there is a trailing ';' at the end of a list of tests.
 -- JavaScript-style comments are permitted in .test files.
 module TypeCheck where
 
@@ -53,7 +53,7 @@ parseTestCase = do
 
 readTestFile :: FilePath -> IO Test
 readTestFile path = do
-  result <- parseFromFile (parseTestCase `sepBy` semi) path
+  result <- parseFromFile (parseTestCase `endBy` semi) path
   case result of
     -- Reporting the parse error is deferred until the test is run.
     Left err -> return $ TestCase (assertFailure (show err))

@@ -1,5 +1,6 @@
 (true ? 4 : 5) :: double;
 (true ? "hi there" : "bob jones") :: string;
 // this should be a type error, not a parse error {z: 5, 5: 6, 5: 9} :: object;
-(true ? "HELLO" : 6) @@ fails
+(true ? "HELLO" : 6) @@ fails;
+(function (a) :: (double -> double) { return a + 5; }) :: (double -> double);
 
