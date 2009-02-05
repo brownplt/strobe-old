@@ -1,17 +1,20 @@
-module TypedJavaScript.Parser(parseScript,parseExpression
-   , parseString
-   , parseScriptFromString
-   , emptyParsedJavaScript
-   , ParsedStatement
-   , ParsedExpression
-   , parseJavaScriptFromFile
-   , parseSimpleExpr'
-   , parseBlockStmt
-   , parseStatement
-   , StatementParser
-   , ExpressionParser
-   , parseAssignExpr
-   ) where
+module TypedJavaScript.Parser
+  ( parseScript
+  , parseExpression
+  , parseType
+  , parseString
+  , parseScriptFromString
+  , emptyParsedJavaScript
+  , ParsedStatement
+  , ParsedExpression
+  , parseJavaScriptFromFile
+  , parseSimpleExpr'
+  , parseBlockStmt
+  , parseStatement
+  , StatementParser
+  , ExpressionParser
+  , parseAssignExpr
+  ) where
 
 import TypedJavaScript.Lexer hiding (identifier)
 import qualified TypedJavaScript.Lexer as Lexer

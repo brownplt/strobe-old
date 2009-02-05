@@ -2,6 +2,7 @@ module TypedJavaScript.Test
   ( pretty
   , parse
   , parseJavaScriptFromFile
+  , getPathsWithExtension
   , isJsFile
   , isTjsFile
   , getJsPaths
@@ -62,3 +63,13 @@ getTjsPaths dpath = do
     paths <- if exists then getDirectoryContents dpath else return []
     return [dpath </> p | p <- paths, isTjsFile p]
 
+-- |The extension must include the leading period.
+getPathsWithExtension :: String -> FilePath -> IO [FilePath]
+getPathsWithExtension extension parentDirectory = do
+  exists <- doesDirectoryExist parentDirectory
+  case exists of
+    False -> return []
+    True -> do
+      allPaths <- getDirectoryContents parentDirectory
+      return [ parentDirectory</>path | path <- allPaths, 
+                                        takeExtension path == extension ]

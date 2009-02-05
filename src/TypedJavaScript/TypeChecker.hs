@@ -1,11 +1,11 @@
 module TypedJavaScript.TypeChecker
-  (
-    typeOfExpr,
-    typeCheckStmt,
-    typeCheckStmts,
-    Env,
-    coreTypeEnv,
-    coreVarEnv,
+  ( typeOfExpr
+  , resolveType
+  , typeCheckStmt
+  , typeCheckStmts
+  , Env
+  , coreTypeEnv
+  , coreVarEnv
   ) where
 
 import Data.Generics
