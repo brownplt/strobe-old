@@ -20,15 +20,11 @@ import TypedJavaScript.Syntax
 import TypedJavaScript.Environment
 
 -- ----------------------------------------------------------------------------
--- TODO: use Data.Map
---       get rid of resolveType
---       "string" -> TApp (TID "String") []
 type Env = Map String (Type SourcePos)
 
 resolveType :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 resolveType vars types t = case t of
   TId _ s -> return $ types ! s
-  -- TExpr _ x -> typeOfExpr vars types x
   _ -> return t
 
 corePos = initialPos "core"
@@ -54,18 +50,25 @@ coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
       _ -> fail $ "Expected int or double, got: " ++ (show xtype) -}
 
 -- in pJS, anything can be used in a number and bool context without anything crashing.
+-- for now, we're making this a lot stricter:
 numberContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 numberContext vars types t
-   | t == (types ! "int") = return t
-   | otherwise            = return $ types ! "double"
+   | t == (types ! "int")    = return t
+   | t == (types ! "double") = return t
+   | otherwise               = fail $ "expected int or double, got " ++ show t
 
---TODO: this always returns the bool type. not sure how to notate that in the type sig.    
 boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
-boolContext vars types t = return $ types ! "bool"
+boolContext vars types t
+    | t == (types ! "bool") = return t
+    | otherwise             = fail $ "expected bool, got " ++ show t
+
+-- is t1 a subtype of t2? so far, just plain equality.
+isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
+isSubType vars types t1 t2 = (t1 == t2)
 
 -- we need two environments - one mapping variable id's to their types, and
 -- one matching type id's to their type. types gets extended with external and type statements.
--- this function reduces everything to TObject, TFunc, or a base-case TId.
+-- this function reduces everything to TObject, TFunc, or a base-case TApp.
 typeOfExpr :: (Monad m) => Env -> Env -> (Expression SourcePos) -> m (Type SourcePos)
 typeOfExpr vars types expr = case expr of
   StringLit a _      -> return $ types ! "string"
@@ -78,7 +81,6 @@ typeOfExpr vars types expr = case expr of
   ArrayLit a exprs   -> fail "NYI"
   ObjectLit a props  -> fail "NYI"
 
--- [(Prop a, Maybe (Type a), Expression a)]
   ThisRef a          -> return $ vars ! "this"
   VarRef a (Id _ s)  -> return $ vars ! s
 
@@ -86,9 +88,7 @@ typeOfExpr vars types expr = case expr of
   BracketRef a xc xk -> fail "NYI"
   NewExpr a xcon xvars -> fail "NYI"
   
-{- February 2009 (show all)  	
-next >
-Sun 	Mon 	Tue 	Wed 	Thu 	Fri
+{- 
 data InfixOp = OpLT | OpLEq | OpGT | OpGEq  | OpIn  | OpInstanceof | OpEq | OpNEq
              | OpStrictEq | OpStrictNEq | OpLAnd | OpLOr 
              | OpMul | OpDiv | OpMod  | OpSub | OpLShift | OpSpRShift
@@ -120,40 +120,88 @@ data PostfixOp
       PrefixInc -> numberContext vars types xtype
       PrefixDec -> numberContext vars types xtype
       PrefixLNot -> boolContext vars types xtype
-      PrefixBNot -> numberContext vars types xtype
+      PrefixBNot -> do ntype <- numberContext vars types xtype
+                       if ntype == types ! "int"
+                         then return $ types ! "int"
+                         else fail $ "~ operates on integers, got " ++ show xtype ++ " converted to " ++ show ntype
       PrefixPlus -> numberContext vars types xtype
       PrefixMinus -> numberContext vars types xtype
       PrefixTypeof -> return $ types ! "string"
       PrefixDelete -> return $ types ! "bool" --TODO: remove delete?
 
   InfixExpr a op l r -> do
+    -- TODO: is the monadism bad because it kills chances for automatic parallelization of our code? =(.
     ltype <- typeOfExpr vars types l
     rtype <- typeOfExpr vars types r
-    let numstobool = do --more efficient if this function is lifted and takes args?
-          numberContext vars types ltype
-          numberContext vars types rtype
+    let relation = 
+          if (ltype == (types ! "string") && rtype == (types ! "string"))
+            then return $ types ! "bool"
+            else do
+              numberContext vars types ltype
+              numberContext vars types rtype
+              return $ types ! "bool"
+        logical = do
+          boolContext vars types ltype
+          boolContext vars types rtype
           return $ types ! "bool"
+        numop = \requireInts alwaysDouble -> do
+          ln <- numberContext vars types ltype
+          rn <- numberContext vars types rtype
+          if (ln == types ! "int" && rn == types ! "int") -- all integers
+            then if alwaysDouble 
+              then return $ types ! "double" --e.g. division
+              else return $ types ! "int" --e.g. +, -, *
+            else if requireInts
+              then fail $ "lhs and rhs must be ints, got " ++ show ln ++ ", " ++ show rn
+              else return $ types ! "double"
+              
     case op of
-      OpLT -> numstobool
-      OpLEq -> numstobool
-      OpGT -> numstobool
-      OpGEq -> numstobool
-      OpIn -> fail "NYI"
-      OpInstanceof -> fail "NYI"
-      OpEq -> fail "NYI"
-      OpNEq -> fail "NYI"
-      OpStrictEq -> return $ types ! "bool"
-      OpStrictNEq -> return $ types ! "bool"
+      OpLT  -> relation
+      OpLEq -> relation
+      OpGT  -> relation
+      OpGEq -> relation
+      
+      OpIn | rtype == (types ! "object") -> return $ types ! "bool"
+           | otherwise -> fail $ "rhs of 'in' must be an object, got " ++  show rtype
+      
+      OpInstanceof -> case rtype of
+        TFunc _ _ _ _ _ _ -> return $ types ! "bool"
+        _                 -> fail $ "rhs of 'instanceof' must be constructor, got " ++  show rtype
 
-      --OpLAnd -> 
-  {- OpLAnd | OpLOr 
-             | OpMul | OpDiv | OpMod  | OpSub | OpLShift | OpSpRShift
-             | OpZfRShift | OpBAnd | OpBXor | OpBOr | OpAdd -}
-             
-  --TODO: what about monads let's you do let x = 5 without an "in" ?
+      --TODO: i forgot what we said about equality. assume they all work for now:
+      OpEq  -> return $ types ! "bool" 
+      OpNEq -> return $ types ! "bool"      
+      OpStrictEq  -> return $ types ! "bool"
+      OpStrictNEq -> return $ types ! "bool"
+      
+      OpLAnd -> logical 
+      OpLOr  -> logical
+
+      OpMul  -> numop False False
+      OpDiv  -> numop False True
+      OpMod  -> numop False False
+      OpSub  -> numop False True
+      OpLShift   -> numop True False
+      OpSpRShift -> numop True False
+      OpZfRShift -> numop True False
+      OpBAnd -> numop True False
+      OpBXor -> numop True False
+      OpBOr  -> numop True False
+      OpAdd  -> do
+        -- from TDGTJ: 
+        -- If one operand is a string, the other is converted, and they are concatenated.
+        -- objects are converted to numbers or strings and then added or concatenated
+        -- first valueOf is tried - if numbers result, then numbers are added
+        -- then toString is tried. if toString returns a number, numbers are added.
+        -- if it returns a string, then strings are concatenated.
+        -- for now, let's just do strings or numbers:
+        if ltype == (types ! "string") || rtype == (types ! "string") 
+          then return $ types ! "string"
+          else numop False False
+      
   CondExpr a c t e -> do
     ctype <- typeOfExpr vars types c 
-    boolContext vars types ctype --boolContext will fail if something goes wrong
+    boolContext vars types ctype --boolContext will fail if something goes wrong with 'c'
     ttype <- typeOfExpr vars types t
     etype <- typeOfExpr vars types e
     if (ttype /= etype) 
@@ -167,23 +215,43 @@ data PostfixOp
     typelist <- mapM (typeOfExpr vars types) exprs
     return $ last typelist
   
-  CallExpr a funcexpr argexprs -> fail "NYI"
+  CallExpr a funcexpr argexprs -> do
+    functype <- typeOfExpr vars types funcexpr
+    case functype of 
+      TFunc _ _ [funcargtype] _ _ funcrettype -> do
+        if length argexprs /= 1
+          then fail $ "Only functions with one required argument are implemented."
+          else do
+            argexprtype <- typeOfExpr vars types $ argexprs !! 0
+            if isSubType vars types argexprtype funcargtype
+              then return funcrettype
+              else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " ++ show funcargtype
+      _ -> fail $ "Expected function with 1 arg, got " ++ show functype
+
   FuncExpr a argnames functype bodystmt -> do
     functype <- resolveType vars types functype
     case functype of
-      TFunc a thistype reqargs optargs vararg rettype -> fail "NYI"
-      _ -> fail "Function must have a function type."
+      TFunc _ _ [argtype] _ _ rettype -> do
+        if length argnames /= 1 
+          then fail $ "Inconsistent function definition - argument number mismatch in arglist and type"
+          else case bodystmt of
+            BlockStmt _ [ReturnStmt _ (Just expr)] -> do
+              exprtype <- typeOfExpr (M.insert (argnames !! 0) argtype vars) types expr
+              if isSubType vars types exprtype rettype
+                then return functype
+                else fail $ (show exprtype) ++ " is not a subtype of the expected return type, " ++ show rettype
 
-{-      
-              TExpr a (Expression a) | TObject a [(Id a, Type a)]
-              | TFunc a (Maybe (Type a)) {- type of this -} 
-                        [Type a] {- required args -} 
-                        [Type a] {- optional args -}
-                        (Maybe (Type a)) {- optional var arg -}
-                        (Type a) {- ret type -}
-              | TId a String -- an Id defined through a 'type' statement
-              | TApp a (Type a) [Type a]
- -}
+            BlockStmt _ [ReturnStmt _ Nothing] -> do
+              if rettype /= (types ! "undefined")
+                then fail $ "Function must return a " ++ (show rettype) ++ ", not nothing" 
+                else return $ types ! "undefined"
+
+            _ -> fail "Only functions with a single return statement are implemented"
+
+      TFunc _ _ _ _ _ _ -> fail "Only functions with one required argument are implemented."
+
+      _ -> fail $ "Function must have a function type, given " ++ show functype
+
 
 typeCheckStmt :: (Monad m) => Env -> Env -> (Statement SourcePos) -> m Bool
 typeCheckStmt vars types stmt = case stmt of 
@@ -194,7 +262,7 @@ typeCheckStmt vars types stmt = case stmt of
   ExprStmt  pos expr -> do
     typeOfExpr vars types expr
     return True
-  IfStmt pos c t e -> do
+  {-IfStmt pos c t e -> do
      ctype <- typeOfExpr vars types c
      case ctype of
        TId _ "bool" -> do
@@ -205,9 +273,10 @@ typeCheckStmt vars types stmt = case stmt of
      ctype <- typeOfExpr vars types c
      case ctype of
        TId _ "bool" -> (typeCheckStmt vars types t)
-       _ -> fail "test expression must be a boolean"
+       _ -> fail "test expression must be a boolean"-}
   SwitchStmt pos expr clauses -> do
      typeOfExpr vars types expr 
+     -- TODO: ensure only one default clause?
      results <- mapM (\c -> do case c of 
                                 CaseClause pos expr stmts -> do
                                   typeOfExpr vars types expr
@@ -218,7 +287,7 @@ typeCheckStmt vars types stmt = case stmt of
                                   return $ all id results)
                 clauses
      return $ all id results
-  WhileStmt pos expr statement -> do
+  WhileStmt pos expr statement -> do --TODO: add bool context checking here
      typeOfExpr vars types expr
      typeCheckStmt vars types statement
   DoWhileStmt pos statement expr -> do
