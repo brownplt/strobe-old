@@ -260,6 +260,7 @@ data PostfixOp
 
       _ -> fail $ "Function must have a function type, given " ++ show functype
 
+--typeCheckReturns :: 
 
 typeCheckStmt :: (Monad m) => Env -> Env -> (Statement SourcePos) -> m Bool
 typeCheckStmt vars types stmt = case stmt of 

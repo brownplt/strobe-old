@@ -10,6 +10,7 @@ module TypedJavaScript.Environment
     RawEnv
   , globalEnv
   , funcEnv
+  , extractReturns
   ) where
 
 import Data.Generics
@@ -53,7 +54,21 @@ instance Data SourcePos where
   gunfold   = error "gunfold is not defined for SourcePos"
   dataTypeOf = error "dataTypeOf is not defined for SourcePos"
 
+isNotFuncExpr :: Expression SourcePos -> Bool
+isNotFuncExpr (FuncExpr{}) = False
+isNotFuncExpr _            = True
 
+extractReturns :: [Statement SourcePos] -> [Statement SourcePos]
+extractReturns statements = 
+  everythingBut (++) (mkQ True isNotFuncExpr) query statements where
+    
+    query :: GenericQ [Statement SourcePos]
+    query = mkQ [] collectReturnStmt
+    
+    collectReturnStmt :: Statement SourcePos -> [Statement SourcePos]
+    collectReturnStmt r@(ReturnStmt{}) = [r]
+    collectReturnStmt _ = []
+    
 -- ----------------------------------------------------------------------------
 -- Environment
 
@@ -65,10 +80,6 @@ globalEnv globalStatements =
 
     query :: GenericQ RawEnv
     query = mkQ [] (collectVarDecl `extQ` collectForInInit)
-
-    isNotFuncExpr :: Expression SourcePos -> Bool
-    isNotFuncExpr (FuncExpr{}) = False
-    isNotFuncExpr _            = True
 
     collectVarDecl :: VarDecl SourcePos -> RawEnv
     collectVarDecl (VarDecl _ id t)              = [(id,Right t)] 

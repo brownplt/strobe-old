@@ -13,7 +13,6 @@
 "blah" + "hoomegl" :: string;
 5.0 >> 3 @@ fails; //required int for binary ops
 4 / 343 :: double;
-4 / "home" @@ fails;
 
 true && false :: bool;
 true && (false || true) :: bool;
@@ -21,6 +20,7 @@ true && ((6 == 7) || (9 == 13)) :: bool;
 true && x @@ fails;
 
 //the following may change:
+4 / "home" @@ fails;
 4 * "3" @@ fails;
 5 + 4 :: double; //should be 'int'
 4 * 3 :: double;
@@ -28,9 +28,10 @@ true && x @@ fails;
 4 / "13" @@ fails;
 4 + (function(x) :: (double ->) { return; }) @@ fails;
 true && (3 || false) @@ fails;
-
+(3 == 0) + 10 @@ fails;
 //
 (function (x) :: (double ->) { return; }) :: undefined;
+(function (x) :: (double -> undefined) { return; }) :: undefined;
 (function (x) :: (double ->) { return 5; }) @@ fails;
 
 (function (x) :: ( ->) { return; }) @@ fails; //argument # mismatch
@@ -66,7 +67,6 @@ x @@ fails; //unbound ID
 0 == 0 ? 9 + 10 : 10 == 0 @@ fails;
 0 == 0 ? true : 9 - 30 @@ fails;
 20 + 9 ? 10 + 9 : 9 - 30 @@ fails;
-//TODO: Should next one fail, since comparing diff types?
 (4 == 0) == 0 ? 9 + 10 : 9 - 30 :: double;
 (function (a) :: (double -> bool) { return a == 0; })(4 == 0) ? 9 + 10 : 9 - 30 @@ fails;
 
@@ -216,7 +216,8 @@ x @@ fails; //unbound ID
       "")
 */
 
-(x == 0)(13) @@ fails; //expected a function
+(3 == 0)(13) @@ fails; //expected a function
+(x == 0)(13) @@ fails; //x not declared
 
 (function (x) :: (double -> (double -> double)) {
   return (function (z) :: (double -> double) {
@@ -227,14 +228,11 @@ x @@ fails; //unbound ID
 (function (x) :: (double -> double) {
   return x + x;})(4)(3) @@ fails; 
   
-
-
 /*
 ;silly us
 (test (type-of (parse '{{{fun {x : number} : (number -> number) {fun {z : number} : number {+ x z}}} 4} 3})) (t-num)) ;this works
 (test/exn (type-of (parse '{{{fun {x : number} : number {fun {z : number} : number {+ x z}}} 4} 3})) "expected result type") ;wrong return type
 (test/exn (type-of (parse '{{{fun {x : number} : number {+ x x}} 4} 3})) "expected a function")*/
-
 
 
 
