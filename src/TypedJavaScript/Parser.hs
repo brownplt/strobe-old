@@ -3,6 +3,7 @@ module TypedJavaScript.Parser
   , parseExpression
   , parseType
   , parseString
+  , parseFuncExpr
   , parseScriptFromString
   , emptyParsedJavaScript
   , ParsedStatement

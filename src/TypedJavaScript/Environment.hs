@@ -79,7 +79,7 @@ globalEnv globalStatements =
   everythingBut (++) (mkQ True isNotFuncExpr) query globalStatements where
 
     query :: GenericQ RawEnv
-    query = mkQ [] (collectVarDecl `extQ` collectForInInit)
+    query = (mkQ [] collectVarDecl) `extQ` collectForInInit
 
     collectVarDecl :: VarDecl SourcePos -> RawEnv
     collectVarDecl (VarDecl _ id t)              = [(id,Right t)] 
