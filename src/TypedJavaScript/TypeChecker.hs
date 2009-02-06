@@ -252,15 +252,13 @@ data PostfixOp
             BlockStmt _ [ReturnStmt _ Nothing] -> do
               if rettype /= (types ! "undefined")
                 then fail $ "Function must return a " ++ (show rettype) ++ ", not nothing" 
-                else return $ types ! "undefined"
+                else return functype
 
             _ -> fail "Only functions with a single return statement are implemented"
 
       TFunc _ _ _ _ _ _ -> fail "Only functions with one required argument are implemented."
 
       _ -> fail $ "Function must have a function type, given " ++ show functype
-
---typeCheckReturns :: 
 
 typeCheckStmt :: (Monad m) => Env -> Env -> (Statement SourcePos) -> m Bool
 typeCheckStmt vars types stmt = case stmt of 

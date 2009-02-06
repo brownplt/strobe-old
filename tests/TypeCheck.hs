@@ -31,7 +31,7 @@ assertType expr expectedType = do
   let resolvedType = resolveType coreVarEnv coreTypeEnv expectedType
   -- Assumes equality for types is defined modulo annotation (SourcePos)
   -- TODO: check a subtype, instead of strict equality?
-  assertEqual "type mismatch" actualType resolvedType
+  assertEqual "type mismatch" resolvedType actualType
 
 assertTypeError :: Expression SourcePos -> Assertion
 assertTypeError expr = do

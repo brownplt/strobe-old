@@ -30,8 +30,8 @@ true && x @@ fails;
 true && (3 || false) @@ fails;
 (3 == 0) + 10 @@ fails;
 //
-(function (x) :: (double ->) { return; }) :: undefined;
-(function (x) :: (double -> undefined) { return; }) :: undefined;
+(function (x) :: (double ->) { return; }) :: (double ->);
+(function (x) :: (double -> undefined) { return; }) :: (double ->);
 (function (x) :: (double ->) { return 5; }) @@ fails;
 
 (function (x) :: ( ->) { return; }) @@ fails; //argument # mismatch
@@ -111,6 +111,8 @@ x @@ fails; //unbound ID
     return (function (y) :: (double -> double) { return x * y; }); })(33) :: (double -> double);
 (function (x) :: (double -> (double -> double)) {
     return (function (y) :: (double -> double) { return x * y; }); })(33)(29) :: double;
+
+
 
 //TODO: maybe add a way to.. set variables in this thing.
 
@@ -228,6 +230,8 @@ x @@ fails; //unbound ID
 (function (x) :: (double -> double) {
   return x + x;})(4)(3) @@ fails; 
   
+(function (a) :: (undefined ->) {return;}) :: (undefined -> );
+
 /*
 ;silly us
 (test (type-of (parse '{{{fun {x : number} : (number -> number) {fun {z : number} : number {+ x z}}} 4} 3})) (t-num)) ;this works
