@@ -235,13 +235,19 @@ data PostfixOp
               else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " ++ show funcargtype
       _ -> fail $ "Expected function with 1 arg, got " ++ show functype
 
-  FuncExpr a argnames functype' bodystmt -> do
+  FuncExpr _ argnames functype' (BlockStmt _ bodystmts) -> do
     let functype = resolveType vars types functype'
     case functype of
       TFunc _ _ [argtype] _ _ rettype -> do
         if length argnames /= 1 
           then fail $ "Inconsistent function definition - argument number mismatch in arglist and type"
-          else case bodystmt of
+          else do
+            case rettype of
+              Just t  -> 
+              Nothing -> if not $ all ((==) Nothing) (extractReturns bodystmts)
+                           then fail "
+            
+{-          else case bodystmt of
             BlockStmt _ [ReturnStmt _ (Just expr)] -> do
               let (Id _ arg0) = argnames !! 0
               exprtype <- typeOfExpr (M.insert arg0 argtype vars) types expr
@@ -254,15 +260,18 @@ data PostfixOp
                 then fail $ "Function must return a " ++ (show rettype) ++ ", not nothing" 
                 else return functype
 
-            _ -> fail "Only functions with a single return statement are implemented"
+            _ -> fail "Only functions with a single return statement are implemented"-}
 
       TFunc _ _ _ _ _ _ -> fail "Only functions with one required argument are implemented."
 
       _ -> fail $ "Function must have a function type, given " ++ show functype
 
+  FuncExpr _ _ _ _ -> fail "Function's body must be a BlockStmt" --just in case the parser fails somehow.
+
 -- type check everything except return statements, handled in typeOfExpr _ _ FuncExpr{},
 -- and var declarations, handled in whatever calls typeCheckStmt; both cases use
 -- Environment.hs .
+-- return True, or fail
 typeCheckStmt :: (Monad m) => Env -> Env -> (Statement SourcePos) -> m Bool
 typeCheckStmt vars types stmt = case stmt of 
   BlockStmt pos stmts -> do
