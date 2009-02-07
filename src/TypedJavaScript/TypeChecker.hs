@@ -60,7 +60,16 @@ boolContext vars types t
 -- is t1 a subtype of t2? so far, just plain equality.
 isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
 isSubType vars types t1 t2 = (t1 == t2)
-
+{-
+isRetSubType :: (Monad m) => Env -> Env -> (Type SourcePos) -> (Statement SourcePos) -> m Bool
+isRetSubType vars types rettype (ReturnStmt _ mret) = if rettype == (types ! "undefined")
+  then maybe (return True) (\_ -> (return False)) mret
+  else case mret of
+         Nothing -> False
+         Just mretexpr -> do 
+           mrettype <- typeOfExpr vars types mretexpr
+           return $ isSubType vars types mrettype rettype-}
+           
 -- recursively resolve the type down to TApp, or a TFunc and a TObject containing
 -- only resolved types
 -- TODO: is it fine that this ISNT a Monad?
@@ -72,6 +81,9 @@ resolveType vars types t = case t of
         rtm = maybe Nothing (Just . rt)
     TFunc pos (rtm this) (map rt reqargs) (map rt optargs) (rtm vararg) (rt rettype)
   _ -> t
+{-
+checkReturnStatements :: (Monad m) => Env -> Env -> (Type SourcePos) -> [Statement SourcePos] -> m Bool
+checkReturnStatements vars types rettype retstmts = mapM (isRetSubType vars types rettype) retstmts-}
 
 -- we need two environments - one mapping variable id's to their types, and
 -- one matching type id's to their type. types gets extended with external and type statements.
@@ -235,18 +247,30 @@ data PostfixOp
               else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " ++ show funcargtype
       _ -> fail $ "Expected function with 1 arg, got " ++ show functype
 
-  FuncExpr _ argnames functype' (BlockStmt _ bodystmts) -> do
+  FuncExpr _ argnames functype' bodyblock@(BlockStmt _ bodystmts) -> do
     let functype = resolveType vars types functype'
     case functype of
       TFunc _ _ [argtype] _ _ rettype -> do
         if length argnames /= 1 
           then fail $ "Inconsistent function definition - argument number mismatch in arglist and type"
-          else do
-            case rettype of
-              Just t  -> 
-              Nothing -> if not $ all ((==) Nothing) (extractReturns bodystmts)
-                           then fail "
-            
+          else do let (Id _ arg0) = argnames !! 0
+                      vars' = (M.insert arg0 argtype vars)
+                      hasnoret = rettype == (types ! "undefined")
+                      checkret = \(ReturnStmt _ mret) -> 
+                        if hasnoret
+                          then maybe (return True) (\_ -> (fail $ "Expected empty return.")) mret -- TODO: maybe change this to accept "return undefined;"
+                          else case mret of
+                                 Nothing -> fail $ "Expected a return type of " ++ (show rettype) ++ ", but got nothing."
+                                 Just mretexpr -> do 
+                                   mrettype <- typeOfExpr vars' types mretexpr
+                                   if isSubType vars' types mrettype rettype
+                                     then return True
+                                     else fail $ (show mrettype) ++ " is not a subtype of the expected return type, " ++ (show rettype)
+                  mapM checkret (extractReturns bodystmts)
+                  let (Id _ arg0) = argnames !! 0
+                  typeCheckStmt vars' types bodyblock
+                  return functype
+          
 {-          else case bodystmt of
             BlockStmt _ [ReturnStmt _ (Just expr)] -> do
               let (Id _ arg0) = argnames !! 0
@@ -318,6 +342,8 @@ typeCheckStmt vars types stmt = case stmt of
   BreakStmt _ _ -> return True
   ContinueStmt _ _ -> return True
   LabelledStmt _ _ stmt -> typeCheckStmt vars types stmt
+  
+  ReturnStmt{} -> return True
   
   --ForInStmt
 
