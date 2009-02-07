@@ -238,5 +238,14 @@ x @@ fails; //unbound ID
 (test/exn (type-of (parse '{{{fun {x : number} : number {fun {z : number} : number {+ x z}}} 4} 3})) "expected result type") ;wrong return type
 (test/exn (type-of (parse '{{{fun {x : number} : number {+ x x}} 4} 3})) "expected a function")*/
 
+//simple things that should succeed. test for when this doesn't matter
+4 @@ succeeds;
+3 @@ succeeds;
+
+function (x) :: (string -> ) {
+  return;
+} @@ succeeds;
+
+
 
 

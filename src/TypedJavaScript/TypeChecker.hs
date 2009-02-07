@@ -260,6 +260,9 @@ data PostfixOp
 
       _ -> fail $ "Function must have a function type, given " ++ show functype
 
+-- type check everything except return statements, handled in typeOfExpr _ _ FuncExpr{},
+-- and var declarations, handled in whatever calls typeCheckStmt; both cases use
+-- Environment.hs .
 typeCheckStmt :: (Monad m) => Env -> Env -> (Statement SourcePos) -> m Bool
 typeCheckStmt vars types stmt = case stmt of 
   BlockStmt pos stmts -> do

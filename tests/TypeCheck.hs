@@ -40,6 +40,13 @@ assertTypeError expr = do
     Left (err::(E.SomeException)) -> return () -- error expected
     Right exprType -> assertFailure ("Expected fail, got: " ++ (show $ pp exprType))
 
+assertTypeSuccess :: Expression SourcePos -> Assertion
+assertTypeSuccess expr = do
+  result <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
+  case result of
+    Left (err::(E.SomeException)) -> assertFailure ("Expected success, got: " ++ (show $ err)) -- success expected
+    Right exprType -> return () 
+
 parseTestCase :: CharParser st Test
 parseTestCase = (do
   expr <- parseExpression
@@ -51,7 +58,13 @@ parseTestCase = (do
                         -- expression parser.
         reserved "fails"
         return $ TestCase (assertTypeError expr)
-  typeOK <|> typeError) <|> (do return $ TestCase $ assertEqual "empty test case" True True)
+  let typeSuccess = do
+        reservedOp "@@" -- random symbol that is not recognized by the
+                        -- expression parser.
+        reserved "succeeds"
+        return $ TestCase (assertTypeSuccess expr)
+   
+  typeOK <|> (try typeError) <|> typeSuccess) <|> (do return $ TestCase $ assertEqual "empty test case" True True)
   
 readTestFile :: FilePath -> IO Test
 readTestFile path = do
