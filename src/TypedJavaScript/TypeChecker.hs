@@ -81,10 +81,32 @@ resolveType vars types t = case t of
         rtm = maybe Nothing (Just . rt)
     TFunc pos (rtm this) (map rt reqargs) (map rt optargs) (rtm vararg) (rt rettype)
   _ -> t
-{-
-checkReturnStatements :: (Monad m) => Env -> Env -> (Type SourcePos) -> [Statement SourcePos] -> m Bool
-checkReturnStatements vars types rettype retstmts = mapM (isRetSubType vars types rettype) retstmts-}
 
+-- returns whether or not all possible paths return
+-- motivation: when checking functions with return values, at least one of the statements must have all
+-- paths returning.
+-- does not check that the returns have the correct value
+allPathsReturn :: (Monad m) => Env -> Env -> (Statement SourcePos) -> m Bool
+allPathsReturn vars types stmt = case stmt of
+  BlockStmt _ stmts -> do
+    results <- mapM (allPathsReturn vars types) stmts
+    return $ any id results
+  IfStmt _ _ t e -> do
+    results <- mapM (allPathsReturn vars types) [t, e]
+    return $ any id results
+  IfSingleStmt _ _ t -> return False
+  SwitchStmt _ _ clauses -> do
+    -- TODO: True if there is a default clause where all paths return, False otherwise
+    fail "allPathsReturn, SwitchStmt, NYI" 
+  WhileStmt _ _ body -> allPathsReturn vars types body
+  DoWhileStmt _ body _ -> allPathsReturn vars types body
+  ForInStmt _ _ _ body -> allPathsReturn vars types body
+  ForStmt _ _ _ _ body -> allPathsReturn vars types body
+  TryStmt _ body catches mfinally -> fail "allPathsReturn, TryStmt, NYI" -- true if all catches and the finally have a return
+  ThrowStmt{} -> return True
+  ReturnStmt{} -> return True
+  
+  _ -> return False
 -- we need two environments - one mapping variable id's to their types, and
 -- one matching type id's to their type. types gets extended with external and type statements.
 -- this function reduces everything to TObject, TFunc, or a base-case TApp.
@@ -267,9 +289,12 @@ data PostfixOp
                                      then return True
                                      else fail $ (show mrettype) ++ " is not a subtype of the expected return type, " ++ (show rettype)
                   mapM checkret (extractReturns bodystmts)
-                  let (Id _ arg0) = argnames !! 0
-                  typeCheckStmt vars' types bodyblock
-                  return functype
+                  guaranteedReturn <- allPathsReturn vars types bodyblock
+                  if rettype /= (types ! "undefined") && (not guaranteedReturn)
+                    then fail $ "Function is not guaranteed to return, but has return type " ++ show rettype
+                    else do
+                      typeCheckStmt vars' types bodyblock
+                      return functype
           
 {-          else case bodystmt of
             BlockStmt _ [ReturnStmt _ (Just expr)] -> do
@@ -305,18 +330,17 @@ typeCheckStmt vars types stmt = case stmt of
   ExprStmt  pos expr -> do
     typeOfExpr vars types expr
     return True
-  {-IfStmt pos c t e -> do --TODO: add bool context checking here
+  IfStmt pos c t e -> do 
      ctype <- typeOfExpr vars types c
-     case ctype of
-       TId _ "bool" -> do
-         results <- mapM (typeCheckStmt vars types) [t, e]
-         return $ all id results
-       _ -> fail "test expression must be a boolean"
+     boolContext vars types ctype
+     results <- mapM (typeCheckStmt vars types) [t, e]
+     return $ all id results
   IfSingleStmt pos c t -> do
      ctype <- typeOfExpr vars types c
-     case ctype of
-       TId _ "bool" -> (typeCheckStmt vars types t)
-       _ -> fail "test expression must be a boolean"-}
+     boolContext vars types ctype
+     result <- typeCheckStmt vars types t
+     return result
+
   SwitchStmt pos expr clauses -> do
      typeOfExpr vars types expr 
      -- TODO: ensure only one default clause
