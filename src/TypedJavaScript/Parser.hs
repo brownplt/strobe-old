@@ -355,7 +355,7 @@ parseFunctionStmt = do
   functype <- parseType <?> "function type annotation"
   body <- parseBlockStmt
   --transform a function statement into an assignment and a funcexpr
-  return (VarDeclStmt pos [VarDeclExpr pos name Nothing (FuncExpr pos args functype body)])
+  return (VarDeclStmt pos [VarDeclExpr pos name (Just functype) (FuncExpr pos args functype body)])
 
 parseConstructorStmt :: StatementParser st
 parseConstructorStmt = do

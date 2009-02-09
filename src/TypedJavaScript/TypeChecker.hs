@@ -108,6 +108,8 @@ allPathsReturn vars types rettype stmt = case stmt of
     --TODO: decide what to do about functions with undefined return type - should they
     --      be allowed to return anything? should they be required to have empty return stmts?
     --      should they be allowed to have return statements, but only if their type is undefined?
+    --      all of these should be fine, since anything using the function's return value would be
+    --      unable to do anything with it.
     then fail "Cannot return anything from a functino whose return type is undefined"
     else do
       exprtype <- typeOfExpr vars types expr
@@ -261,17 +263,20 @@ data AssignOp = OpAssign | OpAssignAdd | OpAssignSub | OpAssignMul | OpAssignDiv
           then return $ types ! "string"
           else numop False False
       
+  AssignExpr a op lhs rhs -> fail "assignexpr NYI"
+
   CondExpr a c t e -> do
     ctype <- typeOfExpr vars types c 
     boolContext vars types ctype --boolContext will fail if something goes wrong with 'c'
     ttype <- typeOfExpr vars types t
     etype <- typeOfExpr vars types e
+    -- TODO: potentially find the most common supertype of ttype and etype, and evaluate to that
+    -- so, returning 3 and 4.0 would give you a double.
+    -- {x: 5, y: 6} and {x: 5} would give you an {x: int}.
     if (ttype /= etype) 
       then fail $ "then and else must have the same type in a ternary expression"
       else return ttype
     
-  AssignExpr a op lhs rhs -> fail "assigning NYI"
-
   ParenExpr a x -> typeOfExpr vars types x
   ListExpr a exprs -> do
     typelist <- mapM (typeOfExpr vars types) exprs
@@ -373,7 +378,8 @@ typeCheckStmt vars types stmt = case stmt of
   VarDeclStmt{} -> return True -- handled elsewhere
   
 
-{-
+{- Statements left over:
+
 data Statement a
   = SwitchStmt a (Expression a) [CaseClause a]
   | ForInStmt a (ForInInit a) (Expression a) (Statement a)
@@ -384,9 +390,7 @@ data Statement a
   | TryStmt a (Statement a) {-body-} [CatchClause a] {-catches-}
       (Maybe (Statement a)) {-finally-}
   | ThrowStmt a (Expression a)
-  | ReturnStmt a (Maybe (Expression a))
   -- | WithStmt a (Expression a) (Statement a)
-  | VarDeclStmt a [VarDecl a]
   -- FunctionStatements turn into expressions with an assignment. 
   -- TODO: add generics to functions/constructors?
   -- | FunctionStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Maybe (Type a)) {-ret type-}  (Statement a) {-body-}
