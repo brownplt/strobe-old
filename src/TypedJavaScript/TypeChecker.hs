@@ -78,7 +78,7 @@ resolveType vars types t = case t of
   TId _ s -> types ! s
   TFunc pos this reqargs optargs vararg rettype -> do
     let rt = (resolveType vars types)
-        rtm = maybe Nothing (Just . rt)
+        rtm = maybe Nothing (Just . rt) --i am proud of this line
     TFunc pos (rtm this) (map rt reqargs) (map rt optargs) (rtm vararg) (rt rettype)
   _ -> t
 
@@ -165,13 +165,6 @@ typeOfExpr vars types expr = case expr of
   DotRef a expr id   -> fail "dotref NYI"
   BracketRef a xc xk -> fail "bracketref NYI"
   NewExpr a xcon xvars -> fail "newexpr NYI"
-  
-{- 
-data AssignOp = OpAssign | OpAssignAdd | OpAssignSub | OpAssignMul | OpAssignDiv
-  | OpAssignMod | OpAssignLShift | OpAssignSpRShift | OpAssignZfRShift
-  | OpAssignBAnd | OpAssignBXor | OpAssignBOr
-  deriving (Show,Data,Typeable,Eq,Ord)
--}
   
   PostfixExpr a op x -> do
     xtype <- typeOfExpr vars types x
@@ -263,8 +256,33 @@ data AssignOp = OpAssign | OpAssignAdd | OpAssignSub | OpAssignMul | OpAssignDiv
           then return $ types ! "string"
           else numop False False
       
-  AssignExpr a op lhs rhs -> fail "assignexpr NYI"
-
+  AssignExpr a op lhs rhs -> 
+    -- TDGTJ: "In JavaScript, variables, properties of objects, and elements of arrays are lvalues." p62.
+    let rewrite infixop = typeOfExpr vars types (AssignExpr a OpAssign lhs (InfixExpr a infixop lhs rhs))
+        procasgn = do
+          ltype <- typeOfExpr vars types lhs
+          rtype <- typeOfExpr vars types rhs
+          case op of
+            OpAssign -> if isSubType vars types rtype ltype 
+              then return ltype
+              else fail $ "in assignment, rhs " ++ (show rtype) ++ " is not a subtype of lhs " ++ (show ltype)
+            OpAssignAdd -> rewrite OpAdd
+            OpAssignSub -> rewrite OpSub
+            OpAssignMul -> rewrite OpMul
+            OpAssignDiv -> rewrite OpDiv
+            OpAssignMod -> rewrite OpMod
+            OpAssignLShift -> rewrite OpLShift
+            OpAssignSpRShift -> rewrite OpSpRShift
+            OpAssignZfRShift -> rewrite OpZfRShift
+            OpAssignBAnd -> rewrite OpBAnd
+            OpAssignBXor -> rewrite OpBXor
+            OpAssignBOr -> rewrite OpBOr
+     in case lhs of
+          VarRef{} -> procasgn
+          DotRef{} -> procasgn
+          BracketRef{} -> procasgn
+          _ -> fail "lhs of assignment must be an lvalue: a variable, an object property, or an array element"
+  
   CondExpr a c t e -> do
     ctype <- typeOfExpr vars types c 
     boolContext vars types ctype --boolContext will fail if something goes wrong with 'c'

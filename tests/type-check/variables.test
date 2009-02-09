@@ -1,0 +1,93 @@
+function (x) :: (double -> double) { //simple variable, declared with a type but no var: (should this be allowed?)
+  var z :: double;
+  return z * x;
+} :: (double -> double);
+//both expr and type:
+function (x) :: (double -> double) {
+  var z :: double = 13;
+  return z * x;
+} :: (double -> double);
+//mismatching expr and type:
+function (x) :: (double -> double) {
+  var z :: double = "HAHAHAHAHAHAHA";
+  return z * x;
+} @@ fails;
+
+//just exprs:
+function (x) :: (double -> double) {
+  var z = 15;
+  return z * x;
+} :: (double -> double);
+function (x) :: (double -> double) {
+  var y = 43;
+  var z = y;
+  return z * x;
+} :: (double -> double);
+
+function (x) :: (double -> double) {
+  var z = y;
+  var y = 13;
+  return z * x;
+} @@ fails;
+
+//more complex
+function (ignore) :: (int -> string) {
+  var a = 3; 
+  var b = 19 + a;
+  var c = "A STRING";
+  var d = "ANOTHeR STRING";
+  var e = (a*4 == (b - 23)) ? c : d;
+  
+  if (a*b == 4)
+  {
+      if (e == c) {
+        return d;
+      }
+      return c;
+  }
+  else
+      return c+d;
+} :: (int -> string);
+function (ignore) :: (int -> string) {
+  var a = 3; 
+  var b = 19 + a;
+  var c = "A STRING";
+  var d = "ANOTHeR STRING";
+  var e = (a*4 == (b - 23)) ? c : d;
+  
+  if (a*b == 4)
+  {
+      if (e == c) {
+        return d;
+      }
+      return c;
+  }
+  return c+d;
+} :: (int -> string);
+function (ignore) :: (int -> string) {
+  var a = 3; 
+  var b = 19 + a;
+  var c = "A STRING";
+  var d = "ANOTHeR STRING";
+  var e = (a*4 == (b - 23)) ? c : d;
+  
+  if (a*b == 4)
+  {
+      if (e == c) {
+        return d;
+      }
+      return c;
+  }
+} @@ fails; //not all paths return
+
+//function variables!!
+function (mult) :: (double -> (double -> double)) {
+  function inner(a) :: (double -> double) {
+      return mult * a;
+  }
+  return inner;
+} :: (double -> (double -> double));
+
+
+
+
