@@ -129,11 +129,18 @@ allPathsReturn vars types rettype stmt = case stmt of
 -- those declared above them.
 processRawEnv :: (Monad m) => Env -> Env -> RawEnv -> m Env
 processRawEnv vars types [] = return vars
-processRawEnv vars types ((Id _ varname, Left expr):rest) = do
+processRawEnv vars types ((Id _ varname, Nothing, Nothing):rest) = fail "Invalid RawEnv contains var that has neither type nor expression"
+processRawEnv vars types ((Id _ varname, Nothing, Just expr):rest) = do
   exprtype <- typeOfExpr vars types expr
   processRawEnv (M.insert varname exprtype vars) types rest
-processRawEnv vars types ((Id _ varname, Right vartype):rest) =
+processRawEnv vars types ((Id _ varname, Just vartype, Nothing):rest) =
   processRawEnv (M.insert varname (resolveType vars types vartype) vars) types rest
+processRawEnv vars types ((Id _ varname, Just vartype, Just expr):rest) = do
+  exprtype <- typeOfExpr vars types expr
+  let vartype' = (resolveType vars types vartype)
+  if not $ isSubType vars types exprtype vartype'
+    then fail $ "Error: expression " ++ (show expr) ++ " has type " ++ (show exprtype) ++ " which is not a subtype of declared type " ++ (show vartype')
+    else processRawEnv (M.insert varname vartype' vars) types rest
 
 -- we need two environments - one mapping variable id's to their types, and
 -- one matching type id's to their type. types gets extended with external and type statements.

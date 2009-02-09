@@ -72,7 +72,7 @@ extractReturns statements =
 -- ----------------------------------------------------------------------------
 -- Environment
 
-type RawEnv = [(Id SourcePos,Either (Expression SourcePos) (Type SourcePos))] 
+type RawEnv = [(Id SourcePos,(Maybe (Type SourcePos)), (Maybe (Expression SourcePos)))] 
 
 globalEnv :: [Statement SourcePos] -> RawEnv
 globalEnv globalStatements = 
@@ -82,12 +82,12 @@ globalEnv globalStatements =
     query = (mkQ [] collectVarDecl) `extQ` collectForInInit
 
     collectVarDecl :: VarDecl SourcePos -> RawEnv
-    collectVarDecl (VarDecl _ id t)              = [(id,Right t)] 
-    collectVarDecl (VarDeclExpr _ id (Just t) _) = [(id,Right t)] -- TODO: this is not correct, as the types may not match.
-    collectVarDecl (VarDeclExpr _ id Nothing e)  = [(id,Left e)]
+    collectVarDecl (VarDecl _ id t)              = [(id,(Just t), Nothing)] 
+    collectVarDecl (VarDeclExpr _ id (Just t) e) = [(id,(Just t), (Just e))]
+    collectVarDecl (VarDeclExpr _ id Nothing e)  = [(id,Nothing, (Just e))]
 
     collectForInInit :: ForInInit SourcePos -> RawEnv
-    collectForInInit (ForInVar id t)  = [(id,Right t)]
+    collectForInInit (ForInVar id t)  = [(id,Just t, Nothing)]
     -- In vanilla JavaScript, for-in without a var may introduce a global.
     -- We require variables to be declared.  So, without the var, we assume
     -- that the id is already in the environment.  While type-checking, verify

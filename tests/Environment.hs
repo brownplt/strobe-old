@@ -36,7 +36,7 @@ import TypedJavaScript.PrettyPrint
 assertEnv :: [String] -> Expression SourcePos -> Assertion
 assertEnv expectedIds expr = do
   let env = funcEnv expr
-  let envIds = map (\((Id _ s),_) -> s) env
+  let envIds = map (\((Id _ s),_,_) -> s) env
   assertEqual "environment mismatch" (L.sort expectedIds) (L.sort envIds) 
 
 parseTestCase :: CharParser st Test
