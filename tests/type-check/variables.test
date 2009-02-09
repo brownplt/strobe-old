@@ -88,6 +88,66 @@ function (mult) :: (double -> (double -> double)) {
   return inner;
 } :: (double -> (double -> double));
 
+//using variables only declared later:
+function (x) :: (double -> double) {
+  var z = y + 9;
+  var y = 13;
+  return y;
+} @@ fails;
+
+//repeating a variable:
+function (x) :: (double -> string) {
+  var y = 5;
+  var y = "stringy";
+  return y;
+} @@ fails; 
+//javascript doesn't have scoping, so this also should fail:
+function (x) :: (double -> string) {
+  var y = 5;
+  if (true)
+  {
+    var y = "stringy";
+    y += "4aaa";
+  }
+  return y;
+} @@ fails;
+//for similar reasons, the next one succeeds:
+function (x) :: (double -> string) {
+  var y = 5;
+  if (true)
+  {
+    var z = "stringy";
+    z += y;
+  }
+  return z;
+} :: (double -> string);
+
+//re-declaring parameter as another type:
+function (x) :: (double -> string) {
+  var x = "A string it";
+  return x;
+} @@ fails;
+
+//TODO: allow the following?
+function (x) :: (double -> string) {
+  var y = "string1";
+  var y = "stringy";
+  return y;
+} @@ fails; 
+function (x) :: (double -> string) {
+  var x = x + 9;
+  return x + "s";
+} @@ fails; 
+//this next one works just fine, as it is, but should we allow re-declaring
+//variables with differing types / redeclaring them at all?
+function (x) :: (double -> double) {
+  var f :: string;
+  function doit(ahahah) :: (string -> double) {
+    var f :: double = 15.3;
+    return f * 5;
+  }
+  return doit(f);
+} :: (double -> double);
 
 
 

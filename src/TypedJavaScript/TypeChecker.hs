@@ -70,9 +70,8 @@ isRetSubType vars types rettype (ReturnStmt _ mret) = if rettype == (types ! "un
            mrettype <- typeOfExpr vars types mretexpr
            return $ isSubType vars types mrettype rettype-}
            
--- recursively resolve the type down to TApp, or a TFunc and a TObject containing
+-- recursively resolve the type down to TApp, or a TFunc or a TObject containing
 -- only resolved types
--- TODO: is it fine that this ISNT a Monad?
 resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
 resolveType vars types t = case t of
   TId _ s -> types ! s

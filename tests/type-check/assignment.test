@@ -108,7 +108,12 @@ function (x) :: (double ->) {
   z *= 5;
 } @@ fails;
 
-//list expressions
+function (x) :: (double -> string) {
+  x += "hah"; //the x + "hah" evaluates to a string, but then the actual assignment should fail.
+  return "h";
+} @@ fails;
+
+//list expressions?
 function (x) :: (double -> string) {
   var z = (4, 39, "haha", "sup dog? yes.. rather so."+x);
   return z;
