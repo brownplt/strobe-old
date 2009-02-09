@@ -83,7 +83,7 @@ globalEnv globalStatements =
 
     collectVarDecl :: VarDecl SourcePos -> RawEnv
     collectVarDecl (VarDecl _ id t)              = [(id,Right t)] 
-    collectVarDecl (VarDeclExpr _ id (Just t) _) = [(id,Right t)]
+    collectVarDecl (VarDeclExpr _ id (Just t) _) = [(id,Right t)] -- TODO: this is not correct, as the types may not match.
     collectVarDecl (VarDeclExpr _ id Nothing e)  = [(id,Left e)]
 
     collectForInInit :: ForInInit SourcePos -> RawEnv
