@@ -12,7 +12,7 @@ import Data.Generics
 import Data.List (foldl')
 import qualified Data.Map as M
 import Data.Map(Map, (!))
-import Control.Monad(liftM)
+import Control.Monad(liftM, zipWithM)
 
 import Text.ParserCombinators.Parsec(SourcePos)
 import Text.ParserCombinators.Parsec.Pos
@@ -30,7 +30,8 @@ globalObjectType = TObject corePos []
 coreTypeEnv :: Env
 coreTypeEnv = M.fromList $ (map (\s -> (s, (TApp corePos (TId corePos s) [])))
                                 ["string", "double", "int", "bool", "undefined"]) ++
-                           [("@global", globalObjectType)]
+              [("@global", globalObjectType)]
+
 coreVarEnv :: Env
 coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
 
@@ -128,23 +129,39 @@ allPathsReturn vars types rettype stmt = case stmt of
 -- environment or fail on type error.
 -- the variables initialized with expressions can reference other variables in the rawenv, but only
 -- those declared above them.
-processRawEnv :: (Monad m) => Env -> Env -> RawEnv -> m Env
-processRawEnv vars types [] = return vars
-processRawEnv vars types ((Id _ varname, Nothing, Nothing):rest) = fail "Invalid RawEnv contains var that has neither type nor expression"
-processRawEnv vars types ((Id _ varname, Nothing, Just expr):rest) = do
-  exprtype <- typeOfExpr vars types expr
-  processRawEnv (M.insert varname exprtype vars) types rest
-processRawEnv vars types ((Id _ varname, Just vartype, Nothing):rest) =
-  processRawEnv (M.insert varname (resolveType vars types vartype) vars) types rest
-processRawEnv vars types ((Id _ varname, Just vartype, Just expr):rest) = do
-  exprtype <- typeOfExpr vars types expr
-  let vartype' = (resolveType vars types vartype)
-  if not $ isSubType vars types exprtype vartype'
-    then fail $ "Error: expression " ++ (show expr) ++ " has type " ++ (show exprtype) ++ " which is not a subtype of declared type " ++ (show vartype')
-    else processRawEnv (M.insert varname vartype' vars) types rest
+-- the third argument is a list of IDs that this rawenv is forbidden to override
+-- this starts off with just the function arguments, and each added variable is added to the list
+processRawEnv :: (Monad m) => Env -> Env -> [String] -> RawEnv -> m Env
+processRawEnv vars types _ [] = return vars
+processRawEnv vars types _ ((Id _ varname, Nothing, Nothing):rest) = 
+  fail "Invalid RawEnv contains var that has neither type nor expression"
+processRawEnv vars types forbidden ((Id _ varname, Nothing, Just expr):rest) = do
+  if elem varname forbidden
+    then fail $ "Can't re-define " ++ varname
+    else do
+      exprtype <- typeOfExpr vars types expr
+      processRawEnv (M.insert varname exprtype vars) types (varname:forbidden) rest
+processRawEnv vars types forbidden ((Id _ varname, Just vartype, Nothing):rest) =
+  if elem varname forbidden
+    then fail $ "Can't re-define " ++ varname
+    else 
+      processRawEnv (M.insert varname (resolveType vars types vartype) vars) 
+                    types (varname:forbidden) rest
+processRawEnv vars types forbidden ((Id _ varname, Just vartype, Just expr):rest) = do
+  if elem varname forbidden
+    then fail $ "Can't re-define " ++ varname
+    else do
+      exprtype <- typeOfExpr vars types expr
+      let vartype' = (resolveType vars types vartype)
+      if not $ isSubType vars types exprtype vartype'
+        then fail $ "Error: expression " ++ (show expr) ++ 
+                    " has type " ++ (show exprtype) ++ 
+                    " which is not a subtype of declared type " ++ (show vartype')
+        else processRawEnv (M.insert varname vartype' vars) types (varname:forbidden) rest
 
 -- we need two environments - one mapping variable id's to their types, and
--- one matching type id's to their type. types gets extended with external and type statements.
+-- one matching type id's to their type. types gets extended with type statements,
+-- variables with vardecls and 'external' statements.
 -- this function reduces everything to TObject, TFunc, or a base-case TApp.
 typeOfExpr :: (Monad m) => Env -> Env -> (Expression SourcePos) -> m (Type SourcePos)
 typeOfExpr vars types expr = case expr of
@@ -161,8 +178,8 @@ typeOfExpr vars types expr = case expr of
   ThisRef a          -> return $ vars ! "this"
   VarRef a (Id _ s)  -> maybe (fail ("unbound ID: " ++ s)) return (M.lookup s vars)
 
-  DotRef a expr id   -> fail "dotref NYI"
-  BracketRef a xc xk -> fail "bracketref NYI"
+  DotRef a expr id     -> fail "dotref NYI"
+  BracketRef a xc xk   -> fail "bracketref NYI"
   NewExpr a xcon xvars -> fail "newexpr NYI"
   
   PostfixExpr a op x -> do
@@ -172,15 +189,15 @@ typeOfExpr vars types expr = case expr of
   PrefixExpr a op x -> do
     xtype <- typeOfExpr vars types x
     case op of
-      PrefixInc -> numberContext vars types xtype
-      PrefixDec -> numberContext vars types xtype
-      PrefixLNot -> boolContext vars types xtype
-      PrefixBNot -> do ntype <- numberContext vars types xtype
-                       if ntype == types ! "int"
-                         then return $ types ! "int"
-                         else fail $ "~ operates on integers, got " ++ show xtype ++ " converted to " ++ show ntype
-      PrefixPlus -> numberContext vars types xtype
-      PrefixMinus -> numberContext vars types xtype
+      PrefixInc    -> numberContext vars types xtype
+      PrefixDec    -> numberContext vars types xtype
+      PrefixLNot   -> boolContext vars types xtype
+      PrefixBNot   -> do ntype <- numberContext vars types xtype
+                         if ntype == types ! "int"
+                           then return $ types ! "int"
+                           else fail $ "~ operates on integers, got " ++ show xtype ++ " converted to " ++ show ntype
+      PrefixPlus   -> numberContext vars types xtype
+      PrefixMinus  -> numberContext vars types xtype
       PrefixTypeof -> return $ types ! "string"
       PrefixDelete -> return $ types ! "bool" --TODO: remove delete?
 
@@ -225,25 +242,25 @@ typeOfExpr vars types expr = case expr of
         _                 -> fail $ "rhs of 'instanceof' must be constructor, got " ++  show rtype
 
       --TODO: i forgot what we said about equality. assume they all work for now:
-      OpEq  -> return $ types ! "bool" 
-      OpNEq -> return $ types ! "bool"      
+      OpEq        -> return $ types ! "bool" 
+      OpNEq       -> return $ types ! "bool"      
       OpStrictEq  -> return $ types ! "bool"
       OpStrictNEq -> return $ types ! "bool"
       
       OpLAnd -> logical 
       OpLOr  -> logical
 
-      OpMul  -> numop False False
-      OpDiv  -> numop False True
-      OpMod  -> numop False False
-      OpSub  -> numop False True
+      OpMul      -> numop False False
+      OpDiv      -> numop False True
+      OpMod      -> numop False False
+      OpSub      -> numop False True
       OpLShift   -> numop True False
       OpSpRShift -> numop True False
       OpZfRShift -> numop True False
-      OpBAnd -> numop True False
-      OpBXor -> numop True False
-      OpBOr  -> numop True False
-      OpAdd  -> do
+      OpBAnd     -> numop True False
+      OpBXor     -> numop True False
+      OpBOr      -> numop True False
+      OpAdd      -> do
         -- from TDGTJ: 
         -- If one operand is a string, the other is converted, and they are concatenated.
         -- objects are converted to numbers or strings and then added or concatenated
@@ -298,24 +315,49 @@ typeOfExpr vars types expr = case expr of
   ListExpr a exprs -> do
     typelist <- mapM (typeOfExpr vars types) exprs
     return $ last typelist
-  
+
   CallExpr a funcexpr argexprs -> do
     functype <- typeOfExpr vars types funcexpr
     case functype of 
-      TFunc _ _ [funcargtype] _ _ funcrettype -> do
-        if length argexprs /= 1
-          then fail $ "Only functions with one required argument are implemented."
+      TFunc _ Nothing reqargtypes [] Nothing rettype -> do
+        if length argexprs /= length reqargtypes
+          then fail $ "Error: expected " ++ (show $ length reqargtypes) ++ " args, but got " ++ 
+                      (show $ length argexprs)
           else do
-            argexprtype <- typeOfExpr vars types $ argexprs !! 0
-            if isSubType vars types argexprtype funcargtype
-              then return funcrettype
-              else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " ++ show funcargtype
-      _ -> fail $ "Expected function with 1 arg, got " ++ show functype
+            zipWithM (\expr reqtype -> do
+              argexprtype <- typeOfExpr vars types expr
+              if isSubType vars types argexprtype reqtype
+                then return True
+                else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " ++ show reqtype)
+                     argexprs reqargtypes
+            return rettype
+      _ -> fail $ "Expected function with only reqargs, got " ++ show functype
 
+{-          else do
+            zipWithM (\expr reqtype -> do
+              argexprtype <- typeOfExpr vars types $ argexprs !! 0
+              if isSubType vars types argexprtype funcargtype
+                then return funcrettype
+                else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " ++ show funcargtype
+-}
   FuncExpr _ argnames functype' bodyblock@(BlockStmt _ bodystmts) -> do
     let functype = resolveType vars types functype'
     case functype of
-      TFunc _ _ [argtype] _ _ rettype -> do
+      TFunc _ Nothing reqargtypes optargtypes Nothing rettype -> do
+        if length argnames /= (length reqargtypes) + (length optargtypes)
+          then fail $ "Inconsistent function definition - argument number mismatch in arglist and type"
+          else do
+            vars' <- processRawEnv vars types [] 
+                                   ((zipWith (\a b -> (a, Just b, Nothing)) argnames (reqargtypes++optargtypes)) ++ 
+                                    (globalEnv bodystmts))
+            guaranteedReturn <- allPathsReturn vars' types rettype bodyblock 
+            if rettype /= (types ! "undefined") && (not guaranteedReturn)
+              then fail "Some path doesn't return a value, but the function's return type is not undefined"
+              else do
+                typeCheckStmt vars' types bodyblock
+                return functype
+                      
+{-      TFunc _ _ [argtype] _ _ rettype -> do
         if length argnames /= 1 
           then fail $ "Inconsistent function definition - argument number mismatch in arglist and type"
           else do let (Id _ arg0) = argnames !! 0
@@ -326,9 +368,9 @@ typeOfExpr vars types expr = case expr of
                     then fail "Some path doesn't return a value, but the function's return type is not undefined"
                     else do
                       typeCheckStmt vars' types bodyblock
-                      return functype
+                      return functype -}
           
-      TFunc _ _ _ _ _ _ -> fail "Only functions with one required argument are implemented."
+      TFunc _ _ _ _ _ _ -> fail "Only functions with required arguments are implemented."
 
       _ -> fail $ "Function must have a function type, given " ++ show functype
 
@@ -407,8 +449,6 @@ data Statement a
   | TryStmt a (Statement a) {-body-} [CatchClause a] {-catches-}
       (Maybe (Statement a)) {-finally-}
   | ThrowStmt a (Expression a)
-  -- | WithStmt a (Expression a) (Statement a)
-  -- FunctionStatements turn into expressions with an assignment. 
   -- TODO: add generics to functions/constructors?
   -- | FunctionStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Maybe (Type a)) {-ret type-}  (Statement a) {-body-}
   | ConstructorStmt a (Id a) {-name-} 

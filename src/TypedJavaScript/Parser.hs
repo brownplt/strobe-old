@@ -61,7 +61,6 @@ identifier =
              | ( type )                   --parenthesised
    
   =================
-         TODO
   Then some additional computation is done to ensure that args are in the order: required, optional, and at most 1 var.
   This method should be simpler than building it into the parser directly.
 -}
@@ -542,7 +541,7 @@ parseObjectLit =
       propName = \(p, _, _) -> p
     in do pos <- getPosition
           props <- braces (parseProp `sepEndBy` comma) <?> "object literal"
-          -- TODO: move this check to the type checker.
+          -- TODO: move objects having duplicate properties check to the type checker.
           let props' = map propName props
           if props' /= nub props'
             then fail "Object literals can't have duplicate property names in tJS"
