@@ -25,44 +25,49 @@ import TypedJavaScript.TypeChecker (typeOfExpr,coreTypeEnv,coreVarEnv,
 import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
 
-assertType :: Expression SourcePos -> Type SourcePos -> Assertion
-assertType expr expectedType = do
+showSp :: SourcePos -> String
+showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)
+
+assertType :: SourcePos -> Expression SourcePos -> Type SourcePos -> Assertion
+assertType pos expr expectedType = do
   actualType <- typeOfExpr coreVarEnv coreTypeEnv expr
   let resolvedType = resolveType coreVarEnv coreTypeEnv expectedType
   -- Assumes equality for types is defined modulo annotation (SourcePos)
   -- TODO: check a subtype, instead of strict equality?
-  assertEqual "type mismatch" resolvedType actualType
+  assertEqual ((showSp pos) ++ ": type mismatch") resolvedType actualType
 
-assertTypeError :: Expression SourcePos -> Assertion
-assertTypeError expr = do
+assertTypeError :: SourcePos -> Expression SourcePos -> Assertion
+assertTypeError pos expr = do
   result <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
   case result of
     Left (err::(E.SomeException)) -> return () -- error expected
-    Right exprType -> assertFailure ("Expected fail, got: " ++ (show $ pp exprType))
+    Right exprType -> assertFailure ((showSp pos) ++ ": expected fail, got: " ++ (show $ pp exprType))
 
-assertTypeSuccess :: Expression SourcePos -> Assertion
-assertTypeSuccess expr = do
+assertTypeSuccess :: SourcePos -> Expression SourcePos -> Assertion
+assertTypeSuccess pos expr = do
   result <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
   case result of
-    Left (err::(E.SomeException)) -> assertFailure ("Expected success, got: " ++ (show $ err)) -- success expected
-    Right exprType -> return () 
+    Left (err::(E.SomeException)) -> assertFailure ((showSp pos) ++ ": expected success, got: " ++ (show $ err)) 
+    Right exprType -> return () -- success expected
 
 parseTestCase :: CharParser st Test
 parseTestCase = (do
+  pos <- getPosition
   expr <- parseExpression
   let typeOK = do
         expectedType <- parseType -- requires a prefixed ::
-        return $ TestCase (assertType expr expectedType)
+        return $ TestCase (assertType pos expr expectedType)
   let typeError = do
         reservedOp "@@" -- random symbol that is not recognized by the
                         -- expression parser.
         reserved "fails"
-        return $ TestCase (assertTypeError expr)
+        return $ TestCase (assertTypeError pos expr)
   let typeSuccess = do
+        pos <- getPosition
         reservedOp "@@" -- random symbol that is not recognized by the
                         -- expression parser.
         reserved "succeeds"
-        return $ TestCase (assertTypeSuccess expr)
+        return $ TestCase (assertTypeSuccess pos expr)
    
   typeOK <|> (try typeError) <|> typeSuccess) <|> (do return $ TestCase $ assertEqual "empty test case" True True)
   

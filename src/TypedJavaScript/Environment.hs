@@ -18,6 +18,7 @@ import Data.List (foldl')
 
 import Text.ParserCombinators.Parsec(SourcePos)
 import TypedJavaScript.Syntax
+import TypedJavaScript.PrettyPrint
 
 -- |Similar to 'everything'.  'everythingBut' descends into 'term' only if
 -- the generic predicate is 'True'.  If the predicate is 'False',
@@ -98,4 +99,4 @@ globalEnv globalStatements =
 -- Signals an error if the expression is not a 'FuncExpr'
 funcEnv :: Expression SourcePos -> RawEnv
 funcEnv (FuncExpr _ _ _ body) = globalEnv [body]
-funcEnv e = error $ "funcEnv: expected a FuncExpr, received " ++ show e 
+funcEnv e = error $ "funcEnv: expected a FuncExpr, received " ++ show e

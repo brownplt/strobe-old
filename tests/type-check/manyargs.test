@@ -1,0 +1,56 @@
+function (a, b, c) :: (int, int, int -> int) {
+    return a + b + c;
+} :: (int, int, int -> int);
+function (i, d, s) :: (int, double, string -> string) {
+    var x = d * i; //double
+    var f = i + i; //int
+    var z = s+s, z2 = s+i, z3 = z+d; //strings
+    return z + z2 + z3;
+} :: (int, double, string -> string);
+function () :: (-> string) {
+  function inner(b, d, s) :: (bool, double, string -> string) {
+    var x = d * (b ? 5 : 3); //double
+    var z = s+s, z2 = s+x, z3 = z+d; //strings
+    return z + z2 + z3;
+  }
+  return inner(true, 3.96, "A STRING!!!"); 
+} :: (-> string);
+
+function (r1, r2, o1, o2) :: (int, int, int?, double? -> string) {
+    return r1+r2+(o1 * 534) + "";
+} :: (int, int, int?, double? -> string);
+function() :: (-> string) {
+  function inner(r1, r2, o1, o2) :: (double, double, double?, string? -> string) {
+    return r1+r2+(o1 * 534) + o2;
+  }
+  inner(1, 2);
+  inner(1, 2, 3);
+  return inner(1, 2, 95, "HI");
+} :: (-> string);
+function() :: (-> string) {
+  function inner(r1, r2, o1, o2) :: (double, double, double?, string? -> string) {
+    return r1+r2+(o1 * 534) + o2;
+  }
+  return inner(1);
+} @@ fails;
+function() :: (-> string) {
+  function inner(r1, r2, o1, o2) :: (double, double, double?, string? -> string) {
+    return r1+r2+(o1 * 534) + o2;
+  }
+  return inner();
+} @@ fails;
+
+function() :: (-> string) {
+  function inner(r1, r2, o1, o2) :: (double, double, double?, string? -> string) {
+    return r1+r2+(o1 * 534) + o2;
+  }
+  return inner(1, 9, "43");
+} @@ fails;
+
+
+function() :: (-> string) {
+  function inner(r1, r2, o1, o2) :: (double, double, double?, string? -> string) {
+    return r1+r2+(o1 * 534) + o2;
+  }
+  return inner("43");
+} @@ fails;

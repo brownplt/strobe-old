@@ -293,5 +293,36 @@ instance PrettyPrintable (JavaScript a) where
   pp (Script _ stmts) =
     vcat (map pp stmts)
 
+--instance Show (Javascript a) where
+--  show t = show $ pp t
+instance Show (Id a) where
+  show t = show $ pp t
+instance Show (InfixOp) where
+  show t = show $ pp t
+instance Show (AssignOp) where
+  show t = show $ pp t
+instance Show (PrefixOp) where
+  show t = show $ pp t
+instance Show (PostfixOp) where
+  show t = show $ pp t
+instance Show (Prop a) where
+  show t = show $ pp t
+instance Show (Expression a) where
+  show t = show $ pp t
+instance Show (CaseClause a) where
+  show t = show $ pp t
+instance Show (CatchClause a) where
+  show t = show $ pp t
+instance Show (VarDecl a) where
+  show t = show $ pp t
+instance Show (ForInit a) where
+  show t = show $ pp t
+instance Show (ForInInit a) where
+  show t = show $ pp t
+instance Show (Statement a) where
+  show t = show $ pp t
+instance Show (Type a) where
+  show t = show $ pp t
+
 --}}}
 

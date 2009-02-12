@@ -336,7 +336,7 @@ typeOfExpr vars types expr = case expr of
                   then return True
                   else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " 
                               ++ show expectedtype)
-              argexprs reqargtypes
+              argexprs (reqargtypes ++ optargtypes)
             return rettype
       _ -> fail $ "Expected function with only reqargs, got " ++ show functype
 
