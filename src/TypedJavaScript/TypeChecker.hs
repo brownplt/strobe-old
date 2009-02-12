@@ -320,17 +320,23 @@ typeOfExpr vars types expr = case expr of
   CallExpr a funcexpr argexprs -> do
     functype <- typeOfExpr vars types funcexpr
     case functype of 
-      TFunc _ Nothing reqargtypes [] Nothing rettype -> do
-        if length argexprs /= length reqargtypes
-          then fail $ "Error: expected " ++ (show $ length reqargtypes) ++ " args, but got " ++ 
-                      (show $ length argexprs)
+      TFunc _ Nothing reqargtypes optargtypes Nothing rettype -> do
+        let s = length argexprs
+        let r = length reqargtypes
+        let z = length optargtypes
+        if r > s || s > (r + z)
+          then if r > s
+                 then fail $ "expected at least" ++ (show r) ++ " arguments, got only " ++ (show s)
+                 else fail $ "expected at most" ++ (show (r+z)) ++ " args, but got " ++ (show s)
           else do
-            zipWithM (\expr reqtype -> do
-              argexprtype <- typeOfExpr vars types expr
-              if isSubType vars types argexprtype reqtype
-                then return True
-                else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " ++ show reqtype)
-                     argexprs reqargtypes
+            zipWithM (\argexpr expectedtype -> 
+              do
+                argexprtype <- typeOfExpr vars types argexpr
+                if isSubType vars types argexprtype expectedtype
+                  then return True
+                  else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " 
+                              ++ show expectedtype)
+              argexprs reqargtypes
             return rettype
       _ -> fail $ "Expected function with only reqargs, got " ++ show functype
 
@@ -358,19 +364,6 @@ typeOfExpr vars types expr = case expr of
                 typeCheckStmt vars' types bodyblock
                 return functype
                       
-{-      TFunc _ _ [argtype] _ _ rettype -> do
-        if length argnames /= 1 
-          then fail $ "Inconsistent function definition - argument number mismatch in arglist and type"
-          else do let (Id _ arg0) = argnames !! 0
-                      vars' = (M.insert arg0 argtype vars)
-                  vars' <- processRawEnv vars' types (globalEnv bodystmts)
-                  guaranteedReturn <- allPathsReturn vars' types rettype bodyblock 
-                  if rettype /= (types ! "undefined") && (not guaranteedReturn)
-                    then fail "Some path doesn't return a value, but the function's return type is not undefined"
-                    else do
-                      typeCheckStmt vars' types bodyblock
-                      return functype -}
-          
       TFunc _ _ _ _ _ _ -> fail "Only functions with required arguments are implemented."
 
       _ -> fail $ "Function must have a function type, given " ++ show functype
