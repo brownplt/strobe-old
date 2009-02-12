@@ -12,9 +12,9 @@ data JavaScript a
   -- but the Flapjax analogue has an inline variant and attribute-inline 
   -- variant.
   = Script a [Statement a] 
-  deriving (Show,Data,Typeable,Eq,Ord)
+  deriving (Data,Typeable,Eq,Ord)
 
-data Id a = Id a String deriving (Show,Ord,Data,Typeable)
+data Id a = Id a String deriving (Ord,Data,Typeable)
 
 
 data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)               
@@ -25,12 +25,8 @@ data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)
                         (Type a) {- ret type -}
               | TId a String -- an Id defined through a 'type' statement
               | TApp a (Type a) [Type a]
-    deriving (Data,Typeable,Ord, Show)
+    deriving (Data,Typeable,Ord)
 
---printing:
---instance Show (Type a) where
---  show (TApp _ (TId _ s) []) = show (s ++ "<>")
-  
 --equalities:
 instance Eq (Id a) where
   Id _ s1 == Id _ s2 = s1 == s2
@@ -51,27 +47,27 @@ data InfixOp = OpLT | OpLEq | OpGT | OpGEq  | OpIn  | OpInstanceof | OpEq | OpNE
              | OpStrictEq | OpStrictNEq | OpLAnd | OpLOr 
              | OpMul | OpDiv | OpMod  | OpSub | OpLShift | OpSpRShift
              | OpZfRShift | OpBAnd | OpBXor | OpBOr | OpAdd
-    deriving (Show,Data,Typeable,Eq,Ord,Enum)
+    deriving (Data,Typeable,Eq,Ord,Enum)
 
 data AssignOp = OpAssign | OpAssignAdd | OpAssignSub | OpAssignMul | OpAssignDiv
   | OpAssignMod | OpAssignLShift | OpAssignSpRShift | OpAssignZfRShift
   | OpAssignBAnd | OpAssignBXor | OpAssignBOr
-  deriving (Show,Data,Typeable,Eq,Ord)
+  deriving (Data,Typeable,Eq,Ord)
 
 data PrefixOp = PrefixInc | PrefixDec | PrefixLNot | PrefixBNot | PrefixPlus
   | PrefixMinus | PrefixTypeof -- | PrefixVoid 
   | PrefixDelete
-  deriving (Show,Data,Typeable,Eq,Ord)
+  deriving (Data,Typeable,Eq,Ord)
   
 data PostfixOp 
   = PostfixInc | PostfixDec
-  deriving (Show,Data,Typeable,Eq,Ord)
+  deriving (Data,Typeable,Eq,Ord)
 
 --property within an object literal
 --TODO: remove PropString?
 data Prop a 
   = PropId a (Id a) | PropString a String | PropNum a Integer
-  deriving (Show,Data,Typeable,Ord)
+  deriving (Data,Typeable,Ord)
 
 instance Eq (Prop a) where
   x == y = (toStr x) == (toStr y) where
@@ -106,27 +102,27 @@ data Expression a
                (Type a)
                (Statement a)    {- body -}
   -- | StaticTypeofExpr a (Expression a) -- the <> operator (<5> evaluates to int)
-  deriving (Show,Data,Typeable,Eq,Ord)
+  deriving (Data,Typeable,Eq,Ord)
 
 data CaseClause a 
   = CaseClause a (Expression a) [Statement a]
   | CaseDefault a [Statement a]
-  deriving (Show,Data,Typeable,Eq,Ord)
+  deriving (Data,Typeable,Eq,Ord)
   
 data CatchClause a 
   = CatchClause a (Id a) (Statement a) 
-  deriving (Show,Data,Typeable,Eq,Ord)
+  deriving (Data,Typeable,Eq,Ord)
 
 data VarDecl a 
   = VarDecl a (Id a) (Type a)
   | VarDeclExpr a (Id a) (Maybe (Type a)) (Expression a)
-  deriving (Show,Data,Typeable,Eq,Ord)
+  deriving (Data,Typeable,Eq,Ord)
   
 data ForInit a
   = NoInit
   | VarInit [VarDecl a]
   | ExprInit (Expression a)
-  deriving (Show,Data,Typeable,Eq,Ord)
+  deriving (Data,Typeable,Eq,Ord)
 
 data ForInInit a
  -- |These terms introduce a name to the enclosing function's environment.
@@ -134,7 +130,7 @@ data ForInInit a
  -- type inference.  Save type inference for later.
  = ForInVar (Id a) (Type a)
  | ForInNoVar (Id a) 
- deriving (Show,Data,Typeable,Eq,Ord)
+ deriving (Data,Typeable,Eq,Ord)
 
 data Statement a
   = BlockStmt a [Statement a]
@@ -168,13 +164,10 @@ data Statement a
                       (Maybe (Id a, Type a)) {- optional var arg -}
                       (Statement a) {-body-}
   | TypeStmt a (Id a) (Type a) -- e.g. type Point :: {x :: int, y :: int};
-  deriving (Show,Data,Typeable,Eq,Ord)  
-
+  deriving (Data,Typeable,Eq,Ord)  
+  
 --external statements should only go in the top-level
 {- data Toplevel a
   =  ExternalStmt a (Id a) (Type a) -}
-  
-
-
 
 
