@@ -195,7 +195,8 @@ typeOfExpr vars types expr = case expr of
       PrefixBNot   -> do ntype <- numberContext vars types xtype
                          if ntype == types ! "int"
                            then return $ types ! "int"
-                           else fail $ "~ operates on integers, got " ++ show xtype ++ " converted to " ++ show ntype
+                           else fail $ "~ operates on integers, got " ++ show xtype ++ 
+                                       " converted to " ++ show ntype
       PrefixPlus   -> numberContext vars types xtype
       PrefixMinus  -> numberContext vars types xtype
       PrefixTypeof -> return $ types ! "string"
@@ -252,8 +253,8 @@ typeOfExpr vars types expr = case expr of
 
       OpMul      -> numop False False
       OpDiv      -> numop False True
-      OpMod      -> numop False False
-      OpSub      -> numop False True
+      OpMod      -> numop False True
+      OpSub      -> numop False False
       OpLShift   -> numop True False
       OpSpRShift -> numop True False
       OpZfRShift -> numop True False

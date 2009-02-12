@@ -16,6 +16,7 @@ data JavaScript a
 
 data Id a = Id a String deriving (Show,Ord,Data,Typeable)
 
+
 data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)               
               | TFunc a (Maybe (Type a)) {- type of this -} 
                         [Type a] {- required args -} 
