@@ -11,7 +11,10 @@
 5 + "4" :: string;
 "5" + 34 :: string;
 "blah" + "hoomegl" :: string;
-5.0 >> 3 @@ fails; //required int for binary ops
+5.03 >> 3 @@ fails; //required int for binary ops
+5.0 >> 3 @@ fails;
+5e9 >> 7 @@ fails;
+
 4 / 343 :: double;
 
 true && false :: bool;

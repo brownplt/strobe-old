@@ -1,4 +1,4 @@
-function (a, b, c) :: (int, int, int -> int) {
+function (a, b, c) :: (int, int, int -> int) { 
     return a + b + c;
 } :: (int, int, int -> int);
 function (i, d, s) :: (int, double, string -> string) {
@@ -53,4 +53,58 @@ function() :: (-> string) {
     return r1+r2+(o1 * 534) + o2;
   }
   return inner("43");
+} @@ fails;
+
+function(a) :: (string?, int?, double? -> int) {
+} @@ fails;
+function(a,b) :: (string?, int?, double? -> int) {
+} @@ fails;
+function(a,b,c,d) :: (string?, int?, double? -> int) {
+} @@ fails;
+function() :: (string?, int?, double? -> int) {
+} @@ fails;
+function(a,b,c) :: (string?, int?, double? -> int) {
+  var x :: string = a + b + c;
+  var f :: int = b * b << b;
+  var f2 :: double = b + (c / 3.9);
+  return f;
+} :: (string?, int?, double? -> int);
+function() :: (->) {
+  var x :: int;
+  function testit(a,b,c) :: (string?, int?, double? -> int) {
+    var x :: string = a + b + c;
+    var f :: int = b * b << b;
+    var f2 :: double = b + (c / 3.9);
+    return f;
+  }
+  var g = testit(); 
+  var g2 = testit("ASTR");
+  var g3 = testit("ASTR", g2);
+  var g9 = testit(g2 + g3 + "", x << g3);
+  var g331 = testit("Ag", g9+g3^g2, x+3.0);
+} :: (->);
+
+function() :: (->) {
+  function applymaybe(func, arg) :: ((int? -> string)?, int? -> string) {
+    if (func == undefined) return "no apply";
+    return "func called, res = " + func(arg);
+  }
+  applymaybe();
+  applymaybe(undefined);
+  applymaybe(null);
+  function showmaybe(anint) :: (int? -> string) {
+    if (anint == undefined) return "given no arg";
+    return "given arg, arg was: " + anint;
+  }
+  applymaybe(showmaybe);
+  applymaybe(showmaybe, undefined);
+  applymaybe(showmaybe, 93);
+} :: (->);
+
+function() :: (->) {
+  function applymaybe(func, arg) :: ((int? -> string)?, int? -> string) {
+    if (func == undefined) return "no apply";
+    return "func called, res = " + func(arg);
+  }
+  applymaybe(39, 4);
 } @@ fails;

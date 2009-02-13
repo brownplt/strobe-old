@@ -3,6 +3,7 @@ module TypedJavaScript.TypeChecker
   , resolveType
   , typeCheckStmt
   , typeCheckStmts
+  , isSubType
   , Env
   , coreTypeEnv
   , coreVarEnv
@@ -33,7 +34,8 @@ coreTypeEnv = M.fromList $ (map (\s -> (s, (TApp corePos (TId corePos s) [])))
               [("@global", globalObjectType)]
 
 coreVarEnv :: Env
-coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
+coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global"),
+                         ("undefined", coreTypeEnv ! "undefined")]
 
 --TODO: deal with TApp, add syntax for defining them , etc.
 
@@ -60,7 +62,12 @@ boolContext vars types t
 
 -- is t1 a subtype of t2? so far, just plain equality.
 isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
-isSubType vars types t1 t2 = (t1 == t2)
+isSubType vars types t1 t2 
+ | (t1 == t2) = True
+ | (t1 == types ! "undefined") = True --everything is nullable
+ | (t1 == types ! "int") = t2 == types ! "double"
+ | otherwise = False
+
 {-
 isRetSubType :: (Monad m) => Env -> Env -> (Type SourcePos) -> (Statement SourcePos) -> m Bool
 isRetSubType vars types rettype (ReturnStmt _ mret) = if rettype == (types ! "undefined")
@@ -364,7 +371,7 @@ typeOfExpr vars types expr = case expr of
                 typeCheckStmt vars' types bodyblock
                 return functype
                       
-      TFunc _ _ _ _ _ _ -> fail "Only functions with required arguments are implemented."
+      TFunc _ _ _ _ _ _ -> fail "Only functions with required and opt args are implemented."
 
       _ -> fail $ "Function must have a function type, given " ++ show functype
 

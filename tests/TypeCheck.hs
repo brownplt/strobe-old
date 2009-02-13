@@ -21,7 +21,7 @@ import TypedJavaScript.Syntax (Type,Expression)
 import TypedJavaScript.Lexer (semi,reservedOp,reserved)
 import TypedJavaScript.Parser (parseType,parseExpression)
 import TypedJavaScript.TypeChecker (typeOfExpr,coreTypeEnv,coreVarEnv,
-  resolveType)
+  resolveType,isSubType)
 import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
 
@@ -30,11 +30,14 @@ showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)
 
 assertType :: SourcePos -> Expression SourcePos -> Type SourcePos -> Assertion
 assertType pos expr expectedType = do
-  actualType <- typeOfExpr coreVarEnv coreTypeEnv expr
-  let resolvedType = resolveType coreVarEnv coreTypeEnv expectedType
-  -- Assumes equality for types is defined modulo annotation (SourcePos)
-  -- TODO: check a subtype, instead of strict equality?
-  assertEqual ((showSp pos) ++ ": type mismatch") resolvedType actualType
+  --actualType <- typeOfExpr coreVarEnv coreTypeEnv expr
+  actualType <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
+  case actualType of
+    Left (err::(E.SomeException)) -> assertFailure ((showSp pos) ++ ": user error: " ++ (show err))
+    Right exprType -> do
+      let resolvedType = resolveType coreVarEnv coreTypeEnv expectedType
+      assertBool ((showSp pos) ++ ": type mismatch, " ++ (show exprType) ++ " is not a subtype of " ++ (show resolvedType)) 
+                 (isSubType coreVarEnv coreTypeEnv exprType resolvedType)
 
 assertTypeError :: SourcePos -> Expression SourcePos -> Assertion
 assertTypeError pos expr = do

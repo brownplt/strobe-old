@@ -252,6 +252,7 @@ instance PrettyPrintable (Expression a) where
       g = if global then text "g" else empty
       i = if ci then text "i" else empty
   pp (NumLit _ n) =  text (show n)
+  pp (IntLit _ n) =  text (show n)
   pp (BoolLit _ True) = text "true"
   pp (BoolLit _ False) = text "false"
   pp (NullLit _) = text "null"
@@ -323,6 +324,6 @@ instance Show (Statement a) where
   show t = show $ pp t
 instance Show (Type a) where
   show t = show $ pp t
-
+  
 --}}}
 

@@ -553,7 +553,7 @@ hexLit = do
   try (string "0x")
   digits <- many1 (oneOf "0123456789abcdefABCDEF")
   [(hex,"")] <- return $ Numeric.readHex digits
-  return hex
+  return (True, hex)
 
 -- Creates a decimal value from a whole, fractional and exponent part.
 mkDecimal:: Double -> Double -> Int -> Double
@@ -565,22 +565,34 @@ mkDecimal w f e =
 exponentPart = do
   oneOf "eE"
   (char '+' >> decimal) <|> (char '-' >> negate `fmap` decimal) <|> decimal
-  
-decLit =
+
+jparser p = do
+  rez <- p
+  return (Just rez)
+
+decLit = 
   (do whole <- decimal
-      frac <- option 0 (char '.' >> decimal)
-      exp <- option 0  exponentPart
-      return $ mkDecimal (fromIntegral whole) (fromIntegral frac) (fromIntegral exp)) <|>
+      mfrac <- option Nothing (jparser (char '.' >> decimal))
+      mexp <-  option Nothing (jparser exponentPart)
+      if (mfrac == Nothing && mexp == Nothing)
+        then return (True, fromIntegral whole)
+        else let (Just frac) = mfrac
+                 (Just exp)  = mexp
+              in return (False, mkDecimal (fromIntegral whole) 
+                                          (fromIntegral frac) 
+                                          (fromIntegral exp))) <|>
   (do frac <- char '.' >> decimal
-      exp <- option 0  exponentPart
-      return $ mkDecimal 0.0 (fromIntegral frac) (fromIntegral exp))
+      exp <- option 0 exponentPart
+      return (False, mkDecimal 0.0 (fromIntegral frac) (fromIntegral exp)))
 
 parseNumLit:: ExpressionParser st
 parseNumLit = do
     pos <- getPosition
-    num <- lexeme $ hexLit <|> decLit
+    (isint, num) <- lexeme $ hexLit <|> decLit
     notFollowedBy identifierStart <?> "whitespace"
-    return $ NumLit pos num
+    if isint
+      then return $ IntLit pos (round num) 
+      else return $ NumLit pos num
 
 --}}}
 
