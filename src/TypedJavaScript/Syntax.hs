@@ -2,9 +2,9 @@
 module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
-         ForInit(..),ForInInit(..),Type(..)) where
+         ForInit(..),ForInInit(..),Type(..),showSp) where
 
-import Text.ParserCombinators.Parsec(SourcePos) -- used by data JavaScript
+import Text.ParserCombinators.Parsec(SourcePos,sourceName,sourceLine) -- used by data JavaScript
 import Data.Generics(Data,Typeable)
 
 data JavaScript a
@@ -146,8 +146,8 @@ data Statement a
   | LabelledStmt a (Id a) (Statement a)
   | ForInStmt a (ForInInit a) (Expression a) (Statement a)
   | ForStmt a (ForInit a)        
-              (Maybe (Expression a)) -- increment
               (Maybe (Expression a)) -- test
+              (Maybe (Expression a)) -- increment
               (Statement a)          -- body
   | TryStmt a (Statement a) {-body-} [CatchClause a] {-catches-}
       (Maybe (Statement a)) {-finally-}
@@ -165,6 +165,9 @@ data Statement a
                       (Statement a) {-body-}
   | TypeStmt a (Id a) (Type a) -- e.g. type Point :: {x :: int, y :: int};
   deriving (Data,Typeable,Eq,Ord)  
+  
+showSp :: SourcePos -> String
+showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)
   
 --external statements should only go in the top-level
 {- data Toplevel a

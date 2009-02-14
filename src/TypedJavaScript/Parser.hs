@@ -282,9 +282,9 @@ parseForStmt =
           reservedOp "("
           init <- parseInit
           semi
-          test <- (liftM Just parseExpression) <|> (return Nothing)
+          test <- (liftM Just parseListExpr) <|> (return Nothing)
           semi
-          iter <- (liftM Just parseExpression) <|> (return Nothing)
+          iter <- (liftM Just parseListExpr) <|> (return Nothing)
           reservedOp ")" <?> "closing paren"
           stmt <- parseStatement
           return (ForStmt pos init test iter stmt)

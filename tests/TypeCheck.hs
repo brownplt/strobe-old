@@ -17,16 +17,13 @@ import Text.ParserCombinators.Parsec
 import Test.HUnit
 import qualified Control.Exception as E
 
-import TypedJavaScript.Syntax (Type,Expression)
+import TypedJavaScript.Syntax (Type,Expression,showSp)
 import TypedJavaScript.Lexer (semi,reservedOp,reserved)
 import TypedJavaScript.Parser (parseType,parseExpression)
 import TypedJavaScript.TypeChecker (typeOfExpr,coreTypeEnv,coreVarEnv,
   resolveType,isSubType)
 import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
-
-showSp :: SourcePos -> String
-showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)
 
 assertType :: SourcePos -> Expression SourcePos -> Type SourcePos -> Assertion
 assertType pos expr expectedType = do

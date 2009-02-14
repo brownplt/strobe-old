@@ -1,6 +1,6 @@
 -- |Pretty-printing Typed JavaScript.
 module TypedJavaScript.PrettyPrint
-  ( PrettyPrintable (..)
+  ( PrettyPrintable (..), showSp
   ) where
 
 import Text.PrettyPrint.HughesPJ
@@ -294,6 +294,7 @@ instance PrettyPrintable (JavaScript a) where
   pp (Script _ stmts) =
     vcat (map pp stmts)
 
+--TODO: is there a better way to do the following?
 --instance Show (Javascript a) where
 --  show t = show $ pp t
 instance Show (Id a) where
@@ -324,6 +325,6 @@ instance Show (Statement a) where
   show t = show $ pp t
 instance Show (Type a) where
   show t = show $ pp t
-  
+
 --}}}
 

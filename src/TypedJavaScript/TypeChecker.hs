@@ -2,7 +2,7 @@ module TypedJavaScript.TypeChecker
   ( typeOfExpr
   , resolveType
   , typeCheckStmt
-  , typeCheckStmts
+ -- , typeCheckStmts
   , isSubType
   , Env
   , coreTypeEnv
@@ -37,15 +37,7 @@ coreVarEnv :: Env
 coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global"),
                          ("undefined", coreTypeEnv ! "undefined")]
 
---TODO: deal with TApp, add syntax for defining them , etc.
-
--- TODO: Allow ! to work on anything, or just booleans?
--- Same goes for -, +, etc. 
-{- alternative:
-   case t of
-      (TApp _ (TId _ "int") []) -> return t
-      (TApp _ (TId _ "double") []) -> return t
-      _ -> fail $ "Expected int or double, got: " ++ (show xtype) -}
+-- TODO: deal with TApp, add syntax for defining them , etc.
 
 -- in pJS, anything can be used in a number and bool context without anything crashing.
 -- for now, we're making this a lot stricter:
@@ -55,6 +47,7 @@ numberContext vars types t
    | t == (types ! "double") = return t
    | otherwise               = fail $ "expected int or double, got " ++ (show t)
 
+-- bool is also much freer in pJS. 
 boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 boolContext vars types t
     | t == (types ! "bool") = return t
@@ -117,7 +110,7 @@ allPathsReturn vars types rettype stmt = case stmt of
     --      should they be allowed to have return statements, but only if their type is undefined?
     --      all of these should be fine, since anything using the function's return value would be
     --      unable to do anything with it.
-    then fail "Cannot return anything from a functino whose return type is undefined"
+    then fail "Cannot return anything from a function whose return type is undefined"
     else do
       exprtype <- typeOfExpr vars types expr
       if isSubType vars types exprtype rettype
@@ -354,6 +347,7 @@ typeOfExpr vars types expr = case expr of
                 then return funcrettype
                 else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " ++ show funcargtype
 -}
+
   FuncExpr _ argnames functype' bodyblock@(BlockStmt _ bodystmts) -> do
     let functype = resolveType vars types functype'
     case functype of
@@ -381,6 +375,7 @@ typeOfExpr vars types expr = case expr of
 -- and var declarations, handled in whatever calls typeCheckStmt; both cases use
 -- Environment.hs .
 -- return True, or fail
+
 typeCheckStmt :: (Monad m) => Env -> Env -> (Statement SourcePos) -> m Bool
 typeCheckStmt vars types stmt = case stmt of 
   BlockStmt pos stmts -> do
@@ -434,6 +429,21 @@ typeCheckStmt vars types stmt = case stmt of
   ForInStmt _ (ForInNoVar (Id _ varname)) inexpr body -> 
     fail "for..in loops NYI"
     
+  ForStmt _ init test incr body -> do
+    --var decls in the init are already processed by now
+    let checkinit = case init of
+          ExprInit expr -> (typeOfExpr vars types expr >> return True)
+          _ -> return True
+--        parsetest = case test of
+          
+    checkinit
+    testtype <- maybe (return $ types ! "bool") (typeOfExpr vars types) test
+    boolContext vars types testtype
+    --we don't care about the incr type, but it has to type-check
+    --we use (types ! "bool") as filler so that 'maybe' can type properly
+    maybe (return $ types ! "bool") (typeOfExpr vars types) incr
+    typeCheckStmt vars types body
+    
   ReturnStmt{} -> return True --handled elsewhere  
   VarDeclStmt{} -> return True -- handled elsewhere
   
@@ -443,10 +453,6 @@ typeCheckStmt vars types stmt = case stmt of
 data Statement a
   = SwitchStmt a (Expression a) [CaseClause a]
   | ForInStmt a (ForInInit a) (Expression a) (Statement a)
-  | ForStmt a (ForInit a)        
-              (Maybe (Expression a)) -- increment
-              (Maybe (Expression a)) -- test
-              (Statement a)          -- body
   | TryStmt a (Statement a) {-body-} [CatchClause a] {-catches-}
       (Maybe (Statement a)) {-finally-}
   | ThrowStmt a (Expression a)
@@ -461,8 +467,8 @@ data Statement a
   
   -}
 
-typeCheckStmts :: (Monad m) => Env -> Env -> [(Statement SourcePos)] -> m Bool
-typeCheckStmts vars types stmts = typeCheckStmt vars types $ BlockStmt (initialPos "[]") stmts
+--typeCheckStmts :: (Monad m) => Env -> Env -> [(Statement SourcePos)] -> m Bool
+--typeCheckStmts vars types stmts = typeCheckStmt vars types $ BlockStmt (initialPos "[]") stmts
 
 
 
