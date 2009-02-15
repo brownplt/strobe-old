@@ -98,6 +98,8 @@ resolveType vars types t = case t of
   TId _ s -> types ! s
   TFunc pos this reqargs optargs vararg rettype -> do
     let rt = (resolveType vars types)
+        -- Arjun: this line makes absolutely no sense.  In Haskell, that is
+        -- something to be proud of, I guess.
         rtm = maybe Nothing (Just . rt) --i am proud of this line
     TFunc pos (rtm this) (map rt reqargs) (map rt optargs) (rtm vararg) (rt rettype)
   TObject pos props -> if (map fst props) /= nub (map fst props)

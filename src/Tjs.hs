@@ -3,6 +3,7 @@ module Main where
 import TypedJavaScript.Syntax
 import TypedJavaScript.Parser
 import TypedJavaScript.Lexer
+import TypedJavaScript.Contracts
 
 import Text.PrettyPrint.HughesPJ ( render, vcat )
 import TypedJavaScript.PrettyPrint (pp)
