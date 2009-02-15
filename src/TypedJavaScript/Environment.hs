@@ -73,7 +73,9 @@ extractReturns statements =
 -- ----------------------------------------------------------------------------
 -- Environment
 
-type RawEnv = [(Id SourcePos,(Maybe (Type SourcePos)), (Maybe (Expression SourcePos)))] 
+type RawEnv = [(Id SourcePos,
+               (Maybe (Type SourcePos)), 
+               (Maybe (Expression SourcePos)))] 
 
 globalEnv :: [Statement SourcePos] -> RawEnv
 globalEnv globalStatements = 

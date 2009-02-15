@@ -2,7 +2,7 @@ module TypedJavaScript.TypeChecker
   ( typeOfExpr
   , resolveType
   , typeCheckStmt
- -- , typeCheckStmts
+  , typeCheck
   , isSubType
   , Env
   , corePos
@@ -11,6 +11,7 @@ module TypedJavaScript.TypeChecker
   ) where
 
 import Data.Generics
+import qualified Data.Maybe as Y
 import Data.List (foldl', nub)
 import qualified Data.Map as M
 import Data.Map(Map, (!))
@@ -23,6 +24,17 @@ import TypedJavaScript.Environment
 
 -- ----------------------------------------------------------------------------
 type Env = Map String (Type SourcePos)
+
+-- |Type-checks a sequence of statemens. Returns the local environment.
+typeCheck :: [Statement SourcePos] -- ^statements to type-check
+          -> IO Env -- ^identifiers introduced by these statements,
+                    -- along with the enclosing environment
+typeCheck stmts = do
+  let rawEnv = globalEnv stmts
+  -- TODO: don't return the enclosing environment
+  env <- processRawEnv coreVarEnv coreTypeEnv [] rawEnv
+  mapM_ (typeCheckStmt env coreTypeEnv) stmts
+  return env
 
 corePos = initialPos "core"
 
