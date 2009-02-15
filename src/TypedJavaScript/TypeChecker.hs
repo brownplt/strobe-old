@@ -10,7 +10,7 @@ module TypedJavaScript.TypeChecker
   ) where
 
 import Data.Generics
-import Data.List (foldl')
+import Data.List (foldl', nub)
 import qualified Data.Map as M
 import Data.Map(Map, (!))
 import Control.Monad(liftM, zipWithM)
@@ -55,6 +55,13 @@ boolContext vars types t
 
 -- is t1 a subtype of t2? so far, just plain equality.
 isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
+isSubType vars types (TObject _ props1) (TObject _ props2) =
+  all (\(o2id@(Id _ o2propname), o2proptype) ->
+         (case lookup o2id props1 of 
+            Nothing -> False --o1 must have everything o2 does
+            Just o1proptype -> isSubType vars types o1proptype o2proptype))
+      props2
+
 isSubType vars types t1 t2 
  | (t1 == t2) = True
  | (t1 == types ! "undefined") = True --everything is nullable
@@ -80,6 +87,9 @@ resolveType vars types t = case t of
     let rt = (resolveType vars types)
         rtm = maybe Nothing (Just . rt) --i am proud of this line
     TFunc pos (rtm this) (map rt reqargs) (map rt optargs) (rtm vararg) (rt rettype)
+  TObject pos props -> if (map fst props) /= nub (map fst props)
+    then error "duplicate property name in object type."
+    else TObject pos $ map (\(id,t) -> (id, resolveType vars types t)) props
   _ -> t
 
 -- returns whether or not all possible paths return, and whether those return statements return subtypes of
@@ -102,7 +112,7 @@ allPathsReturn vars types rettype stmt = case stmt of
   DoWhileStmt _ body _ -> allPathsReturn vars types rettype body
   ForInStmt _ _ _ body -> allPathsReturn vars types rettype body
   ForStmt _ _ _ _ body -> allPathsReturn vars types rettype body
-  TryStmt _ body catches mfinally -> fail "allPathsReturn, TryStmt, NYI" -- true if all catches and the finally have a return
+  TryStmt _ body catches mfinally -> fail "allPathsReturn, TryStmt, NYI" -- true if all catches and/or the finally have a return
   ThrowStmt{} -> return True
   ReturnStmt _ (Just expr) -> if (rettype == (types ! "undefined"))
     --TODO: decide what to do about functions with undefined return type - should they
@@ -110,7 +120,7 @@ allPathsReturn vars types rettype stmt = case stmt of
     --      should they be allowed to have return statements, but only if their type is undefined?
     --      all of these should be fine, since anything using the function's return value would be
     --      unable to do anything with it.
-    then fail "Cannot return anything from a function whose return type is undefined"
+    then fail "cannot return anything from a function whose return type is undefined"
     else do
       exprtype <- typeOfExpr vars types expr
       if isSubType vars types exprtype rettype
@@ -125,7 +135,7 @@ allPathsReturn vars types rettype stmt = case stmt of
   _ -> return False
 
 -- given the current var and type environment, and a raw environment representing
--- new variable declarations from, for example, a function, return the new var
+-- new variable declarations from, for example, a function, return the new variables
 -- environment or fail on type error.
 -- the variables initialized with expressions can reference other variables in the rawenv, but only
 -- those declared above them.
@@ -135,29 +145,28 @@ processRawEnv :: (Monad m) => Env -> Env -> [String] -> RawEnv -> m Env
 processRawEnv vars types _ [] = return vars
 processRawEnv vars types _ ((Id _ varname, Nothing, Nothing):rest) = 
   fail "Invalid RawEnv contains var that has neither type nor expression"
-processRawEnv vars types forbidden ((Id _ varname, Nothing, Just expr):rest) = do
+processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) = 
   if elem varname forbidden
     then fail $ "Can't re-define " ++ varname
-    else do
-      exprtype <- typeOfExpr vars types expr
-      processRawEnv (M.insert varname exprtype vars) types (varname:forbidden) rest
-processRawEnv vars types forbidden ((Id _ varname, Just vartype, Nothing):rest) =
-  if elem varname forbidden
-    then fail $ "Can't re-define " ++ varname
-    else 
-      processRawEnv (M.insert varname (resolveType vars types vartype) vars) 
-                    types (varname:forbidden) rest
-processRawEnv vars types forbidden ((Id _ varname, Just vartype, Just expr):rest) = do
-  if elem varname forbidden
-    then fail $ "Can't re-define " ++ varname
-    else do
-      exprtype <- typeOfExpr vars types expr
-      let vartype' = (resolveType vars types vartype)
-      if not $ isSubType vars types exprtype vartype'
-        then fail $ "Error: expression " ++ (show expr) ++ 
-                    " has type " ++ (show exprtype) ++ 
-                    " which is not a subtype of declared type " ++ (show vartype')
-        else processRawEnv (M.insert varname vartype' vars) types (varname:forbidden) rest
+    else case entry of
+      (Id _ varname, Nothing, Just expr) -> do
+        exprtype <- typeOfExpr vars types expr
+        processRawEnv (M.insert varname exprtype vars) types (varname:forbidden) rest
+      (Id _ varname, Just vartype, Nothing) -> do
+        let vartype' = (resolveType vars types vartype)
+        --seq because we want an error instantly, even if the variable is declared but never used
+        --TODO: change resolveType to a Monad, since it can fail now?
+        seq vartype' $ processRawEnv (M.insert varname vartype' vars) 
+                         types (varname:forbidden) rest
+      (Id _ varname, Just vartype, Just expr) -> do
+        exprtype <- typeOfExpr vars types expr
+        let vartype' = (resolveType vars types vartype)
+        seq vartype' $ 
+          if not $ isSubType vars types exprtype vartype'
+            then fail $ "expression " ++ (show expr) ++ 
+                        " has type " ++ (show exprtype) ++ 
+                        " which is not a subtype of declared type " ++ (show vartype')
+            else processRawEnv (M.insert varname vartype' vars) types (varname:forbidden) rest
 
 -- we need two environments - one mapping variable id's to their types, and
 -- one matching type id's to their type. types gets extended with type statements,
@@ -173,7 +182,25 @@ typeOfExpr vars types expr = case expr of
   NullLit a          -> return $ types ! "undefined"  --TODO: should null just be undefined?
 
   ArrayLit a exprs   -> fail "arrays NYI"
-  ObjectLit a props  -> fail "objects NYI"
+  ObjectLit pos props  -> let
+      procProps [] = return []
+      --TODO: object literals technically _could_ have numbers in them, they just
+      --TODO: wouldn't be accessible with our syntax. should we fail if we see them?
+      procProps ((prop, giventype, expr):rest) = do
+        --TODO: this might be refactorable into processRawEnv
+        exprtype <- typeOfExpr vars types expr
+        let giventype' = maybe exprtype (resolveType vars types) giventype
+        if not $ isSubType vars types exprtype giventype' 
+          then fail $ "expression " ++ (show expr) ++ 
+                      " has type " ++ (show exprtype) ++ 
+                      " which is not a subtype of declared type " ++ (show giventype')
+          else do
+            let thisprop = (Id pos (propToString prop), giventype')
+            restprops <- procProps rest
+            if elem (propToString prop) $ map (\((Id _ s),_) -> s) restprops
+              then fail $ "duplicate property name in object literal: " ++ (propToString prop)
+              else return (thisprop:restprops)
+   in liftM (TObject pos) (procProps props)
 
   ThisRef a          -> return $ vars ! "this"
   VarRef a (Id _ s)  -> maybe (fail ("unbound ID: " ++ s)) return (M.lookup s vars)
@@ -200,7 +227,7 @@ typeOfExpr vars types expr = case expr of
       PrefixPlus   -> numberContext vars types xtype
       PrefixMinus  -> numberContext vars types xtype
       PrefixTypeof -> return $ types ! "string"
-      PrefixDelete -> return $ types ! "bool" --TODO: remove delete?
+      PrefixDelete -> return $ types ! "bool" --TODO: remove delete? add checks for readonly fields, etc.
 
   InfixExpr a op l r -> do
     -- TODO: is the monadism bad because it kills chances for automatic parallelization of our code? =(.
@@ -242,7 +269,7 @@ typeOfExpr vars types expr = case expr of
         TFunc _ _ _ _ _ _ -> return $ types ! "bool"
         _                 -> fail $ "rhs of 'instanceof' must be constructor, got " ++  show rtype
 
-      --TODO: i forgot what we said about equality. assume they all work for now:
+      -- true == "1" will evaluate to true in tJS...
       OpEq        -> return $ types ! "bool" 
       OpNEq       -> return $ types ! "bool"      
       OpStrictEq  -> return $ types ! "bool"
@@ -339,14 +366,6 @@ typeOfExpr vars types expr = case expr of
               argexprs (reqargtypes ++ optargtypes)
             return rettype
       _ -> fail $ "Expected function with only reqargs, got " ++ show functype
-
-{-          else do
-            zipWithM (\expr reqtype -> do
-              argexprtype <- typeOfExpr vars types $ argexprs !! 0
-              if isSubType vars types argexprtype funcargtype
-                then return funcrettype
-                else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " ++ show funcargtype
--}
 
   FuncExpr _ argnames functype' bodyblock@(BlockStmt _ bodystmts) -> do
     let functype = resolveType vars types functype'

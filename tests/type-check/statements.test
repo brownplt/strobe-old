@@ -35,10 +35,9 @@ function() :: (->) {
   }
 } :: (->);
 
-//improper statements:
-function() :: (->) { continue; } @@ fails;
+//TODO: put these tests somewhere else
+/*function() :: (->) { continue; } @@ fails;
 function() :: (->) { break; } @@ fails;
-//TODO: goto with invalid labels?
 function() :: (->) { 
 stmt: for (;;) { break invalid; }} @@ fails;
 function() :: (->) { 
@@ -46,7 +45,7 @@ stmt: for (;;) { break stmt; }} :: (->);
 function() :: (->) { 
 stmt: for (;;) { continue invalid; }} @@ fails;
 function() :: (->) { 
-stmt: for (;;) { continue stmt; }} :: (->);
+stmt: for (;;) { continue stmt; }} :: (->);*/
 
 function() :: (->) {
   for (var a=1,b=2,c=false; c; a+=1, b-=2)

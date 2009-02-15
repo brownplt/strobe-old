@@ -2,7 +2,7 @@
 module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
-         ForInit(..),ForInInit(..),Type(..),showSp) where
+         ForInit(..),ForInInit(..),Type(..),showSp, propToString) where
 
 import Text.ParserCombinators.Parsec(SourcePos,sourceName,sourceLine) -- used by data JavaScript
 import Data.Generics(Data,Typeable)
@@ -16,7 +16,7 @@ data JavaScript a
 
 data Id a = Id a String deriving (Ord,Data,Typeable)
 
-
+--TODO: add TExtend syntax ( <- operator)
 data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)               
               | TFunc a (Maybe (Type a)) {- type of this -} 
                         [Type a] {- required args -} 
@@ -65,16 +65,18 @@ data PostfixOp
 
 --property within an object literal
 --TODO: remove PropString?
+--TODO: would it be possible to write an "extract source pos" generic function
+--      that would take any one of these and return its source position?
 data Prop a 
   = PropId a (Id a) | PropString a String | PropNum a Integer
   deriving (Data,Typeable,Ord)
 
+propToString (PropId _ (Id _ s)) = s
+propToString (PropString _ s)    = s
+propToString (PropNum _ i)       = show i
+
 instance Eq (Prop a) where
-  x == y = (toStr x) == (toStr y) where
-    toStr = \p -> case p of 
-                      PropId _ (Id _ s) -> s
-                      PropString _ s -> s
-                      PropNum _ i -> show i
+  x == y = (propToString x) == (propToString y) where
 
 data Expression a
   = StringLit a String
@@ -101,7 +103,6 @@ data Expression a
   | FuncExpr a [Id a] {- arg names -} 
                (Type a)
                (Statement a)    {- body -}
-  -- | StaticTypeofExpr a (Expression a) -- the <> operator (<5> evaluates to int)
   deriving (Data,Typeable,Eq,Ord)
 
 data CaseClause a 

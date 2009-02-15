@@ -27,7 +27,6 @@ import Control.Monad.Trans (MonadIO,liftIO)
 import Numeric(readDec,readOct,readHex)
 import Data.Char(chr)
 import Data.Char
-import Data.List(nub)
  
 -- We parameterize the parse tree over source-locations.
 type ParsedStatement = Statement SourcePos
@@ -77,7 +76,7 @@ parseTypeSimple = do
             then fail "generic application must have at least one type" 
             else return (TApp pos (TId idpos idstr) innertypes))
         <|> (return (TId idpos idstr)))
-    <|> ((do fields <- braces $ (liftM2 (,) identifier (do reservedOp "::"; parseTypeSimple)) `sepBy` comma -- structural object type
+    <|> ((do fields <- braces $ (liftM2 (,) identifier (do reservedOp "::"; parseTypeSimple)) `sepEndBy` comma -- structural object type
              return (TObject pos fields)) <?> "object type")
     -- <|> ((do expr <- angles parseExpression; return (TExpr pos expr)) <?> "<> operator") -- <> operator
     <|> ((parens parseTypeNoColons) <?> "parentheses") -- parens
@@ -107,7 +106,7 @@ parseTypeNoColons :: TypeParser st
 parseTypeNoColons = do
   pos <- getPosition
   thistype <- try (do tt <- parseTypeSimple    --'try' to make sure we don't eat the first required arg
-                      reservedOp ":"
+                      reservedOp "|" --changed from ":" to work better with typed object literals
                       return (Just tt)) <|> (return Nothing)
   args <- (do st <- parseTypeSimple
               (reservedOp "?" >> return (st,OptArg))
@@ -431,7 +430,7 @@ parseVarRef:: ExpressionParser st
 parseVarRef = liftM2 VarRef getPosition identifier
 
 parseArrayLit:: ExpressionParser st
-parseArrayLit = liftM2 ArrayLit getPosition (squares (parseExpression `sepBy` comma))
+parseArrayLit = liftM2 ArrayLit getPosition (squares (parseExpression `sepEndBy` comma))
 
 -- function hii(a, b, c, d, e) :: (int, int, [string, string], vart... -> int) {
 --     return 5;
@@ -534,18 +533,13 @@ parseObjectLit =
                        (liftM (\(StringLit p s) -> (p,s)) parseStringLit))
                 <|> (liftM2 PropId getPosition identifier)
                 <|> (liftM2 PropNum getPosition decimal)
-        colon
         typeannot <- parseMaybeType
+        colon
         val <- parseAssignExpr
         return (name,typeannot,val)
-      propName = \(p, _, _) -> p
     in do pos <- getPosition
           props <- braces (parseProp `sepEndBy` comma) <?> "object literal"
-          -- TODO: move objects having duplicate properties check to the type checker.
-          let props' = map propName props
-          if props' /= nub props'
-            then fail "Object literals can't have duplicate property names in tJS"
-            else return $ ObjectLit pos props
+          return $ ObjectLit pos props
 
 --{{{ Parsing numbers.  From pg. 17-18 of ECMA-262.
 
