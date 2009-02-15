@@ -532,7 +532,7 @@ parseObjectLit =
         name <- (liftM (uncurry PropString) 
                        (liftM (\(StringLit p s) -> (p,s)) parseStringLit))
                 <|> (liftM2 PropId getPosition identifier)
-                <|> (liftM2 PropNum getPosition decimal)
+                <|> (liftM2 PropNum getPosition (do x<-decimal; whiteSpace; return x))
         typeannot <- parseMaybeType
         colon
         val <- parseAssignExpr

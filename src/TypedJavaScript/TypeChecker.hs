@@ -5,6 +5,7 @@ module TypedJavaScript.TypeChecker
  -- , typeCheckStmts
   , isSubType
   , Env
+  , corePos
   , coreTypeEnv
   , coreVarEnv
   ) where

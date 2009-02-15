@@ -26,6 +26,6 @@ main = do
   putStrLn "-----------------------"
   putStrLn $ show $ globalEnv $ statements
   putStrLn "Type checking..."
-  success <- typeCheckStmts coreVarEnv coreTypeEnv statements
+  success <- typeCheckStmt coreVarEnv coreTypeEnv (BlockStmt corePos statements)
   putStrLn $ show $ success
   
