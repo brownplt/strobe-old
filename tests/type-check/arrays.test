@@ -1,119 +1,76 @@
 {} :: {}; //TODO: fix testcase parser so you can have a comment on the first line
-//TODO: replace intarray with Array<int> once we have generics
-//TODO: add support for new Array<int>,
+//TODO: add support for new Array<int>, etc.
 
-function (arry) :: (intarray -> int) {
+function (arry) :: (Array<int> -> int) {
   return (5)[13];
 } @@ fails;
-function (arry) :: (intarray -> int) {
+function (arry) :: (Array<int> -> int) {
   return arry[arry];
 } @@ fails;
-function (arry) :: (intarray -> int) {
+function (arry) :: (Array<int> -> int) {
   return arry[arry[0]];
-} :: (intarray->int);
+} :: (Array<int>->int);
 
 //sum:
-function (arry) :: (intarray -> int) {
+function (arry) :: (Array<int> -> int) {
   var sum :: int = 0;
   for (var indx = 0; indx < arry.length; ++indx) {
     sum += arry[indx];
   }
   return sum;
-} :: (intarray -> int);
+} :: (Array<int> -> int);
 
 //monomorphic map:
-function (int2str, arry) :: ((int -> string), intarray -> stringarray) {
-  var rezarray :: stringarray; //todo: add a way to instantiate an array. this code WILL FAIL OTHERWISE
+function (int2str, arry) :: ((int -> string), Array<int> -> Array<string>) {
+  var rezarray :: Array<string>; //todo: add a way to instantiate an array. this code WILL FAIL OTHERWISE
   for (var i=0; i < arry.length; ++i) {
     rezarray[i] = int2str(arry[i]);
   }
   return rezarray;
-} :: ((int -> string), intarray -> stringarray);
+} :: ((int -> string), Array<int> -> Array<string>);
 
 //monomorphic filter:
-function (int2bool, arry) :: ((int -> bool), intarray -> intarray)  {
-  var rezarray :: intarray;
+function (int2bool, arry) :: ((int -> bool), Array<int> -> Array<int>)  {
+  var rezarray :: Array<int>;
   var ri = 0;
   for (var i=0; i < arry.length; ++i) {
     if (int2bool(arry[i]))
       rezarray[ri++] = arry[i];
   }
   return rezarray;
-} :: ((int -> bool), intarray -> intarray);
-/*
-{x: 5} :: {x :: int};
-{x :: int : 5} :: {x :: int};
-{x :: double : 5} :: {x :: double};
+} :: ((int -> bool), Array<int> -> Array<int>);
 
-{point :: {x::int,y::int} : {x:5, y:3}} :: {point :: {x::int,y::int}};
+//Array subtypes:
+function () :: (-> Array<int>) {
+  var z :: Array<int>;
+  var y :: Array<double>;
+  y = z;
+  return z;
+} :: (-> Array<int>);
 
-//with subtyping:
-{x:5} :: {};
-{point: {x: 10.0, y: 13.9}} :: {};
+//arrays of objects:
+//TODO: make these use iterators once those work.
+//TODO: write a version with polymorphic map once that exists.
+function (ptarray) :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>) {
+  var resarray :: Array<double>;
+  for (var i=0; i < ptarray.length; ++i)
+    resarray[i] = ptarray[i].mag();
+  return resarray;
+} :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>);
 
-{x :: int : 5} :: {x :: double};
-{point :: {x::int,y::int} : {x:5, y:3}} :: {point :: {x::int,y::double}};
-{point :: {x::int,y::int} : {x:5, y:3}} :: {point :: {x::double,y::int}};
-{point :: {x::int,y::int} : {x:5, y:3}} :: {point :: {y::double,x::double}};
+function (ptarray) :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>) {
+  function map(pt2dub, arry) :: (({x :: int, y :: int, mag :: (-> double)} -> double), 
+                                 Array<{x :: int, y :: int, mag :: (-> double)}> -> 
+                                 Array<double>) {
+    var rezarray :: Array<double>; //todo: add a way to instantiate an array. this code WILL FAIL OTHERWISE
+    for (var i=0; i < arry.length; ++i) {
+      rezarray[i] = pt2dub(arry[i]);
+    }
+    return rezarray;
+  }
 
-{point :: {x::int,y::int} : {x:5.3, y:3}} @@ fails;
-{point :: {x::int,y::int} : {z:13, y:3}} @@ fails;
-{point :: {x::int,y::int} : {z:5.3, y:3, x: 334}} :: {point :: {y::int,x::int}};
+  //TODO: is really annoying to re-specify the pt type everywhere.
+  return map(function (pt) :: ({x :: int, y :: int, mag :: (-> double)} -> double) { return pt.mag(); },
+             ptarray);
+} :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>);
 
-{point :: {} : {a: '4', b: '3', c: '1gg', d: '55t'}} :: {point :: {}};
-
-//dotrefs
-function (point) :: ({x::int, y::int} -> double) {
-  var sqrt :: (double -> double);
-  var magnitude = point.x * point.x + point.y * point.y;
-  return sqrt(magnitude);
-} :: ({x :: int, y :: int} -> double);
-function (point) :: ({x::int, y::int} -> double) {  
-  var sqrt :: (double -> double);
-  var magnitude = point.x * point.x + point.y * point.y + point.z * point.z;
-  return sqrt(magnitude);
-} @@ fails;
-
-//more nested objects
-function() :: (->) {
-  var gadget :: {
-    debug :: {
-      error :: (string -> ),
-      trace :: (string->),
-      warning :: (string ->),
-    },
-    storage :: {
-      extract :: (string -> string),
-      openText :: (string -> string),
-    }};
-  var debugfunc = gadget.debug.warning;
-  var extractfunc = gadget.storage.extract;
-  //disclaimer: the following function calls are meaningless
-  debugfunc(extractfunc("NUMBER_PROCESSORS"));
-  debugfunc("The number of RAMs is: " + extractfunc("MEMORY_SIZE"));
-  gadget.debug.warning("You are being warned.");
-  gadget.debug.trace = gadget.debug.error;
-  gadget.debug.trace("This is showing an error, because I messed around with the functions.");
-} :: (->);
-  
-
-//TODO: add test cases using toString et. al., once inheritance from base object is done
-
-//TODO: allow number properties? 
-{0: '3', 4: 4} @@ succeeds; //there is no way to write out this type
-
-//duplicates in literals:
-{z: 5, 5: 6, 5: 9} @@ fails;
-
-//duplicates in types:
-{point :: {x::int,x::int} : {x:5}} @@ fails;
-
-function() :: (->) {
-  var z :: {name :: int, name :: string, name :: double};
-  //z = 4;
-} @@ fails;
-function() :: (->) {
-  var z :: {name :: int, name :: int};
-} @@ fails;
-
-*/

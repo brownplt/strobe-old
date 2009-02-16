@@ -87,16 +87,31 @@ isSubType vars types t1 t2
  | (t1 == types ! "int") = t2 == types ! "double"
  | otherwise = False
 
-{-
-isRetSubType :: (Monad m) => Env -> Env -> (Type SourcePos) -> (Statement SourcePos) -> m Bool
-isRetSubType vars types rettype (ReturnStmt _ mret) = if rettype == (types ! "undefined")
-  then maybe (return True) (\_ -> (return False)) mret
-  else case mret of
-         Nothing -> False
-         Just mretexpr -> do 
-           mrettype <- typeOfExpr vars types mretexpr
-           return $ isSubType vars types mrettype rettype-}
-           
+--get the most specific supertype. best = most specific to save typing.
+--used for figuring out what an array literal should evaluate to.
+bestSuperType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Maybe (Type SourcePos)
+-- best super type of two objects is an object that has as many properties as are in both:
+bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
+  --take everything that is in both
+  --TODO: refactor code
+  commonprops <- mapM id $ 
+                      filter ((/=) Nothing) $ 
+                             map (\(prop1id, t1) -> maybe Nothing 
+                                                          (\t2 -> do
+                                                            let mst = bestSuperType vars types t1 t2
+                                                            case mst of
+                                                              Nothing -> Nothing
+                                                              (Just st) -> Just (prop1id, st))
+                                                          (lookup prop1id props2))
+                                 props1
+  Just $ TObject (initialPos "supertype inference") commonprops
+    
+bestSuperType vars types t1 t2
+ | (t1 == t2) = Just t1
+ | (isSubType vars types t1 t2) = Just t2
+ | (isSubType vars types t2 t1) = Just t1
+ | otherwise = Nothing --error $ "No common super type between " ++ (show t1) ++ " and " ++ (show t2) 
+
 -- recursively resolve the type down to TApp, or a TFunc or a TObject containing
 -- only resolved types
 resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
@@ -111,7 +126,14 @@ resolveType vars types t = case t of
   TObject pos props -> if (map fst props) /= nub (map fst props)
     then error "duplicate property name in object type."
     else TObject pos $ map (\(id,t) -> (id, resolveType vars types t)) props
-  _ -> t
+  TApp pos (TId _ s) apps -> 
+    if s == "Array" then
+      if length apps /= 1 
+        then error "Array only takes one type parameter"
+        else (TObject pos [(Id pos "@[]", resolveType vars types (apps !! 0)),
+                           (Id pos "length", resolveType vars types (TId pos "int"))])
+    else t --otherwise we likely have a base-case "int", "string", etc.
+  _ -> t  
 
 -- returns whether or not all possible paths return, and whether those return statements return subtypes of
 -- the supplied type
