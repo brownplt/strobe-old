@@ -74,3 +74,63 @@ function (ptarray) :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<
              ptarray);
 } :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>);
 
+//array literals
+function () :: (->) {
+  var z :: Array<int> = [1];
+} :: (->);
+function () :: (->) {
+  var z :: Array<int> = [1, 2];
+} :: (->);
+function () :: (->) {
+  var z :: Array<int> = [1, 3, 5, 19];
+} :: (->);
+//TODO: allow empty array literals at some point
+function () :: (->) {
+  var z :: Array<int> = [];
+} @@ fails; 
+
+//finding most commen supertypes:
+function () :: (->) {
+  var z :: Array<int> = [1, 3, 5.94, 19];
+} @@ fails; //Array<double> isn't a subtype of Array<int>
+function () :: (-> double) {
+  var z :: Array<double> = [1, 3, 5.94, 19];
+  return z[0];
+} :: (-> double);
+function () :: (->) {
+  var z :: Array<double> = [1.4, 3.1, 5.94, 19.23];
+} :: (->);
+//objects, now:
+function () :: (-> int) {
+  var z :: Array<{x::int}> = [{x: 5}, {x: 12}, {x: 93}];
+  return z[0].x + z[1].x;
+} :: (-> int);
+function () :: (-> int) {
+  var z :: Array<{x::int}> = [{x: 5.7}, {x: 12}, {x: 93}];
+  return z[0].x + z[1].x;
+} @@ fails;
+function () :: (-> int) {
+  var z :: Array<{x::int}> = [{x: "error will robinson"}, {x: 12}, {x: 93}];
+  return z[0].x + z[1].x;
+} @@ fails;
+//supertype even when something isnt a subtype of the other:
+function () :: (-> int) {
+  var z :: Array<{x::int}> = [{x: 5, z: "hiroxlmen"}, {x: 46, y: "dont matter"}, {x: 12}, {x: 93}];
+  return z[0].x + z[1].x;
+} :: (-> int);
+//TODO: should the following fail or succeed?
+function () :: (-> int) {
+  var z :: Array<undefined> = [1, "hi", 43.9, true];
+  return 3;
+} @@ fails;
+function () :: (-> int) {
+  var z :: Array<int> = [undefined, 1];
+  return z[2];
+} :: (-> int);
+function () :: (-> double) {
+  var z :: Array<double> = [undefined, 1, undefined, 3.0];
+  return z[0];
+} :: (-> double);
+
+
+

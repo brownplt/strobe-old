@@ -15,7 +15,7 @@ import qualified Data.Maybe as Y
 import Data.List (foldl', nub)
 import qualified Data.Map as M
 import Data.Map(Map, (!))
-import Control.Monad(liftM, zipWithM)
+import Control.Monad(liftM, zipWithM, foldM)
 
 import Text.ParserCombinators.Parsec(SourcePos)
 import Text.ParserCombinators.Parsec.Pos
@@ -92,7 +92,7 @@ isSubType vars types t1 t2
 bestSuperType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Maybe (Type SourcePos)
 -- best super type of two objects is an object that has as many properties as are in both:
 bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
-  --take everything that is in both
+  --take everything that is in both. worst-case: {}.
   --TODO: refactor code
   commonprops <- mapM id $ 
                       filter ((/=) Nothing) $ 
@@ -223,7 +223,16 @@ typeOfExpr vars types expr = case expr of
   BoolLit a _        -> return $ types ! "bool"
   NullLit a          -> return $ types ! "undefined"  --TODO: should null just be undefined?
 
-  ArrayLit a exprs   -> fail "arrays NYI"
+  ArrayLit pos exprs   -> do
+    exprtypes <- mapM (typeOfExpr vars types) exprs
+    if length exprs == 0
+      then fail $ "Empty array literals are not yet supported."
+      else let (e1:erest) = exprtypes in do
+             st <- foldM (\bestsofar newt -> maybe (fail $ "Array literal has no common supertype")
+                                                   return (bestSuperType vars types bestsofar newt))
+                         e1 erest
+             return $ resolveType vars types $ TApp pos (TId pos "Array") [st]
+
   ObjectLit pos props  -> let
       procProps [] = return []
       --TODO: object literals technically _could_ have numbers in them, they just
