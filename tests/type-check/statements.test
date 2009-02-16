@@ -56,3 +56,6 @@ function() :: (->) {
     if (pyu+"string" == "49string") break;   
   }
 } :: (->);
+function() :: (->) {
+  for (i = 0; i < 300; ++i) {}
+} @@ fails; //i is not defined

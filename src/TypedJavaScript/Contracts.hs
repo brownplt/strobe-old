@@ -36,6 +36,7 @@ toContract (TApp pos constr args) = case (constr,args) of
   (TId _ "string",[]) -> NamedContract pos "isString"
   (constr,args) -> error $ "toContract does not know " ++  show (constr,args)
 toContract x = error $ "toContract does not handle " ++ show x
+--TODO: add arrayOf for objects with @[] in them.
 
 -- |Converts a type environment (presumably, a top-level type-environment)
 -- to a list of 'InterfaceItem's.

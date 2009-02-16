@@ -44,7 +44,13 @@ globalObjectType = TObject corePos []
 coreTypeEnv :: Env
 coreTypeEnv = M.fromList $ (map (\s -> (s, (TApp corePos (TId corePos s) [])))
                                 ["string", "double", "int", "bool", "undefined"]) ++
-              [("@global", globalObjectType)]
+              [("@global", globalObjectType),
+               --TODO: load the following from a file:
+               ("intarray", TObject corePos [(Id corePos "@[]", (coreTypeEnv ! "int")),
+                                             (Id corePos "length",  (coreTypeEnv ! "int"))]),
+               ("stringarray", TObject corePos [(Id corePos "@[]", (coreTypeEnv ! "string")),
+                                             (Id corePos "length", (coreTypeEnv ! "int"))])
+                                             ]
 
 coreVarEnv :: Env
 coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global"),
@@ -158,12 +164,11 @@ allPathsReturn vars types rettype stmt = case stmt of
 -- this starts off with just the function arguments, and each added variable is added to the list
 processRawEnv :: (Monad m) => Env -> Env -> [String] -> RawEnv -> m Env
 processRawEnv vars types _ [] = return vars
-processRawEnv vars types _ ((Id _ varname, Nothing, Nothing):rest) = 
-  fail "Invalid RawEnv contains var that has neither type nor expression"
 processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) = 
   if elem varname forbidden
     then fail $ "Can't re-define " ++ varname
     else case entry of
+      (Id _ _, Nothing, Nothing) -> fail "Invalid RawEnv contains var that has neither type nor expression"
       (Id _ varname, Nothing, Just expr) -> do
         exprtype <- typeOfExpr vars types expr
         processRawEnv (M.insert varname exprtype vars) types (varname:forbidden) rest
@@ -220,8 +225,25 @@ typeOfExpr vars types expr = case expr of
   ThisRef a          -> return $ vars ! "this"
   VarRef a (Id _ s)  -> maybe (fail ("unbound ID: " ++ s)) return (M.lookup s vars)
 
-  DotRef a expr id     -> fail "dotref NYI"
-  BracketRef a xc xk   -> fail "bracketref NYI"
+  DotRef a expr id     -> do
+    exprtype <- typeOfExpr vars types expr
+    --TODO: add an "objectContext" function that would convert string to String, double to Number, etc.
+    case exprtype of
+      TObject _ props -> do
+        maybe (fail $ "object " ++ (show exprtype) ++ " has no '" ++ (show id) ++ "' property")
+              return (lookup id props)
+      _ -> fail $ "dotref requires an object type, got a " ++ (show exprtype)
+  BracketRef a contexpr keyexpr   -> do
+    conttype <- typeOfExpr vars types contexpr
+    case conttype of
+      TObject _ props -> do
+        --TODO: once map-like things are done, add support for that here
+        keytype <- (typeOfExpr vars types keyexpr >>= numberContext vars types)
+        if keytype /= (types ! "int")
+          then fail $ "[] requires an int index, but " ++ (show keyexpr) ++ " has type " ++ (show keytype)
+          else maybe (fail $ "object " ++ (show conttype) ++ " is not an array.")
+                     return (lookup (Id a "@[]") props)
+      _ -> fail $ "[] requires an object, got " ++ (show conttype)
   NewExpr a xcon xvars -> fail "newexpr NYI"
   
   PostfixExpr a op x -> do
@@ -242,6 +264,7 @@ typeOfExpr vars types expr = case expr of
       PrefixPlus   -> numberContext vars types xtype
       PrefixMinus  -> numberContext vars types xtype
       PrefixTypeof -> return $ types ! "string"
+      PrefixVoid   -> return $ types ! "undefined" --TODO: I thought we removed PrefixVoid
       PrefixDelete -> return $ types ! "bool" --TODO: remove delete? add checks for readonly fields, etc.
 
   InfixExpr a op l r -> do

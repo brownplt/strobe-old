@@ -1,0 +1,15 @@
+1 :: int; //filler to make parser not complain
+/*
+function () :: (-> int) {
+    function inner(arry) :: (int... -> int) {
+        var sum :: int = 0;
+        for (var indx = 0; indx < arry.length; ++indx) {
+            sum += arry[indx];
+        }
+        return sum;
+    }
+    inner(1, 2, 3, 4, 5);
+    inner(9, 2, 3);
+    inner();
+    return inner(1,1,1,1,1,12,4342,424,24354,54,4324234,34234,3);
+} :: (-> int);*/
