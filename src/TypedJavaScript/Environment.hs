@@ -33,28 +33,6 @@ everythingBut combine canDescend query term = case canDescend term of
   True  -> foldl' combine (query term)
                   (gmapQ (everythingBut combine canDescend query) term)
 
--- -----------------------------------------------------------------------------
--- Generics for SourcePos
-
--- $sourcepos
--- This module defines 'Typeable' and 'Data' instances for 'SourcePos'.  These
--- definitions are complete guesswork.  However, this is the third project in
--- which definitions have worked just fine.
-
-instance Typeable SourcePos where
-  typeOf _  = 
-    mkTyConApp (mkTyCon "Text.ParserCombinators.Parsec.Pos.SourcePos") []
-    
-sourcePosDatatype = mkDataType "SourcePos" [sourcePosConstr1]
-sourcePosConstr1 = mkConstr sourcePosDatatype "SourcePos" [] Prefix
-
-instance Data SourcePos where
-  -- We treat source locations as opaque values.
-  gfoldl k z pos = z pos
-  toConstr _ = sourcePosConstr1
-  gunfold   = error "gunfold is not defined for SourcePos"
-  dataTypeOf = error "dataTypeOf is not defined for SourcePos"
-
 isNotFuncExpr :: Expression SourcePos -> Bool
 isNotFuncExpr (FuncExpr{}) = False
 isNotFuncExpr _            = True

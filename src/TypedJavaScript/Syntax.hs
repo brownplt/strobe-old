@@ -6,6 +6,8 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
 
 import Text.ParserCombinators.Parsec(SourcePos,sourceName,sourceLine) -- used by data JavaScript
 import Data.Generics(Data,Typeable)
+import WebBits.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..), 
+  PostfixOp (..))
 
 data JavaScript a
   -- |A script in <script> ... </script> tags.  This may seem a little silly,
@@ -40,28 +42,6 @@ instance Eq (Type a) where
                                         opt1 == opt2 && var1 == var2 && 
                                         ret1 == ret2
   t1 == t2                            = False
-
--- http://developer.mozilla.org/en/docs/
---   Core_JavaScript_1.5_Reference:Operators:Operator_Precedence
-data InfixOp = OpLT | OpLEq | OpGT | OpGEq  | OpIn  | OpInstanceof | OpEq | OpNEq
-             | OpStrictEq | OpStrictNEq | OpLAnd | OpLOr 
-             | OpMul | OpDiv | OpMod  | OpSub | OpLShift | OpSpRShift
-             | OpZfRShift | OpBAnd | OpBXor | OpBOr | OpAdd
-    deriving (Data,Typeable,Eq,Ord,Enum)
-
-data AssignOp = OpAssign | OpAssignAdd | OpAssignSub | OpAssignMul | OpAssignDiv
-  | OpAssignMod | OpAssignLShift | OpAssignSpRShift | OpAssignZfRShift
-  | OpAssignBAnd | OpAssignBXor | OpAssignBOr
-  deriving (Data,Typeable,Eq,Ord)
-
-data PrefixOp = PrefixInc | PrefixDec | PrefixLNot | PrefixBNot | PrefixPlus
-  | PrefixMinus | PrefixTypeof -- | PrefixVoid 
-  | PrefixDelete
-  deriving (Data,Typeable,Eq,Ord)
-  
-data PostfixOp 
-  = PostfixInc | PostfixDec
-  deriving (Data,Typeable,Eq,Ord)
 
 --property within an object literal
 --TODO: remove PropString?

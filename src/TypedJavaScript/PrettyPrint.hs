@@ -285,14 +285,6 @@ instance PrettyPrintable (JavaScript a) where
 --  show t = show $ pp t
 instance Show (Id a) where
   show t = show $ pp t
-instance Show (InfixOp) where
-  show t = show $ pp t
-instance Show (AssignOp) where
-  show t = show $ pp t
-instance Show (PrefixOp) where
-  show t = show $ pp t
-instance Show (PostfixOp) where
-  show t = show $ pp t
 instance Show (Prop a) where
   show t = show $ pp t
 instance Show (Expression a) where
