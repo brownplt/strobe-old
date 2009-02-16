@@ -32,7 +32,10 @@ toContract (TId pos id) =
 -- user-defined types.
 toContract (TApp pos constr args) = case (constr,args) of
   (TId _ "bool",[]) -> NamedContract pos "isBool"
+  (TId _ "int",[]) -> NamedContract pos "isInt"
   (TId _ "string",[]) -> NamedContract pos "isString"
+  (constr,args) -> error $ "toContract does not know " ++  show (constr,args)
+toContract x = error $ "toContract does not handle " ++ show x
 
 -- |Converts a type environment (presumably, a top-level type-environment)
 -- to a list of 'InterfaceItem's.
