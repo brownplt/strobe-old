@@ -1,0 +1,3 @@
+These test cases ensure that contracts (associated with types) work correctly.
+Theoretically, these contracts may only be violated by the untyped code (the
+"client").

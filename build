@@ -14,5 +14,3 @@ PREFIX=`pwd`/dist/install
 
 $RUNGHC Setup.lhs configure --user --prefix=$PREFIX
 $RUNGHC Setup.lhs build
-$RUNGHC Setup.lhs install
-

@@ -21,7 +21,6 @@ pretty stmts = render $ vcat $ map pp stmts
 main = do
   str <- getContents
   let stmts = parseString str
-  env' <- typeCheck stmts
-  let env = M.delete "undefined" (M.delete "this" env') -- what?
+  env <- typeCheck stmts
   stmts' <- encapsulateTypedModule (eraseTypesStmts stmts) env
   putStrLn (render $ JS.pp stmts') 
