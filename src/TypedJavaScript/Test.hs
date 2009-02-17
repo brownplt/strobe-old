@@ -82,31 +82,24 @@ getPathsWithExtension extension parentDirectory = do
 commandIO :: FilePath -- ^path of the executable
           -> [String] -- ^command line arguments
           -> B.ByteString  -- ^stdin
-          -> IO (Maybe B.ByteString) -- ^stdout or 'Nothing' on failure
+          -> IO (Either B.ByteString B.ByteString) -- ^stderr or stdout
 commandIO path args stdinStr = do
   let cp = CreateProcess (RawCommand path args) Nothing Nothing CreatePipe
                          CreatePipe CreatePipe True
   (Just hStdin, Just hStdout, Just hStderr, hProcess) <- createProcess cp
   B.hPutStr hStdin stdinStr
   stdoutStr <- B.hGetContents hStdout
-  stderrStr <- hGetContents hStderr
+  stderrStr <- B.hGetContents hStderr
   exitCode <- waitForProcess hProcess
   case exitCode of
-    ExitSuccess -> return (Just stdoutStr)
-    ExitFailure n -> do
-      B.hPutStrLn stdout stdoutStr -- echo for errors
-      hPutStrLn stderr stderrStr -- echo errors to our stderr
-      hPutStrLn stderr $ "Sub-process died with exit code " ++ show n
-      return Nothing
+    ExitSuccess -> return (Right stdoutStr)
+    ExitFailure n -> return (Left stderrStr)
 
 rhino :: FilePath        -- ^Path to the file
       -> B.ByteString    -- ^JavaScript source
-      -> IO B.ByteString -- ^Result from Rhino
+      -> IO (Either B.ByteString B.ByteString) -- ^Result from Rhino
 rhino path {- not used -} src = do
-  result <- commandIO "/usr/bin/env" 
-              ["java", "-classpath", "rhino.jar",
-               "org.mozilla.javascript.tools.shell.Main"]
-              src
-  case result of
-    Just str -> return str
-    Nothing -> fail "rhino signalled an error"
+  commandIO "/usr/bin/env" 
+    ["java", "-classpath", "rhino.jar",
+     "org.mozilla.javascript.tools.shell.Main"]
+    src

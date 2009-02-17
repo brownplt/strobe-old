@@ -10,6 +10,7 @@
 -- JavaScript-style comments are permitted in .test files.
 module Contracts where
 
+import Text.Regex.Posix
 import Text.ParserCombinators.Parsec
 import Text.PrettyPrint.HughesPJ (render)
 import Test.HUnit
@@ -19,7 +20,7 @@ import qualified Data.ByteString.Char8 as B
 import qualified WebBits.JavaScript as JS
 
 import TypedJavaScript.Syntax (Statement)
-import TypedJavaScript.Lexer (semi,reservedOp, reserved)
+import TypedJavaScript.Lexer (semi,reservedOp, reserved,stringLiteral)
 import TypedJavaScript.Parser (parseBlockStmt)
 
 
@@ -29,19 +30,6 @@ import TypedJavaScript.Contracts (encapsulateTypedModule)
 
 import TypedJavaScript.Test
 
-{-
-assertType :: SourcePos -> Expression SourcePos -> Type SourcePos -> Assertion
-assertType pos expr expectedType = do
-  --actualType <- typeOfExpr coreVarEnv coreTypeEnv expr
-  actualType <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
-  case actualType of
-    Left (err::(E.SomeException)) -> assertFailure ((showSp pos) ++ ": user error: " ++ (show err))
-    Right exprType -> do
-      let resolvedType = resolveType coreVarEnv coreTypeEnv expectedType
-      assertBool ((showSp pos) ++ ": type mismatch, " ++ (show exprType) ++ " is not a subtype of " ++ (show resolvedType)) 
-                 (isSubType coreVarEnv coreTypeEnv exprType resolvedType)
--}
-
 assertSucceeds :: SourcePos 
                -> Statement SourcePos
                -> JS.Statement SourcePos
@@ -50,9 +38,31 @@ assertSucceeds pos tjs js = do
   env <- typeCheck [tjs]
   tjs' <- encapsulateTypedModule (eraseTypesStmts [tjs]) env
   let str = "var window = { };\n" ++ render (JS.pp $ JS.BlockStmt pos [tjs',js])
-  rhino (sourceName pos) (B.pack str)
-  return ()
-               
+  r <- rhino (sourceName pos) (B.pack str)
+  case r of
+    Right stdout -> return ()
+    Left stderr  -> assertFailure $ "Error from Rhino on " ++ show pos ++ 
+                                    "\n" ++ (B.unpack stderr)
+
+assertBlames :: SourcePos 
+             -> String -- ^guilty party
+             -> Statement SourcePos
+             -> JS.Statement SourcePos
+             -> Assertion
+assertBlames pos blamed tjs js = do
+  let regexp = B.pack $ blamed ++ " violated the contract"
+  env <- typeCheck [tjs]
+  tjs' <- encapsulateTypedModule (eraseTypesStmts [tjs]) env
+  let str = "var window = { };\n" ++ render (JS.pp $ JS.BlockStmt pos [tjs',js])
+  r <- rhino (sourceName pos) (B.pack str)
+  case r of
+    Right stdout -> assertFailure $ "expected error at " ++ show pos ++
+                                    "; stdout printed " ++ (B.unpack stdout)
+    Left stderr  -> case stderr =~ regexp of
+      True -> return ()
+      False -> assertFailure $ "expected contract violation blaming " ++ 
+                               blamed ++ " at " ++ show pos ++
+                               "; stderr printed " ++ (B.unpack stderr)
 
 parseTestCase :: CharParser st Test
 parseTestCase = do
@@ -62,7 +72,13 @@ parseTestCase = do
         tjs <- parseBlockStmt
         js <- JS.parseBlockStmt
         return $ TestCase (assertSucceeds pos tjs js)
-  succeeds
+      blames = do
+        reserved "blames"
+        blamed <- stringLiteral
+        tjs <- parseBlockStmt
+        js <- JS.parseBlockStmt
+        return $ TestCase (assertBlames pos blamed tjs js)
+  succeeds <|> blames
   
 readTestFile :: FilePath -> IO Test
 readTestFile path = do
