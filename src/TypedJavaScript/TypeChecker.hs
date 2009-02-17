@@ -90,13 +90,11 @@ isSubType vars types t1 t2
 bestSuperType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Maybe (Type SourcePos)
 -- best super type of two objects is an object that has as many properties as are in both:
 bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
-  --take everything that is in both. worst-case: {}.
-  --this code went from long+ugly to medium+readable to short+unreadable. maybe revert back to medium+readable?
-  Just $ TObject (initialPos "supertype inference") $ 
-                 foldl (\cplist (prop1id, t1) -> cplist ++ (maybe 
-                         [] (\x -> [x]) $ 
-                         liftM ((,) prop1id) (lookup prop1id props2 >>= bestSuperType vars types t1)))
-                       [] props1
+  --take everything that is in both objects. worst-case: {}.
+  Just $ TObject (initialPos "bestSuperType") $ 
+                 Y.mapMaybe (\(prop1id, t1) -> liftM ((,) prop1id) 
+                              (lookup prop1id props2 >>= bestSuperType vars types t1)) 
+                            props1
     
 bestSuperType vars types t1 t2
  | (t1 == t2) = Just t1
