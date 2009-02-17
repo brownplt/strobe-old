@@ -96,9 +96,7 @@ bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
   commonprops <- mapM id $ 
                       filter ((/=) Nothing) $ 
                              map (\(prop1id, t1) -> maybe Nothing 
-                                                          (\t2 -> do
-                                                            let mst = bestSuperType vars types t1 t2
-                                                            case mst of
+                                                          (\t2 -> case bestSuperType vars types t1 t2 of
                                                               Nothing -> Nothing
                                                               (Just st) -> Just (prop1id, st))
                                                           (lookup prop1id props2))
