@@ -41,16 +41,15 @@ corePos = initialPos "core"
 -- TODO: figure out what to do with global.
 globalObjectType = TObject corePos []
 
+arrayType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
+arrayType vars types indxtype = let pos = corePos in 
+  (TObject pos [(Id pos "@[]", resolveType vars types indxtype),
+                (Id pos "length", resolveType vars types (TId pos "int"))])
+
 coreTypeEnv :: Env
 coreTypeEnv = M.fromList $ (map (\s -> (s, (TApp corePos (TId corePos s) [])))
                                 ["string", "double", "int", "bool", "undefined"]) ++
-              [("@global", globalObjectType),
-               --TODO: load the following from a file:
-               ("intarray", TObject corePos [(Id corePos "@[]", (coreTypeEnv ! "int")),
-                                             (Id corePos "length",  (coreTypeEnv ! "int"))]),
-               ("stringarray", TObject corePos [(Id corePos "@[]", (coreTypeEnv ! "string")),
-                                             (Id corePos "length", (coreTypeEnv ! "int"))])
-                                             ]
+              [("@global", globalObjectType)]
 
 coreVarEnv :: Env
 coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global"),
@@ -131,8 +130,7 @@ resolveType vars types t = case t of
     if s == "Array" then
       if length apps /= 1 
         then error "Array only takes one type parameter"
-        else (TObject pos [(Id pos "@[]", resolveType vars types (apps !! 0)),
-                           (Id pos "length", resolveType vars types (TId pos "int"))])
+        else (arrayType vars types (apps !! 0))
     else t --otherwise we likely have a base-case "int", "string", etc. TODO: make this throw 'unbound id' errors.
   _ -> t  
 
@@ -417,14 +415,14 @@ typeOfExpr vars types expr = case expr of
   CallExpr a funcexpr argexprs -> do
     functype <- typeOfExpr vars types funcexpr
     case functype of 
-      TFunc _ Nothing reqargtypes optargtypes Nothing rettype -> do
+      TFunc _ Nothing reqargtypes optargtypes mvarargtype rettype -> do
         let s = length argexprs
         let r = length reqargtypes
         let z = length optargtypes
-        if r > s || s > (r + z)
+        if r > s || ((maybe True (const False) mvarargtype) && s > (r + z))
           then if r > s
-                 then fail $ "expected at least" ++ (show r) ++ " arguments, got only " ++ (show s)
-                 else fail $ "expected at most" ++ (show (r+z)) ++ " args, but got " ++ (show s)
+                 then fail $ "expected at least " ++ (show r) ++ " arguments, got only " ++ (show s)
+                 else fail $ "expected at most " ++ (show (r+z)) ++ " args, but got " ++ (show s)
           else do
             zipWithM (\argexpr expectedtype -> 
               do
@@ -433,19 +431,20 @@ typeOfExpr vars types expr = case expr of
                   then return True
                   else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " 
                               ++ show expectedtype)
-              argexprs (reqargtypes ++ optargtypes)
+              argexprs (reqargtypes ++ optargtypes ++ (maybe [] repeat mvarargtype))
             return rettype
-      _ -> fail $ "Expected function with only reqargs, got " ++ show functype
+      _ -> fail $ "Expected function without a thistype, got " ++ show functype
 
   FuncExpr _ argnames functype' bodyblock@(BlockStmt _ bodystmts) -> do
     let functype = resolveType vars types functype'
     case functype of
-      TFunc _ Nothing reqargtypes optargtypes Nothing rettype -> do
-        if length argnames /= (length reqargtypes) + (length optargtypes)
+      TFunc _ Nothing reqargtypes optargtypes mvarargtype rettype -> do
+        if length argnames /= (length reqargtypes) + (length optargtypes) + (maybe 0 (const 1) mvarargtype)
           then fail $ "Inconsistent function definition - argument number mismatch in arglist and type"
           else do
             vars' <- processRawEnv vars types [] 
-                                   ((zipWith (\a b -> (a, Just b, Nothing)) argnames (reqargtypes++optargtypes)) ++ 
+                                   ((zipWith (\argid argtype -> (argid, Just argtype, Nothing)) argnames (reqargtypes++optargtypes)) ++ 
+                                    (maybe [] (\varargtype -> [(last argnames, Just $ arrayType vars types varargtype, Nothing)]) mvarargtype) ++ 
                                     (globalEnv bodystmts))
             guaranteedReturn <- allPathsReturn vars' types rettype bodyblock 
             if rettype /= (types ! "undefined") && (not guaranteedReturn)
@@ -454,7 +453,7 @@ typeOfExpr vars types expr = case expr of
                 typeCheckStmt vars' types bodyblock
                 return functype
                       
-      TFunc _ _ _ _ _ _ -> fail "Only functions with required and opt args are implemented."
+      TFunc {} -> fail "Functions with thistypes not implemented yet."
 
       _ -> fail $ "Function must have a function type, given " ++ show functype
 

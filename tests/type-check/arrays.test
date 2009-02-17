@@ -90,6 +90,7 @@ function () :: (->) {
 } @@ fails; 
 
 //finding most commen supertypes:
+[1, 2, 3, 4, 5] :: Array<int>;
 function () :: (->) {
   var z :: Array<int> = [1, 3, 5.94, 19];
 } @@ fails; //Array<double> isn't a subtype of Array<int>
