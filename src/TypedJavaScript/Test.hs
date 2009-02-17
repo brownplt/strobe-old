@@ -7,23 +7,28 @@ module TypedJavaScript.Test
   , isTjsFile
   , getJsPaths
   , getTjsPaths
+  , rhino
   ) where
 
 import qualified Data.List as L
-import Data.List ( isSuffixOf )
+import Data.List (isSuffixOf)
 import Data.Maybe (catMaybes)
 import qualified Data.Foldable as Foldable
 import Data.Foldable (Foldable)
 import Control.Monad
 import qualified Data.Map as M
 
+import System.Process
 import System.Directory
 import System.FilePath
-import System.IO.Unsafe ( unsafePerformIO )
+import System.IO
+import System.Exit
+import qualified Data.ByteString.Char8 as B
+import System.IO.Unsafe (unsafePerformIO)
 import Data.Generics
 import Test.HUnit
 
-import Text.PrettyPrint.HughesPJ ( render, vcat )
+import Text.PrettyPrint.HughesPJ (render, vcat)
 import Text.ParserCombinators.Parsec (ParseError,sourceName,sourceLine,
   sourceColumn,errorPos,SourcePos)
 import TypedJavaScript.PrettyPrint (pp)
@@ -73,3 +78,35 @@ getPathsWithExtension extension parentDirectory = do
       allPaths <- getDirectoryContents parentDirectory
       return [ parentDirectory</>path | path <- allPaths, 
                                         takeExtension path == extension ]
+
+commandIO :: FilePath -- ^path of the executable
+          -> [String] -- ^command line arguments
+          -> B.ByteString  -- ^stdin
+          -> IO (Maybe B.ByteString) -- ^stdout or 'Nothing' on failure
+commandIO path args stdinStr = do
+  let cp = CreateProcess (RawCommand path args) Nothing Nothing CreatePipe
+                         CreatePipe CreatePipe True
+  (Just hStdin, Just hStdout, Just hStderr, hProcess) <- createProcess cp
+  B.hPutStr hStdin stdinStr
+  stdoutStr <- B.hGetContents hStdout
+  stderrStr <- hGetContents hStderr
+  hPutStrLn stderr stderrStr -- echo errors to our stderr
+  exitCode <- waitForProcess hProcess
+  case exitCode of
+    ExitSuccess -> return (Just stdoutStr)
+    ExitFailure n -> do
+      B.hPutStrLn stdout stdoutStr -- echo for errors
+      hPutStrLn stderr $ "Sub-process died with exit code " ++ show n
+      return Nothing
+
+rhino :: FilePath        -- ^Path to the file
+      -> B.ByteString    -- ^JavaScript source
+      -> IO B.ByteString -- ^Result from Rhino
+rhino path {- not used -} src = do
+  result <- commandIO "/usr/bin/env" 
+              ["java", "-classpath", "rhino.jar",
+               "org.mozilla.javascript.tools.shell.Main"]
+              src
+  case result of
+    Just str -> return str
+    Nothing -> fail "rhino signalled an error"
