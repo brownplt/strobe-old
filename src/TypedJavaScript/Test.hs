@@ -90,12 +90,12 @@ commandIO path args stdinStr = do
   B.hPutStr hStdin stdinStr
   stdoutStr <- B.hGetContents hStdout
   stderrStr <- hGetContents hStderr
-  hPutStrLn stderr stderrStr -- echo errors to our stderr
   exitCode <- waitForProcess hProcess
   case exitCode of
     ExitSuccess -> return (Just stdoutStr)
     ExitFailure n -> do
       B.hPutStrLn stdout stdoutStr -- echo for errors
+      hPutStrLn stderr stderrStr -- echo errors to our stderr
       hPutStrLn stderr $ "Sub-process died with exit code " ++ show n
       return Nothing
 
