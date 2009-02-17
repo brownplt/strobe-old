@@ -27,14 +27,12 @@ type Env = Map String (Type SourcePos)
 
 -- |Type-checks a sequence of statemens. Returns the local environment.
 typeCheck :: [Statement SourcePos] -- ^statements to type-check
-          -> IO Env -- ^identifiers introduced by these statements,
-                    -- along with the enclosing environment
+          -> IO Env -- ^identifiers introduced by these statements
 typeCheck stmts = do
   let rawEnv = globalEnv stmts
-  -- TODO: don't return the enclosing environment
   env <- processRawEnv coreVarEnv coreTypeEnv [] rawEnv
   mapM_ (typeCheckStmt env coreTypeEnv) stmts
-  return env
+  return (M.difference env coreVarEnv)
 
 corePos = initialPos "core"
 

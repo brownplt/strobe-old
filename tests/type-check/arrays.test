@@ -1,4 +1,5 @@
-{} :: {}; //TODO: fix testcase parser so you can have a comment on the first line
+{} :: {}; //TODO: fix testcase parser so you can have a comment on the first 
+          //      line.  No, you!
 //TODO: add support for new Array<int>, etc.
 
 function (arry) :: (Array<int> -> int) {
