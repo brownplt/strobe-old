@@ -523,6 +523,13 @@ typeCheckStmt vars types stmt = case stmt of
   ReturnStmt{} -> return True --handled elsewhere  
   VarDeclStmt{} -> return True -- handled elsewhere
   
+  --TDGTJ p100: "expression may evaluate to a value of any type"
+  --TODO: require catch clauses to declare the expected type. maybe restrict
+  --      throw somehow so you can't just have anything in the catch clause...
+  ThrowStmt pos expr -> do
+    exprtype <- typeOfExpr vars types expr
+    return True
+  
 
 {- Statements left over:
 
@@ -531,7 +538,6 @@ data Statement a
   | ForInStmt a (ForInInit a) (Expression a) (Statement a)
   | TryStmt a (Statement a) {-body-} [CatchClause a] {-catches-}
       (Maybe (Statement a)) {-finally-}
-  | ThrowStmt a (Expression a)
   -- TODO: add generics to functions/constructors?
   -- | FunctionStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Maybe (Type a)) {-ret type-}  (Statement a) {-body-}
   | ConstructorStmt a (Id a) {-name-} 
