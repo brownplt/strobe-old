@@ -118,6 +118,7 @@ function () :: (-> int) {
   var z :: Array<{x::int}> = [{x: 5, z: "hiroxlmen"}, {x: 46, y: "dont matter"}, {x: 12}, {x: 93}];
   return z[0].x + z[1].x;
 } :: (-> int);
+
 //TODO: should the following fail or succeed?
 function () :: (-> int) {
   var z :: Array<undefined> = [1, "hi", 43.9, true];
@@ -132,5 +133,5 @@ function () :: (-> double) {
   return z[0];
 } :: (-> double);
 
-
+//TODO: subtyping for functions
 

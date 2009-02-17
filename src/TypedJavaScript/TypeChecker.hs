@@ -113,11 +113,12 @@ bestSuperType vars types t1 t2
  | otherwise = Nothing --error $ "No common super type between " ++ (show t1) ++ " and " ++ (show t2) 
 
 -- recursively resolve the type down to TApp, or a TFunc or a TObject containing
--- only resolved types
+-- only resolved types.
+-- TODO: change to a Monad?
 resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
 resolveType vars types t = case t of
   TId _ s -> types ! s
-  TFunc pos this reqargs optargs vararg rettype -> do
+  TFunc pos this reqargs optargs vararg rettype -> do --TODO: question: how can I have a 'do' in here, without resolveType being a Monad?
     let rt = (resolveType vars types)
         -- Arjun: this line makes absolutely no sense.  In Haskell, that is
         -- something to be proud of, I guess.
@@ -132,7 +133,7 @@ resolveType vars types t = case t of
         then error "Array only takes one type parameter"
         else (TObject pos [(Id pos "@[]", resolveType vars types (apps !! 0)),
                            (Id pos "length", resolveType vars types (TId pos "int"))])
-    else t --otherwise we likely have a base-case "int", "string", etc.
+    else t --otherwise we likely have a base-case "int", "string", etc. TODO: make this throw 'unbound id' errors.
   _ -> t  
 
 -- returns whether or not all possible paths return, and whether those return statements return subtypes of
