@@ -95,11 +95,10 @@ bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
   --TODO: refactor code
   commonprops <- mapM id $ 
                       filter ((/=) Nothing) $ 
-                             map (\(prop1id, t1) -> maybe Nothing 
-                                                          (\t2 -> case bestSuperType vars types t1 t2 of
-                                                              Nothing -> Nothing
-                                                              (Just st) -> Just (prop1id, st))
-                                                          (lookup prop1id props2))
+                             map (\(prop1id, t1) -> do --Maybe monad
+                                    t2 <- lookup prop1id props2
+                                    st <- bestSuperType vars types t1 t2
+                                    return (prop1id, st))
                                  props1
   Just $ TObject (initialPos "supertype inference") commonprops
     
