@@ -2,3 +2,6 @@ Copyright (c) 2009 Claudiu Saftoiu and Arjun Guha.
 All Rights Reserved.
 
 You do not have a license to use this software.
+
+tests/rhino.jar is Mozilla Rhino, used by the terms of the Mozilla Public
+License 1.1.
