@@ -74,10 +74,9 @@ boolContext vars types t
 -- is t1 a subtype of t2? so far, just plain equality.
 isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
 isSubType vars types (TObject _ props1) (TObject _ props2) =
-  all (\(o2id@(Id _ o2propname), o2proptype) ->
-         (case lookup o2id props1 of 
-            Nothing -> False --o1 must have everything o2 does
-            Just o1proptype -> isSubType vars types o1proptype o2proptype))
+  all (\(o2id@(Id _ o2propname), o2proptype) -> maybe
+        False (\o1proptype -> isSubType vars types o1proptype o2proptype) 
+        (lookup o2id props1))
       props2
 
 isSubType vars types t1 t2 
@@ -93,7 +92,7 @@ bestSuperType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Maybe (Ty
 bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
   --take everything that is in both. worst-case: {}.
   --this code went from long+ugly to medium+readable to short+unreadable. maybe revert back to medium+readable?
-  Just $ TObject (initialPos "supertype inference")
+  Just $ TObject (initialPos "supertype inference") $ 
                  foldl (\cplist (prop1id, t1) -> cplist ++ (maybe 
                          [] (\x -> [x]) $ 
                          liftM ((,) prop1id) (lookup prop1id props2 >>= bestSuperType vars types t1)))
