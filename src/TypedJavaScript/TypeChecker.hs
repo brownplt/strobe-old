@@ -295,7 +295,7 @@ typeOfExpr vars types expr = case expr of
       PrefixMinus  -> numberContext vars types xtype
       PrefixTypeof -> return $ types ! "string"
       PrefixVoid   -> return $ types ! "undefined" --TODO: I thought we removed PrefixVoid
-      PrefixDelete -> return $ types ! "bool" --TODO: remove delete? add checks for readonly fields, etc.
+      PrefixDelete -> return $ types ! "bool" --TODO: remove delete?
 
   InfixExpr a op l r -> do
     -- TODO: is the monadism bad because it kills chances for automatic parallelization of our code? =(.
@@ -315,13 +315,13 @@ typeOfExpr vars types expr = case expr of
         numop = \requireInts alwaysDouble -> do
           ln <- numberContext vars types ltype
           rn <- numberContext vars types rtype
-          if (ln == types ! "int" && rn == types ! "int") -- all integers
+          if (ln == types ! "int" && rn == types ! "int") -- we are given all integers
             then if alwaysDouble 
               then return $ types ! "double" --e.g. division
-              else return $ types ! "int" --e.g. +, -, *
+              else return $ types ! "int"    --e.g. +, -, *
             else if requireInts
-              then fail $ "lhs and rhs must be ints, got " ++ show ln ++ ", " ++ show rn
-              else return $ types ! "double"
+              then fail $ "lhs and rhs must be ints, got " ++ show ln ++ ", " ++ show rn --e.g. >>, &, |
+              else return $ types ! "double" --e.g. /
               
     case op of
       OpLT  -> relation
@@ -367,7 +367,7 @@ typeOfExpr vars types expr = case expr of
         if ltype == (types ! "string") || rtype == (types ! "string") 
           then return $ types ! "string"
           else numop False False
-      
+
   AssignExpr a op lhs rhs -> 
     -- TDGTJ: "In JavaScript, variables, properties of objects, and elements of arrays are lvalues." p62.
     let rewrite infixop = typeOfExpr vars types (AssignExpr a OpAssign lhs (InfixExpr a infixop lhs rhs))
@@ -390,7 +390,7 @@ typeOfExpr vars types expr = case expr of
             OpAssignBXor -> rewrite OpBXor
             OpAssignBOr -> rewrite OpBOr
      in case lhs of
-          VarRef{} -> procasgn
+          VarRef{} -> procasgn  --TODO: add checks for readonly fields, arrays, variables.
           DotRef{} -> procasgn
           BracketRef{} -> procasgn
           _ -> fail "lhs of assignment must be an lvalue: a variable, an object property, or an array element"
@@ -400,9 +400,7 @@ typeOfExpr vars types expr = case expr of
     boolContext vars types ctype --boolContext will fail if something goes wrong with 'c'
     ttype <- typeOfExpr vars types t
     etype <- typeOfExpr vars types e
-    -- TODO: potentially find the most common supertype of ttype and etype, and evaluate to that
-    -- so, returning 3 and 4.0 would give you a double.
-    -- {x: 5, y: 6} and {x: 5} would give you an {x: int}.
+    -- TODO: potentially find the most common supertype of ttype and etype, and evaluate to that, instead of failing.
     if (ttype /= etype) 
       then fail $ "then and else must have the same type in a ternary expression"
       else return ttype
@@ -435,22 +433,22 @@ typeOfExpr vars types expr = case expr of
             return rettype
       _ -> fail $ "Expected function without a thistype, got " ++ show functype
 
-  FuncExpr _ argnames functype' bodyblock@(BlockStmt _ bodystmts) -> do
-    let functype = resolveType vars types functype'
+  FuncExpr _ argnames functype bodyblock@(BlockStmt _ bodystmts) -> do
+    functype <- return $ resolveType vars types functype
     case functype of
       TFunc _ Nothing reqargtypes optargtypes mvarargtype rettype -> do
         if length argnames /= (length reqargtypes) + (length optargtypes) + (maybe 0 (const 1) mvarargtype)
           then fail $ "Inconsistent function definition - argument number mismatch in arglist and type"
           else do
-            vars' <- processRawEnv vars types [] 
-                                   ((zipWith (\argid argtype -> (argid, Just argtype, Nothing)) argnames (reqargtypes++optargtypes)) ++ 
-                                    (maybe [] (\varargtype -> [(last argnames, Just $ arrayType vars types varargtype, Nothing)]) mvarargtype) ++ 
-                                    (globalEnv bodystmts))
-            guaranteedReturn <- allPathsReturn vars' types rettype bodyblock 
+            vars <- processRawEnv vars types [] 
+                                  ((zipWith (\argid argtype -> (argid, Just argtype, Nothing)) argnames (reqargtypes++optargtypes)) ++ 
+                                   (maybe [] (\varargtype -> [(last argnames, Just $ arrayType vars types varargtype, Nothing)]) mvarargtype) ++ 
+                                   (globalEnv bodystmts))
+            guaranteedReturn <- allPathsReturn vars types rettype bodyblock 
             if rettype /= (types ! "undefined") && (not guaranteedReturn)
               then fail "Some path doesn't return a value, but the function's return type is not undefined"
               else do
-                typeCheckStmt vars' types bodyblock
+                typeCheckStmt vars types bodyblock
                 return functype
                       
       TFunc {} -> fail "Functions with thistypes not implemented yet."
@@ -512,6 +510,7 @@ typeCheckStmt vars types stmt = case stmt of
   ContinueStmt _ _ -> return True
   LabelledStmt _ _ stmt -> typeCheckStmt vars types stmt
   
+  --TODO: now that we have arrays and objects, we should be able to do for in loops.
   ForInStmt _ (ForInVar (Id _ varname) vartype) inexpr body -> 
     fail "for..in loops NYI"
   ForInStmt _ (ForInNoVar (Id _ varname)) inexpr body -> 
