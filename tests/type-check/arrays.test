@@ -147,4 +147,7 @@ function () :: (->) {
   return;
 } :: (->);
 
+[undefined, undefined, undefined] :: Array<int>;
+[undefined, undefined, undefined] :: Array<undefined>;
+
 
