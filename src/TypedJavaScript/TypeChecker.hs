@@ -107,9 +107,7 @@ resolveType vars types t = case t of
   TId _ s -> types ! s
   TFunc pos this reqargs optargs vararg rettype -> do --TODO: question: how can I have a 'do' in here, without resolveType being a Monad?
     let rt = (resolveType vars types)
-        -- Arjun: this line makes absolutely no sense.  In Haskell, that is
-        -- something to be proud of, I guess.
-        rtm = maybe Nothing (Just . rt) --i am proud of this line
+        rtm mtype = mtype >>= (Just . rt) --extract the type from the maybe type, call 'rt' on it, then wrap it in Just
     TFunc pos (rtm this) (map rt reqargs) (map rt optargs) (rtm vararg) (rt rettype)
   TObject pos props -> if (map fst props) /= nub (map fst props)
     then error "duplicate property name in object type."
