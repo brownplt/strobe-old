@@ -18,10 +18,29 @@ blames "client" {
   add("ten","eleven");
 };
 
+succeeds {
+  var add = function(x,y) :: int, int -> int {
+    return x;
+  }
+  var z = add(undefined, undefined);
+}
+{
+  add(undefined, undefined);
+};
+
+succeeds {
+  var add = function(x,y) :: int, int -> int {
+    return x+y;
+  }
+  var z = add(undefined, undefined);
+}
+{
+  add(undefined, undefined);
+};
+
 blames "chocolate" {
   function foo() :: -> int {
     throw "chocolate violated the contract; haha funny";
-    return 12;
   }
 }
 {

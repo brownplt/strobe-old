@@ -15,7 +15,7 @@ import qualified Data.Maybe as Y
 import Data.List (foldl', nub)
 import qualified Data.Map as M
 import Data.Map(Map, (!))
-import Control.Monad(liftM, zipWithM, foldM)
+import Control.Monad(liftM, liftM2, zipWithM, foldM)
 
 import Text.ParserCombinators.Parsec(SourcePos)
 import Text.ParserCombinators.Parsec.Pos
@@ -69,13 +69,27 @@ boolContext vars types t
     | t == (types ! "bool") = return t
     | otherwise             = fail $ "expected bool, got " ++ show t
 
--- is t1 a subtype of t2? so far, just plain equality.
+-- is t1 a subtype of t2?
 isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
+
 isSubType vars types (TObject _ props1) (TObject _ props2) =
   all (\(o2id@(Id _ o2propname), o2proptype) -> maybe
         False (\o1proptype -> isSubType vars types o1proptype o2proptype) 
         (lookup o2id props1))
       props2
+
+isSubType vars types (TFunc _ this2 req2 opt2 var2 ret2)  -- is F2 <= F1?
+                     (TFunc _ this1 req1 opt1 var1 ret1) =
+  let ist = isSubType vars types       
+   in ist ret2 ret1                       --covariance of return types
+      && length req2 >= length req1       --at least as many req args
+      && (var2==Nothing || var1/=Nothing) --f2 has varargs -> f1 has varargs
+      && --contravariance of arg types. TODO: fix this.
+         (let maxargs = max (length req2 + length opt2 + (maybe 0 (const 1) var2)) 
+                            (length req1 + length opt1 + (maybe 0 (const 1) var1))
+              all2    = (map Just $ req2 ++ opt2 ++ (maybe [] repeat var2)) ++ repeat Nothing
+              all1    = (map Just $ req1 ++ opt1 ++ (maybe [] repeat var1)) ++ repeat Nothing
+           in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
 
 isSubType vars types t1 t2 
  | (t1 == t2) = True
@@ -408,13 +422,12 @@ typeOfExpr vars types expr = case expr of
                  then fail $ "expected at least " ++ (show r) ++ " arguments, got only " ++ (show s)
                  else fail $ "expected at most " ++ (show (r+z)) ++ " args, but got " ++ (show s)
           else do
-            zipWithM (\argexpr expectedtype -> 
-              do
-                argexprtype <- typeOfExpr vars types argexpr
-                if isSubType vars types argexprtype expectedtype
-                  then return True
-                  else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " 
-                              ++ show expectedtype)
+            zipWithM (\argexpr expectedtype -> do
+              argexprtype <- typeOfExpr vars types argexpr
+              if isSubType vars types argexprtype expectedtype
+                then return True
+                else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " 
+                            ++ show expectedtype)
               argexprs (reqargtypes ++ optargtypes ++ (maybe [] repeat mvarargtype))
             return rettype
       _ -> fail $ "Expected function without a thistype, got " ++ show functype
