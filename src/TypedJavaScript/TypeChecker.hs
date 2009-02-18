@@ -92,7 +92,7 @@ bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
   Just $ TObject (initialPos "bestSuperType") $ 
                  Y.mapMaybe (\(prop1id, t1) -> liftM ((,) prop1id) 
                               (lookup prop1id props2 >>= bestSuperType vars types t1)) 
-                            props1
+                            props1 
     
 bestSuperType vars types t1 t2
  | (t1 == t2) = Just t1

@@ -136,4 +136,15 @@ function () :: (-> double) {
 } :: (-> double);
 
 //TODO: subtyping for functions
+undefined :: int;
+function () :: (->) {
+  var x :: Array<undefined> = [1];
+} @@ fails;
+function () :: (->) {
+  var x :: undefined;
+  x = undefined;
+  var y :: Array<int> = [x, x, x, 3];
+  return;
+} :: (->);
+
 
