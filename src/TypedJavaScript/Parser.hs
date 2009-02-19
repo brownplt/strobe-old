@@ -559,9 +559,8 @@ exponentPart = do
   oneOf "eE"
   (char '+' >> decimal) <|> (char '-' >> negate `fmap` decimal) <|> decimal
 
-jparser p = do
-  rez <- p
-  return (Just rez)
+--wrap a parser's result in a Just:
+jparser p = p >>= (return . Just) 
 
 decLit = 
   (do whole <- decimal

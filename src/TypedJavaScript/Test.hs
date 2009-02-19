@@ -8,6 +8,7 @@ module TypedJavaScript.Test
   , getJsPaths
   , getTjsPaths
   , rhino
+  , RhinoService, feedRhino, startRhinoService
   ) where
 
 import qualified Data.List as L
@@ -103,3 +104,31 @@ rhino path {- not used -} src = do
     ["java", "-classpath", "rhino.jar",
      "org.mozilla.javascript.tools.shell.Main"]
     src
+
+--rhinoservice
+data RhinoService = RhinoService Handle Handle Handle ProcessHandle
+
+startRhinoService :: IO RhinoService
+startRhinoService = do
+  let cp = CreateProcess (RawCommand "/usr/bin/env" 
+                                     ["java", "-classpath", 
+                                      "tests/rhino.jar:.:tests/", "RhinoService"]) 
+                         Nothing Nothing CreatePipe CreatePipe CreatePipe True
+  (Just hStdin, Just hStdout, Just hStderr, hProcess) <- createProcess cp
+  return $ RhinoService hStdin hStdout hStderr hProcess
+
+feedRhino :: RhinoService -> B.ByteString -> IO B.ByteString
+feedRhino (RhinoService hStdin hStdout hStderr hProcess) input = do
+  putStrLn $ "Writing : " ++ show (B.pack $ show ((B.length input) + 1))
+  B.hPutStrLn hStdin $ B.pack $ show ((B.length input) + 1)
+  B.hPutStrLn hStdin input
+  stdoutStr <- B.hGetContents hStdout
+  stderrStr <- B.hGetContents hStderr
+  exitCode <- waitForProcess hProcess
+  case exitCode of
+    ExitSuccess -> putStrLn $ "SUCCESS" ++ show stdoutStr ++ show stderrStr
+    ExitFailure n -> putStrLn $ "FAIL"  ++ show stdoutStr ++ show stderrStr
+  outputlenBStr <- B.hGetLine hStderr
+  let outputlenStr = take ((B.length outputlenBStr)-1) (B.unpack outputlenBStr)
+  let outputlen = read outputlenStr::Int
+  B.hGet hStdout outputlen
