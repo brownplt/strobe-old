@@ -1,0 +1,14 @@
+function (b,a) :: ((int -> int), (int -> int) ->) { a = b; } @@ succeeds;
+//function sub-typing.
+//a = b works iff b is a subtype of a
+//co-variant return types:
+function (b,a) :: ((int -> int), (int -> double) ->) { a = b; } @@ succeeds;
+function (b,a) :: ((int -> double), (int -> int) ->) { a = b; } @@ fails;
+function (b,a) :: ((int -> {x::string}), (int -> {}) ->) { a = b; } @@ succeeds;
+function (b,a) :: ((int -> {}), (int -> {x::string}) ->) { a = b; } @@ fails;
+
+//contra-variant arg types:
+function (b,a) :: ((double -> int), (int -> int) ->) { a = b; } @@ succeeds;
+function (b,a) :: ((int -> int), (double -> int) ->) { a = b; } @@ fails;
+
+

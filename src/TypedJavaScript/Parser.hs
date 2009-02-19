@@ -471,7 +471,6 @@ parseUnicodeHexChar = do
         
 isWhitespace ch = ch `elem` " \t"
 
-
 -- The endWith argument is either single-quote or double-quote, depending on how
 -- we opened the string.
 parseStringLit' endWith =
@@ -570,11 +569,9 @@ decLit =
       mexp <-  option Nothing (jparser exponentPart)
       if (mfrac == Nothing && mexp == Nothing)
         then return (True, fromIntegral whole)
-        else let (Just frac) = mfrac
-                 (Just exp)  = mexp
-              in return (False, mkDecimal (fromIntegral whole) 
-                                          (fromIntegral frac) 
-                                          (fromIntegral exp))) <|>
+        else return (False, mkDecimal (fromIntegral whole) 
+                                      (fromIntegral (maybe 0 id mfrac))
+                                      (fromIntegral (maybe 0 id mexp)))) <|>
   (do frac <- char '.' >> decimal
       exp <- option 0 exponentPart
       return (False, mkDecimal 0.0 (fromIntegral frac) (fromIntegral exp)))

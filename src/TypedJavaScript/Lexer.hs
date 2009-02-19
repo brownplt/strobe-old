@@ -37,9 +37,9 @@ javascriptDef =
 lex = T.makeTokenParser javascriptDef
 
 -- everything but commaSep and semiSep
-identifier = T.identifier	 lex
-reserved = T.reserved	 lex
-operator = T.operator	 lex
+identifier = T.identifier lex
+reserved = T.reserved lex
+operator = T.operator lex
 reservedOp = T.reservedOp lex	
 charLiteral = T.charLiteral lex	
 stringLiteral = T.stringLiteral lex	
@@ -56,8 +56,8 @@ parens = T.parens lex
 braces = T.braces lex
 angles = T.angles lex
 squares = T.squares lex	
-semi = T.semi	 lex
-comma = T.comma	 lex
+semi = T.semi lex
+comma = T.comma lex
 colon = T.colon lex	
 dot = T.dot lex
 brackets = T.brackets lex
