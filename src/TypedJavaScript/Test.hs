@@ -121,6 +121,7 @@ feedRhino :: RhinoService -> B.ByteString -> IO B.ByteString
 feedRhino (RhinoService hStdin hStdout hStderr hProcess) input = do
   putStrLn $ "Writing : " ++ show (B.pack $ show ((B.length input) + 1))
   B.hPutStrLn hStdin $ B.pack $ show ((B.length input) + 1)
+  putStrLn $ "Writing : " ++ show input
   B.hPutStrLn hStdin input
   stdoutStr <- B.hGetContents hStdout
   stderrStr <- B.hGetContents hStderr
