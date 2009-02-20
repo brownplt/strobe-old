@@ -294,7 +294,9 @@ typeOfExpr vars types expr = case expr of
       PrefixPlus   -> numberContext vars types xtype
       PrefixMinus  -> numberContext vars types xtype
       PrefixTypeof -> return $ types ! "string"
-      PrefixVoid   -> return $ types ! "undefined" --TODO: I thought we removed PrefixVoid
+      -- Void has been removed.  We are just sharing operator syntax with
+      -- JavaScript.  It makes compiling to JavaScript much easier.
+      PrefixVoid   -> fail "void has been removed"
       PrefixDelete -> return $ types ! "bool" --TODO: remove delete?
 
   InfixExpr a op l r -> do
