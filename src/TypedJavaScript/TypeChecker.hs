@@ -45,9 +45,10 @@ arrayType vars types indxtype = let pos = corePos in
                 (Id pos "length", resolveType vars types (TId pos "int"))])
 
 coreTypeEnv :: Env
-coreTypeEnv = M.fromList $ (map (\s -> (s, (TApp corePos (TId corePos s) [])))
-                                ["string", "double", "int", "bool", "undefined"]) ++
-              [("@global", globalObjectType)]
+coreTypeEnv = M.fromList $ 
+  (map (\s -> (s, (TApp corePos (TId corePos s) [])))
+       ["string", "double", "int", "bool", "unit", "undefined"]) ++
+  [("@global", globalObjectType)]
 
 coreVarEnv :: Env
 coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global"),
@@ -449,7 +450,7 @@ typeOfExpr vars types expr = case expr of
                                    (maybe [] (\varargtype -> [(last argnames, Just $ arrayType vars types varargtype, Nothing)]) mvarargtype) ++ 
                                    (globalEnv bodystmts))
             guaranteedReturn <- allPathsReturn vars types rettype bodyblock 
-            if rettype /= (types ! "undefined") && (not guaranteedReturn)
+            if rettype /= (types ! "unit") && (not guaranteedReturn)
               then fail "Some path doesn't return a value, but the function's return type is not undefined"
               else do
                 typeCheckStmt vars types bodyblock
