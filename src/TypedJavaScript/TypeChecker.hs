@@ -439,7 +439,8 @@ typeOfExpr vars types expr = case expr of
           else do
             let args = argEnv (zip (map unId argnames) reqargtypes)
                          -- deliberately incomprehensible
-                         (liftM ((,)(unId $ L.last argnames)) mvarargtype)
+                         (liftM (((,)(unId $ L.last argnames)).
+                                 (arrayType vars types)) mvarargtype)
             -- M.union is left-biased; identifiers are correctly shadowed
             vars <- processRawEnv (M.union args vars) types []
                                   (globalEnv bodystmts)

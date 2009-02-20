@@ -16,11 +16,11 @@ function () :: (-> string) {
   return inner(true, 3.96, "A STRING!!!"); 
 } :: (-> string);
 
-function (r1, r2, o1, o2) :: (int, int, int?, double? -> string) {
+function (r1, r2, o1, o2) :: (int, int, int, double -> string) {
     return r1+r2+(o1 * 534) + "";
-} :: (int, int, int?, double? -> string);
+} :: (int, int, int, double -> string);
 function() :: (-> string) {
-  function inner(r1, r2, o1, o2) :: (double, double, double?, string? -> string) {
+  function inner(r1, r2, o1, o2) :: (double, double, double, string -> string) {
     return r1+r2+(o1 * 534) + o2;
   }
   inner(1, 2);
@@ -70,8 +70,8 @@ function(a,b,c) :: (string, int, double -> int) {
   return f;
 } :: (string, int, double -> int);
 function() :: (->) {
-  var x :: int;
-  function testit(a,b,c) :: (string?, int?, double? -> int) {
+  var x :: int = 53;
+  function testit(a,b,c) :: (string, int, double -> int) {
     var x :: string = a + b + c;
     var f :: int = b * b << b;
     var f2 :: double = b + (c / 3.9);

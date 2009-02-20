@@ -23,7 +23,7 @@ function (arry) :: (Array<int> -> int) {
 
 //monomorphic map:
 function (int2str, arry) :: ((int -> string), Array<int> -> Array<string>) {
-  var rezarray :: Array<string>; //todo: add a way to instantiate an array. this code WILL FAIL OTHERWISE
+  var rezarray :: Array<string> = ["mercury","venus","earth","...","pluto"];
   for (var i=0; i < arry.length; ++i) {
     rezarray[i] = int2str(arry[i]);
   }
@@ -32,7 +32,7 @@ function (int2str, arry) :: ((int -> string), Array<int> -> Array<string>) {
 
 //monomorphic filter:
 function (int2bool, arry) :: ((int -> bool), Array<int> -> Array<int>)  {
-  var rezarray :: Array<int>;
+  var rezarray :: Array<int> = [2,4,8,16];
   var ri = 0;
   for (var i=0; i < arry.length; ++i) {
     if (int2bool(arry[i]))
@@ -43,8 +43,8 @@ function (int2bool, arry) :: ((int -> bool), Array<int> -> Array<int>)  {
 
 //Array subtypes:
 function () :: (-> Array<int>) {
-  var z :: Array<int>;
-  var y :: Array<double>;
+  var z :: Array<int> = [1];
+  var y :: Array<double> = [2.0];
   y = z;
   return z;
 } :: (-> Array<int>);
@@ -53,7 +53,7 @@ function () :: (-> Array<int>) {
 //TODO: make these use iterators once those work.
 //TODO: write a version with polymorphic map once that exists.
 function (ptarray) :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>) {
-  var resarray :: Array<double>;
+  var resarray :: Array<double> = [1.23];
   for (var i=0; i < ptarray.length; ++i)
     resarray[i] = ptarray[i].mag();
   return resarray;
@@ -63,7 +63,7 @@ function (ptarray) :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<
   function map(pt2dub, arry) :: (({x :: int, y :: int, mag :: (-> double)} -> double), 
                                  Array<{x :: int, y :: int, mag :: (-> double)}> -> 
                                  Array<double>) {
-    var rezarray :: Array<double>; //todo: add a way to instantiate an array. this code WILL FAIL OTHERWISE
+    var rezarray :: Array<double> = [1.0];
     for (var i=0; i < arry.length; ++i) {
       rezarray[i] = pt2dub(arry[i]);
     }

@@ -43,29 +43,29 @@ function (x) :: (double -> double) {
   x %= 1.4;
   return x;
 } :: (double -> double);
-function (x) :: (int -> int) {  //no int literals yet, so we're not declaring f
-  var f :: int; 
+function (x) :: (int -> int) {
+  var f :: int = 23; 
   x <<= f;
   return x;
 } :: (int -> int);
 function (x) :: (int -> int) { 
-  var f :: int; 
+  var f :: int = 23; 
   x >>= f;
   x >>>= f;
   return x;
 } :: (int -> int);
 function (x) :: (int -> int) { 
-  var f :: int; 
+  var f :: int = 73; 
   x &= f;
   return x;
 } :: (int -> int);
 function (x) :: (int -> int) { 
-  var f :: int; 
+  var f :: int = 342; 
   x ^= f;
   return x;
 } :: (int -> int);
 function (x) :: (int -> int) { 
-  var f :: int; 
+  var f :: int = 9988; 
   x |= f;
   return x;
 } :: (int -> int);

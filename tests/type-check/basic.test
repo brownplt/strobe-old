@@ -7,7 +7,7 @@
 
 function(x,x) :: int, int -> int {
   return x;
-} :: int,int -> int;
+} @@ fails;
 
 //addition and various ops.
 //the following will likely stay the same:
@@ -37,7 +37,7 @@ true && (3 || false) @@ fails;
 (3 == 0) + 10 @@ fails;
 //
 (function (x) :: (double ->) { return; }) :: (double ->);
-(function (x) :: (double -> undefined) { return; }) :: (double ->);
+(function (x) :: (double ->) { return; }) :: (double ->);
 (function (x) :: (double ->) { return 5; }) @@ fails;
 
 (function (x) :: ( ->) { return; }) @@ fails; //argument # mismatch

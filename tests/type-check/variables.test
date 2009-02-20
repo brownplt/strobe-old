@@ -1,5 +1,5 @@
-function (x) :: (double -> double) { //simple variable, declared with a type but no var: (should this be allowed?)
-  var z :: double;
+function (x) :: (double -> double) {
+  var z :: double = 23;
   return z * x;
 } :: (double -> double);
 //both expr and type:
@@ -140,7 +140,7 @@ function (x) :: (double -> string) {
 //this next one works just fine, as it is, but should we allow re-declaring
 //variables with differing types / redeclaring them at all?
 function (x) :: (double -> double) {
-  var f :: string;
+  var f :: string = "captain planet";
   function doit(ahahah) :: (string -> double) {
     var f :: double = 15.3;
     return f * 5;
