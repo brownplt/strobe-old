@@ -46,3 +46,7 @@ blames "chocolate" {
 {
   foo();
 };
+
+//easily repeatable test case, for speed testing:
+blames "client" { function add(x,y) :: int, int -> int { return x+y; } } { add(3.4, 10); };
+

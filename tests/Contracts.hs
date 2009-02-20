@@ -12,6 +12,7 @@ module Contracts where
 
 import Text.Regex.Posix
 import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec.Pos
 import Text.PrettyPrint.HughesPJ (render)
 import Test.HUnit
 import qualified Control.Exception as E
@@ -26,12 +27,18 @@ import TypedJavaScript.Parser (parseBlockStmt)
 
 import TypedJavaScript.TypeChecker (typeCheck)
 import TypedJavaScript.TypeErasure (eraseTypesStmts)
-import TypedJavaScript.Contracts (encapsulateTypedModule)
+import TypedJavaScript.Contracts (encapsulate, encapsulateTypedModule, getContractsLib)
 
 import TypedJavaScript.Test
 
 --TODO: do what old rhino did for sucess/fail
 import System.Exit 
+
+runTest rs pos tjs js = do
+  env <- typeCheck [tjs]
+  tjs' <- return $ encapsulate (eraseTypesStmts [tjs]) env []
+  let str = "var window = { };\n" ++ render (JS.pp $ JS.BlockStmt pos [tjs',js])
+  feedRhino rs (B.pack str) --rhino (sourceName pos) (B.pack str)
 
 assertSucceeds :: RhinoService 
                -> SourcePos 
@@ -39,11 +46,10 @@ assertSucceeds :: RhinoService
                -> JS.Statement SourcePos
                -> Assertion
 assertSucceeds rs pos tjs js = do
-  let regexp = B.pack $ "Exception: "
-  env <- typeCheck [tjs]
-  tjs' <- encapsulateTypedModule (eraseTypesStmts [tjs]) env
-  let str = "var window = { };\n" ++ render (JS.pp $ JS.BlockStmt pos [tjs',js])
-  retstr <- feedRhino rs (B.pack str) --rhino (sourceName pos) (B.pack str)
+  --possible exception names so far: JavaScriptException, EcmaError
+  --possible exception types so far: Exception, TypeError
+  let regexp = B.pack $ "org.mozilla.javascript.[a-zA-Z0-9_]*: "
+  retstr <- runTest rs pos tjs js
   case retstr =~ regexp of
     True -> assertFailure $ "Expected success, but an exception was printed:\n" 
                             ++ B.unpack retstr
@@ -57,10 +63,7 @@ assertBlames :: RhinoService
              -> Assertion
 assertBlames rs pos blamed tjs js = do
   let regexp = B.pack $ blamed ++ " violated the contract"
-  env <- typeCheck [tjs]
-  tjs' <- encapsulateTypedModule (eraseTypesStmts [tjs]) env
-  let str = "var window = { };\n" ++ render (JS.pp $ JS.BlockStmt pos [tjs',js])
-  retstr <- feedRhino rs (B.pack str) -- rhino (sourceName pos) (B.pack str)
+  retstr <- runTest rs pos tjs js
   case retstr =~ regexp of
     True -> return ()
     False -> assertFailure $ "Expected contract violation blaming " ++ 
@@ -100,6 +103,14 @@ readTestFile rs path = do
     
 main = do
   rs <- startRhinoService
+
+  --feed the rs the contracts library code
+  lib <- getContractsLib
+  let str = "var window = { };\n" ++ render (JS.pp $ JS.BlockStmt (initialPos "contractslib") lib)
+  rez <- feedRhino rs $ B.pack str
+  --TODO: check for exceptions
+  putStrLn $ "Contracts lib initialized, rhino returned: " ++ B.unpack rez
+  
   testPaths <- getPathsWithExtension ".test" "contracts"
   testCases <- mapM (readTestFile rs) testPaths
   return (TestList $ testCases ++ [TestCase $ closeRhinoTest rs])

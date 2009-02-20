@@ -10,5 +10,4 @@ function (b,a) :: ((int -> {}), (int -> {x::string}) ->) { a = b; } @@ fails;
 //contra-variant arg types:
 function (b,a) :: ((double -> int), (int -> int) ->) { a = b; } @@ succeeds;
 function (b,a) :: ((int -> int), (double -> int) ->) { a = b; } @@ fails;
-
-
+//various things w/ req args, opt args, etc:

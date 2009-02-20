@@ -4,6 +4,7 @@ module TypedJavaScript.Contracts
   , toInterface
   , encapsulate
   , encapsulateTypedModule
+  , getContractsLib
   ) where
 
 import Text.ParserCombinators.Parsec.Pos (SourcePos, initialPos)
@@ -56,15 +57,18 @@ encapsulate typeErasedStmts env contractLib = wrappedStmts where
   interface = toInterface env
   wrappedStmts = compile typeErasedStmts interface contractLib
 
-encapsulateTypedModule :: [JavaScript.Statement SourcePos]
-                       -> Env
-                       -> IO (JavaScript.Statement SourcePos)
-encapsulateTypedModule typeErasedStmts env = do
+getContractsLib = do
   contractLib <- getContractLibraryPath
   dataDir <- getDataDir
   let typedContractLib = dataDir</>"typedjs_contracts.js"
   contractLibStmts <- JavaScript.parseJavaScriptFromFile contractLib
   typedContractLibStmts <- JavaScript.parseJavaScriptFromFile typedContractLib
-  let lib = contractLibStmts ++ typedContractLibStmts
+  return $ contractLibStmts ++ typedContractLibStmts
+
+encapsulateTypedModule :: [JavaScript.Statement SourcePos]
+                       -> Env
+                       -> IO (JavaScript.Statement SourcePos)
+encapsulateTypedModule typeErasedStmts env = do
+  lib <- getContractsLib
   return $ encapsulate typeErasedStmts env lib
   
