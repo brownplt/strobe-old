@@ -193,12 +193,15 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
       (Id _ varname, Nothing, Just expr) -> do
         exprtype <- typeOfExpr vars types expr
         processRawEnv (M.insert varname exprtype vars) types (varname:forbidden) rest
+      -- If a variable is declared with a type but is uninitialized, it
+      -- must be TNullable (since it is initialized to undefined).
       (Id _ varname, Just vartype, Nothing) -> do
         let vartype' = (resolveType vars types vartype)
-        --seq because we want an error instantly, even if the variable is declared but never used
-        --TODO: change resolveType to a Monad, since it can fail now?
-        seq vartype' $ processRawEnv (M.insert varname vartype' vars) 
-                         types (varname:forbidden) rest
+        case vartype' of
+          TNullable _ _ -> processRawEnv (M.insert varname vartype' vars) types
+                                         (varname:forbidden) rest
+          otherwise -> fail $ "unintialized variables must have nullable " ++
+                              "types (suffix '?')"
       (Id _ varname, Just vartype, Just expr) -> do
         exprtype <- typeOfExpr vars types expr
         let vartype' = (resolveType vars types vartype)
