@@ -3,15 +3,22 @@
 > import qualified Data.List as L
 > import System.Directory
 > import System.Process (runCommand,waitForProcess)
+> import Data.Char (toLower)
 
 > isHaskellFile file = ".lhs" `L.isSuffixOf` file || ".hs" `L.isSuffixOf` file
 
 > moduleName file = L.takeWhile (\ch -> ch /= '.') file
 
-> testMain _ _ _ _ = do
+> isRequested :: [String] -> String -> Bool
+> isRequested requestedTests test = 
+>   (map toLower test) `elem` (map (map toLower) requestedTests)
+
+> testMain args _ _ _ = do
 >   files <- getDirectoryContents "tests"
 >   let tests = filter isHaskellFile files
->   let testModules = map moduleName tests
+>   let testModules = if null args
+>                       then map moduleName tests
+>                       else filter (isRequested args) (map moduleName tests)
 >   let testFuncs = map (++ ".main") testModules
 >   let testExpr = "sequence [ " ++ concat (L.intersperse "," testFuncs) ++ 
 >                  " ] >>= \\cases -> runTestTT (TestList cases)"
