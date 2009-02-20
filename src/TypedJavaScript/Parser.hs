@@ -101,7 +101,7 @@ type_' = do
 type_'' :: CharParser st (Type SourcePos)
 type_'' =
   (parens type_) <|>
-  (braces $ withPos TObject (field `sepBy` comma)) <|>
+  (braces $ withPos TObject (field `sepEndBy` comma)) <|>
   constrOrId
 
 constrOrId :: CharParser st (Type SourcePos)

@@ -63,12 +63,12 @@ function(a,b,c,d) :: (string?, int?, double? -> int) {
 } @@ fails;
 function() :: (string?, int?, double? -> int) {
 } @@ fails;
-function(a,b,c) :: (string?, int?, double? -> int) {
+function(a,b,c) :: (string, int, double -> int) {
   var x :: string = a + b + c;
   var f :: int = b * b << b;
   var f2 :: double = b + (c / 3.9);
   return f;
-} :: (string?, int?, double? -> int);
+} :: (string, int, double -> int);
 function() :: (->) {
   var x :: int;
   function testit(a,b,c) :: (string?, int?, double? -> int) {
@@ -85,7 +85,7 @@ function() :: (->) {
 } :: (->);
 
 function() :: (->) {
-  function applymaybe(func, arg) :: ((int? -> string)?, int? -> string) {
+  function applymaybe(func, arg) :: (int? -> string)?, int? -> string {
     if (func == undefined) return "no apply";
     return "func called, res = " + func(arg);
   }
