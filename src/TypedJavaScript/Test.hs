@@ -8,7 +8,7 @@ module TypedJavaScript.Test
   , getJsPaths
   , getTjsPaths
   , rhino
-  , RhinoService, feedRhino, startRhinoService
+  , RhinoService, feedRhino, startRhinoService, stopRhino
   ) where
 
 import qualified Data.List as L
@@ -101,35 +101,36 @@ rhino :: FilePath        -- ^Path to the file
       -> IO (Either B.ByteString B.ByteString) -- ^Result from Rhino
 rhino path {- not used -} src = do
   commandIO "/usr/bin/env" 
-    ["java", "-classpath", "rhino.jar",
+    ["java", "-classpath", "tests/rhino.jar:.:tests/:rhino.jar",
      "org.mozilla.javascript.tools.shell.Main"]
     src
 
---rhinoservice
+--alternative: rhinoservice
 data RhinoService = RhinoService Handle Handle Handle ProcessHandle
 
 startRhinoService :: IO RhinoService
 startRhinoService = do
   let cp = CreateProcess (RawCommand "/usr/bin/env" 
                                      ["java", "-classpath", 
-                                      "tests/rhino.jar:.:tests/", "RhinoService"]) 
+                                      "tests/rhino.jar:.:tests/:rhino.jar",  
+                                      "RhinoService"]) 
                          Nothing Nothing CreatePipe CreatePipe CreatePipe True
   (Just hStdin, Just hStdout, Just hStderr, hProcess) <- createProcess cp
   return $ RhinoService hStdin hStdout hStderr hProcess
 
 feedRhino :: RhinoService -> B.ByteString -> IO B.ByteString
 feedRhino (RhinoService hStdin hStdout hStderr hProcess) input = do
-  putStrLn $ "Writing : " ++ show (B.pack $ show ((B.length input) + 1))
-  B.hPutStrLn hStdin $ B.pack $ show ((B.length input) + 1)
-  putStrLn $ "Writing : " ++ show input
+  hPutStrLn hStdin $ show (B.length input + 1)
   B.hPutStrLn hStdin input
-  stdoutStr <- B.hGetContents hStdout
-  stderrStr <- B.hGetContents hStderr
-  exitCode <- waitForProcess hProcess
-  case exitCode of
-    ExitSuccess -> putStrLn $ "SUCCESS" ++ show stdoutStr ++ show stderrStr
-    ExitFailure n -> putStrLn $ "FAIL"  ++ show stdoutStr ++ show stderrStr
-  outputlenBStr <- B.hGetLine hStderr
-  let outputlenStr = take ((B.length outputlenBStr)-1) (B.unpack outputlenBStr)
-  let outputlen = read outputlenStr::Int
-  B.hGet hStdout outputlen
+  hFlush hStdin
+  outputlenStr <- hGetLine hStdout
+  B.hGet hStdout (read outputlenStr::Int)
+  
+stopRhino :: RhinoService -> IO ExitCode 
+stopRhino (RhinoService hStdin hStdout hStderr hProcess) = do
+  hPutStrLn hStdin ""
+  hPutStrLn hStdin ""
+  hFlush hStdin
+  waitForProcess hProcess
+  
+  

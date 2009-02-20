@@ -30,65 +30,76 @@ import TypedJavaScript.Contracts (encapsulateTypedModule)
 
 import TypedJavaScript.Test
 
-assertSucceeds :: SourcePos 
+--TODO: do what old rhino did for sucess/fail
+import System.Exit 
+
+assertSucceeds :: RhinoService 
+               -> SourcePos 
                -> Statement SourcePos
                -> JS.Statement SourcePos
                -> Assertion
-assertSucceeds pos tjs js = do
+assertSucceeds rs pos tjs js = do
+  let regexp = B.pack $ "Exception: "
   env <- typeCheck [tjs]
   tjs' <- encapsulateTypedModule (eraseTypesStmts [tjs]) env
   let str = "var window = { };\n" ++ render (JS.pp $ JS.BlockStmt pos [tjs',js])
-  r <- rhino (sourceName pos) (B.pack str)
-  case r of
-    Right stdout -> return ()
-    Left stderr  -> assertFailure $ "Error from Rhino on " ++ show pos ++ 
-                                    "\n" ++ (B.unpack stderr)
+  retstr <- feedRhino rs (B.pack str) --rhino (sourceName pos) (B.pack str)
+  case retstr =~ regexp of
+    True -> assertFailure $ "Expected success, but an exception was printed:\n" 
+                            ++ B.unpack retstr
+    False -> return ()                            
 
-assertBlames :: SourcePos 
+assertBlames :: RhinoService 
+             -> SourcePos 
              -> String -- ^guilty party
              -> Statement SourcePos
              -> JS.Statement SourcePos
              -> Assertion
-assertBlames pos blamed tjs js = do
+assertBlames rs pos blamed tjs js = do
   let regexp = B.pack $ blamed ++ " violated the contract"
   env <- typeCheck [tjs]
   tjs' <- encapsulateTypedModule (eraseTypesStmts [tjs]) env
   let str = "var window = { };\n" ++ render (JS.pp $ JS.BlockStmt pos [tjs',js])
-  r <- rhino (sourceName pos) (B.pack str)
-  case r of
-    Right stdout -> assertFailure $ "expected error at " ++ show pos ++
-                                    "; stdout printed " ++ (B.unpack stdout)
-    Left stderr  -> case stderr =~ regexp of
-      True -> return ()
-      False -> assertFailure $ "expected contract violation blaming " ++ 
-                               blamed ++ " at " ++ show pos ++
-                               "; stderr printed " ++ (B.unpack stderr)
+  retstr <- feedRhino rs (B.pack str) -- rhino (sourceName pos) (B.pack str)
+  case retstr =~ regexp of
+    True -> return ()
+    False -> assertFailure $ "Expected contract violation blaming " ++ 
+                             blamed ++ " at " ++ show pos ++ "; rhino returned " 
+                             ++ B.unpack retstr
 
-parseTestCase :: CharParser st Test
-parseTestCase = do
+closeRhinoTest :: RhinoService -> Assertion
+closeRhinoTest rs = do
+  code <- stopRhino rs
+  case code of
+    ExitSuccess -> assertBool "Rhino succeed" True
+    ExitFailure n -> assertFailure $ "Rhino didn't close, exit code " ++ (show n)
+
+parseTestCase :: RhinoService -> CharParser st Test
+parseTestCase rs = do
   pos <- getPosition
   let succeeds = do
         reserved "succeeds"
         tjs <- parseBlockStmt
         js <- JS.parseBlockStmt
-        return $ TestCase (assertSucceeds pos tjs js)
+        return $ TestCase (assertSucceeds rs pos tjs js)
       blames = do
         reserved "blames"
         blamed <- stringLiteral
         tjs <- parseBlockStmt
         js <- JS.parseBlockStmt
-        return $ TestCase (assertBlames pos blamed tjs js)
+        return $ TestCase (assertBlames rs pos blamed tjs js)
   succeeds <|> blames
   
-readTestFile :: FilePath -> IO Test
-readTestFile path = do
-  result <- parseFromFile (parseTestCase `endBy` semi) path
+readTestFile :: RhinoService -> FilePath -> IO Test
+readTestFile rs path = do
+  result <- parseFromFile ((parseTestCase rs) `endBy` semi) path
   case result of
     -- Reporting the parse error is deferred until the test is run.
     Left err -> return $ TestCase (assertFailure (show err))
     Right tests -> return $ TestList tests
     
 main = do
+  rs <- startRhinoService
   testPaths <- getPathsWithExtension ".test" "contracts"
-  testCases <- mapM readTestFile testPaths
-  return (TestList testCases)
+  testCases <- mapM (readTestFile rs) testPaths
+  return (TestList $ testCases ++ [TestCase $ closeRhinoTest rs])
