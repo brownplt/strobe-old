@@ -13,6 +13,7 @@ module TypedJavaScript.TypeChecker
 import Data.Generics
 import qualified Data.Maybe as Y
 import Data.List (foldl', nub)
+import qualified Data.List as L
 import qualified Data.Map as M
 import Data.Map(Map, (!))
 import Control.Monad(liftM, liftM2, zipWithM, foldM)
@@ -21,9 +22,9 @@ import Text.ParserCombinators.Parsec(SourcePos)
 import Text.ParserCombinators.Parsec.Pos
 import TypedJavaScript.Syntax
 import TypedJavaScript.Environment
+import TypedJavaScript.Types
 
 -- ----------------------------------------------------------------------------
-type Env = Map String (Type SourcePos)
 
 -- |Type-checks a sequence of statemens. Returns the local environment.
 typeCheck :: [Statement SourcePos] -- ^statements to type-check
@@ -47,12 +48,11 @@ arrayType vars types indxtype = let pos = corePos in
 coreTypeEnv :: Env
 coreTypeEnv = M.fromList $ 
   (map (\s -> (s, (TApp corePos (TId corePos s) [])))
-       ["string", "double", "int", "bool", "unit", "undefined"]) ++
+       ["string", "double", "int", "bool", "unit"]) ++
   [("@global", globalObjectType)]
 
 coreVarEnv :: Env
-coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global"),
-                         ("undefined", coreTypeEnv ! "undefined")]
+coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
 
 -- TODO: deal with TApp, add syntax for defining them , etc.
 
@@ -94,7 +94,6 @@ isSubType vars types (TFunc _ this2 req2 opt2 var2 ret2)  -- is F2 <= F1?
 
 isSubType vars types t1 t2 
  | (t1 == t2) = True
- | (t1 == types ! "undefined") = True --everything is nullable
  | (t1 == types ! "int") = t2 == types ! "double"
  | otherwise = False
 
@@ -157,23 +156,17 @@ allPathsReturn vars types rettype stmt = case stmt of
   ForStmt _ _ _ _ body -> allPathsReturn vars types rettype body
   TryStmt _ body catches mfinally -> fail "allPathsReturn, TryStmt, NYI" -- true if all catches and/or the finally have a return
   ThrowStmt{} -> return True
-  ReturnStmt _ (Just expr) -> if (rettype == (types ! "undefined"))
-    --TODO: decide what to do about functions with undefined return type - should they
-    --      be allowed to return anything? should they be required to have empty return stmts?
-    --      should they be allowed to have return statements, but only if their type is undefined?
-    --      all of these should be fine, since anything using the function's return value would be
-    --      unable to do anything with it.
-    then fail "cannot return anything from a function whose return type is undefined"
-    else do
-      exprtype <- typeOfExpr vars types expr
-      if isSubType vars types exprtype rettype
-        then return True
-        else fail $ (show exprtype) ++ " is not a subtype of the expected return type, " ++ (show rettype)
-  
-  ReturnStmt _ Nothing -> if (rettype == (types ! "undefined"))
-    then return True
-    else fail "found empty return in a function whose return type is not undefined"
-  
+  ReturnStmt _ (Just expr) -> do
+    exprtype <- typeOfExpr vars types expr
+    if isSubType vars types exprtype rettype
+      then return True
+      else fail $ (show exprtype) ++ " is not a subtype of the expected " ++
+                  "return type, " ++ (show rettype)
+  -- return; means we are returning unit.  If the return type is nullable,
+  -- we have to return null;.
+  ReturnStmt _ Nothing -> case isSubType vars types unitType rettype of
+    True -> return True
+    False -> fail $ "expected return value of type " ++ show rettype
   -- any other statement does not return from the function
   _ -> return False
 
@@ -224,8 +217,7 @@ typeOfExpr vars types expr = case expr of
   NumLit a _         -> return $ types ! "double"
   IntLit a _         -> return $ types ! "int"
   BoolLit a _        -> return $ types ! "bool"
-  NullLit a          -> return $ types ! "undefined"  --TODO: should null just be undefined?
-
+  NullLit a          -> fail "NullLit NYI"
   ArrayLit pos exprs   -> do
     exprtypes <- mapM (typeOfExpr vars types) exprs
     if length exprs == 0
@@ -445,10 +437,12 @@ typeOfExpr vars types expr = case expr of
         if length argnames /= (length reqargtypes) + (length optargtypes) + (maybe 0 (const 1) mvarargtype)
           then fail $ "Inconsistent function definition - argument number mismatch in arglist and type"
           else do
-            vars <- processRawEnv vars types [] 
-                                  ((zipWith (\argid argtype -> (argid, Just argtype, Nothing)) argnames (reqargtypes++optargtypes)) ++ 
-                                   (maybe [] (\varargtype -> [(last argnames, Just $ arrayType vars types varargtype, Nothing)]) mvarargtype) ++ 
-                                   (globalEnv bodystmts))
+            let args = argEnv (zip (map unId argnames) reqargtypes)
+                         -- deliberately incomprehensible
+                         (liftM ((,)(unId $ L.last argnames)) mvarargtype)
+            -- M.union is left-biased; identifiers are correctly shadowed
+            vars <- processRawEnv (M.union args vars) types []
+                                  (globalEnv bodystmts)
             guaranteedReturn <- allPathsReturn vars types rettype bodyblock 
             if rettype /= (types ! "unit") && (not guaranteedReturn)
               then fail "Some path doesn't return a value, but the function's return type is not undefined"

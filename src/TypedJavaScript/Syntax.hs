@@ -2,7 +2,7 @@
 module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
-         ForInit(..),ForInInit(..),Type(..),showSp, propToString) where
+         ForInit(..),ForInInit(..),Type(..),showSp, propToString, unId) where
 
 import Text.ParserCombinators.Parsec(SourcePos,sourceName,sourceLine) -- used by data JavaScript
 import Data.Generics(Data,Typeable)
@@ -15,6 +15,8 @@ data JavaScript a
   -- variant.
   = Script a [Statement a] 
   deriving (Data,Typeable,Eq,Ord)
+
+unId (Id _ s) = s
 
 data Id a = Id a String deriving (Ord,Data,Typeable)
 

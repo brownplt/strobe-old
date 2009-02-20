@@ -5,6 +5,10 @@
 (function (a) :: (double -> double) { return a; })(20) :: double;
 (function (a) :: (double -> double) { return a+5; })(20) :: double;
 
+function(x,x) :: int, int -> int {
+  return x;
+} :: int,int -> int;
+
 //addition and various ops.
 //the following will likely stay the same:
 5 + "4" :: string;
@@ -232,7 +236,7 @@ x @@ fails; //unbound ID
 (function (x) :: (double -> double) {
   return x + x;})(4)(3) @@ fails; 
   
-(function (a) :: (undefined ->) {return;}) :: (undefined -> );
+(function (a) :: (->) {return;}) @@ fails;
 
 /*
 ;silly us

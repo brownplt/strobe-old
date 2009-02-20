@@ -8,7 +8,7 @@ function (arry) :: (Array<int> -> int) {
 function (arry) :: (Array<int> -> int) {
   return arry[arry];
 } @@ fails;
-function (arry) :: (Array<int> -> int) {
+function (arry) :: Array<int> -> int {
   return arry[arry[0]];
 } :: (Array<int>->int);
 
@@ -121,33 +121,32 @@ function () :: (-> int) {
   return z[0].x + z[1].x;
 } :: (-> int);
 
-//TODO: should the following fail or succeed?
 function () :: (-> int) {
-  var z :: Array<undefined> = [1, "hi", 43.9, true];
+  // This used to be Array<undefined> and was about subtyping.
+  var z :: Array<string> = [1, "hi", 43.9, true];
   return 3;
 } @@ fails;
+
 function () :: (-> int) {
-  var z :: Array<int> = [undefined, 1];
+  var z :: Array<int> = [1];
   return z[2];
 } :: (-> int);
+
 function () :: (-> double) {
-  var z :: Array<double> = [undefined, 1, undefined, 3.0];
+  var z :: Array<double> = [1, 3.0];
   return z[0];
 } :: (-> double);
 
 //TODO: subtyping for functions
-undefined :: int;
 function () :: (->) {
-  var x :: Array<undefined> = [1];
+  var x :: Array<string> = [1];
 } @@ fails;
 function () :: (->) {
-  var x :: undefined;
-  x = undefined;
+  var x :: int = 5;
   var y :: Array<int> = [x, x, x, 3];
   return;
 } :: (->);
 
-[undefined, undefined, undefined] :: Array<int>;
-[undefined, undefined, undefined] :: Array<undefined>;
+[1,2,3] :: Array<int>;
 
 
