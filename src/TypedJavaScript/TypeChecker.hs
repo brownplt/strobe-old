@@ -91,7 +91,8 @@ isSubType vars types (TFunc _ this2 req2 opt2 var2 ret2)  -- is F2 <= F1?
               all2    = (map Just $ req2 ++ opt2 ++ (maybe [] repeat var2)) ++ repeat Nothing
               all1    = (map Just $ req1 ++ opt1 ++ (maybe [] repeat var1)) ++ repeat Nothing
            in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
-
+isSubType vars types (TNullable _ t1) (TNullable _ t2) = 
+  isSubType vars types t1 t2
 isSubType vars types t1 t2 
  | (t1 == t2) = True
  | (t1 == types ! "int") = t2 == types ! "double"
@@ -428,7 +429,11 @@ typeOfExpr vars types expr = case expr of
                             ++ show expectedtype)
               argexprs (reqargtypes ++ optargtypes ++ (maybe [] repeat mvarargtype))
             return rettype
-      _ -> fail $ "Expected function without a thistype, got " ++ show functype
+      TFunc _ (Just t) _ _ _ _ -> 
+        fail $ "this-type not implemented " ++ show functype ++ ", " ++ show t
+      otherwise -> do
+        fail $ "expression in function position has type " ++ show functype ++
+               " at " ++ show a
 
   FuncExpr _ argnames functype bodyblock@(BlockStmt _ bodystmts) -> do
     functype <- return $ resolveType vars types functype
@@ -442,7 +447,7 @@ typeOfExpr vars types expr = case expr of
                          (liftM (((,)(unId $ L.last argnames)).
                                  (arrayType vars types)) mvarargtype)
             -- M.union is left-biased; identifiers are correctly shadowed
-            vars <- processRawEnv (M.union args vars) types []
+            vars <- processRawEnv (M.union args vars) types (M.keys args)
                                   (globalEnv bodystmts)
             guaranteedReturn <- allPathsReturn vars types rettype bodyblock 
             if rettype /= (types ! "unit") && (not guaranteedReturn)

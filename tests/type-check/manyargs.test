@@ -84,8 +84,9 @@ function() :: (->) {
   var g331 = testit("Ag", g9+g3^g2, x+3.0);
 } :: (->);
 
+/* TODO: Lots of undefined here
 function() :: (->) {
-  function applymaybe(func, arg) :: (int? -> string)?, int? -> string {
+  function applymaybe(func, arg) :: (int? -> string), int? -> string {
     if (func == undefined) return "no apply";
     return "func called, res = " + func(arg);
   }
@@ -93,7 +94,6 @@ function() :: (->) {
   applymaybe(undefined);
   applymaybe(null);
   function showmaybe(anint) :: (int? -> string) {
-    if (anint == undefined) return "given no arg";
     return "given arg, arg was: " + anint;
   }
   applymaybe(showmaybe);
@@ -108,3 +108,5 @@ function() :: (->) {
   }
   applymaybe(39, 4);
 } @@ fails;
+
+*/
