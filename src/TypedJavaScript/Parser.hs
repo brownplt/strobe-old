@@ -27,6 +27,7 @@ import Control.Monad.Trans (MonadIO,liftIO)
 import Numeric(readDec,readOct,readHex)
 import Data.Char(chr)
 import Data.Char
+import qualified Data.List as L
  
 -- We parameterize the parse tree over source-locations.
 type ParsedStatement = Statement SourcePos
@@ -43,94 +44,86 @@ type MaybeTypeParser state = CharParser state MaybeParsedType
 identifier =
   liftM2 Id getPosition Lexer.identifier
 
-{- 
-  To make this easy:
+
+{-
+ The syntax for types is:
+
+ type ::= identifier
+        | type?
+        | type [,*] -> type
+        | type [,+] ... -> type
+        | constr<type [,*]>
+        | ( type )
+
+Disambiguation:
+
+ type ::= type' [,*] -> type
+        | type' [,+] ... -> type
+        | type'
+
+ type' ::= type''?
+         | type''
+
+ type'' ::= identifier
+          | ( type )
+          | { id: type' [,* }
+          | constr<type [,*]>
+
+ -} 
+
+type_ :: CharParser st (Type SourcePos)
+type_ = do
+  p <- getPosition
+  ts <- type_' `sepBy` comma
+  let vararity = do
+        reservedOp "..."
+        reservedOp "->"
+        r <- type_ <|> (return $ TApp p (TId p "unit") [])
+        return (TFunc p Nothing (L.init ts) [] (Just $L.last ts) r)
+  let func = do
+        reservedOp "->"
+        r <- type_ <|> (return $ TApp p (TId p "unit") [])
+        return (TFunc p Nothing ts [] Nothing r) 
+  case ts of
+    []  -> func -- function of zero arguments
+    [t] -> vararity <|> func <|> (return t)
+    ts  -> vararity <|> func
+
+type_' :: CharParser st (Type SourcePos)
+type_' = do
+  t <- type_''
+  let nullable = do
+        p <- getPosition
+        reservedOp "?"
+        return (TNullable p t)
+  nullable <|> (return t) <?> "possibly nullable type"
+
+type_'' :: CharParser st (Type SourcePos)
+type_'' =
+  (parens type_) <|>
+  (braces $ withPos TObject (field `sepBy` comma)) <|>
+  constrOrId
+
+constrOrId :: CharParser st (Type SourcePos)
+constrOrId = do
+  p <- getPosition
+  (Id _ id) <- identifier
+  let constr = do
+        args <- (angles $ type_ `sepBy` comma) <?> "type application"
+        return (TApp p (TId p id) args)
+  constr <|> (return (TId p id))
+
+field :: CharParser st (Id SourcePos, Type SourcePos)
+field = do
+  id <- identifier
+  reservedOp "::"
+  t <- type_' 
+  return (id,t)
   
-  type = [simpletype : ] funcarg ,* -> [type]
-       | simpletype
-  
-  funcarg = simpletype argsfx
-  argsfx = 
-         | ?
-         | ...
-
-  simpletype = identifier [< type, + >]   --plain id, or generic
-             | { identifier :: simpletype ,* }  --object. 'simpletype' instead of 'type' because ',' would be interpreted as a function
-             | < expression >             --typeof
-             | ( type )                   --parenthesised
-   
-  =================
-  Then some additional computation is done to ensure that args are in the order: required, optional, and at most 1 var.
-  This method should be simpler than building it into the parser directly.
--}
-
---helpers for parseTypeNoColons:
-data ArgType = ReqArg | OptArg | VarArg
-
-parseTypeSimple :: TypeParser st 
-parseTypeSimple = do
-  pos <- getPosition
-  (do (Id idpos idstr) <- identifier
-      (do innertypes <- angles (parseTypeNoColons `sepBy` comma)
-          if length innertypes == 0 
-            then fail "generic application must have at least one type" 
-            else return (TApp pos (TId idpos idstr) innertypes))
-        <|> (return (TId idpos idstr)))
-    <|> ((do fields <- braces $ (liftM2 (,) identifier (do reservedOp "::"; parseTypeSimple)) `sepEndBy` comma -- structural object type
-             return (TObject pos fields)) <?> "object type")
-    -- <|> ((do expr <- angles parseExpression; return (TExpr pos expr)) <?> "<> operator") -- <> operator
-    <|> ((parens parseTypeNoColons) <?> "parentheses") -- parens
-parseReturnType :: TypeParser st
-parseReturnType = do
-  reservedOp "->" 
-  pos <- getPosition
-  parseTypeNoColons <|> (return $ TId pos "undefined")
-
-processArgs :: [(Type a, ArgType)] -> ([Type a], [Type a], Maybe (Type a))
-processArgs [] = ([], [], Nothing)
-processArgs [(t, mod)] = 
-  case mod of 
-    ReqArg -> ([t], [], Nothing)
-    OptArg -> ([], [t], Nothing)
-    VarArg -> ([], [], Just t)
-processArgs ((t, mod):(t2, mod2):rest) = 
-  case mod of
-    ReqArg -> let (r,o,v) = processArgs $ (t2,mod2):rest in (t:r, o, v)
-    OptArg -> case mod2 of
-                ReqArg -> error "Can't have required argument after optional argument"
-                _      -> let (r,o,v) = processArgs $ (t2,mod2):rest in (r, t:o, v)
-    VarArg -> error "vararg can't be followed by anything"
-
--- main parsing functions:
-parseTypeNoColons :: TypeParser st
-parseTypeNoColons = do
-  pos <- getPosition
-  thistype <- try (do tt <- parseTypeSimple    --'try' to make sure we don't eat the first required arg
-                      reservedOp "|" --changed from ":" to work better with typed object literals
-                      return (Just tt)) <|> (return Nothing)
-  args <- (do st <- parseTypeSimple
-              (reservedOp "?" >> return (st,OptArg))
-                <|> (reservedOp "..." >> return (st,VarArg))
-                <|> (return (st,ReqArg))) `sepBy` comma
-  case args of
-    [] -> do
-      rettype <- parseReturnType
-      return $ TFunc pos thistype [] [] Nothing rettype
-    [(argt, mod)] -> (do rettype <- parseReturnType
-                         let (r,o,v) = processArgs [(argt, mod)]
-                           in return $ TFunc pos thistype r o v rettype)
-                       <|> (case mod of
-                              ReqArg -> return argt -- non-function
-                              OptArg -> fail "unexpected ?"  --TODO: fix these fails, they're very confusing.
-                              VarArg -> fail "unexpected ...")
-    args' -> (do rettype <- parseReturnType
-                 let (r,o,v) = processArgs args'
-                   in return $ TFunc pos thistype r o v rettype)
-
 parseType :: TypeParser st
 parseType = do
   reservedOp "::" <?> "type annotation (:: followed by a type)"
-  t <- parseTypeNoColons
+  t <- type_
   return t
 
 parseMaybeType :: MaybeTypeParser st

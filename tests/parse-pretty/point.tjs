@@ -1,3 +1,5 @@
+type foo :: int -> int;
+
 type TMath :: {
     sqrt :: (int -> int)
 };

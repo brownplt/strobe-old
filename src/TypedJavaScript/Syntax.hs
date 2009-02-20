@@ -26,6 +26,7 @@ data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)
                         (Maybe (Type a)) {- optional var arg -}
                         (Type a) {- ret type -}
               | TId a String -- an Id defined through a 'type' statement
+              | TNullable a (Type a)
               | TApp a (Type a) [Type a]
     deriving (Data,Typeable,Ord)
 
