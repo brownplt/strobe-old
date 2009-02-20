@@ -91,7 +91,9 @@ isSubType vars types (TFunc _ this2 req2 opt2 var2 ret2)  -- is F2 <= F1?
               all2    = (map Just $ req2 ++ opt2 ++ (maybe [] repeat var2)) ++ repeat Nothing
               all1    = (map Just $ req1 ++ opt1 ++ (maybe [] repeat var1)) ++ repeat Nothing
            in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
-isSubType vars types (TNullable _ t1) (TNullable _ t2) = 
+isSubType vars types (TNullable _ t1) (TNullable _ t2) =
+  isSubType vars types t1 t2
+isSubType vars types t1 (TNullable _ t2) =
   isSubType vars types t1 t2
 isSubType vars types t1 t2 
  | (t1 == t2) = True
@@ -119,6 +121,7 @@ bestSuperType vars types t1 t2
 -- TODO: change to a Monad?
 resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
 resolveType vars types t = case t of
+  TNullable p t -> TNullable p (resolveType vars types t)
   TId _ s -> types ! s
   TFunc pos this reqargs optargs vararg rettype -> do --TODO: question: how can I have a 'do' in here, without resolveType being a Monad?
     let rt = (resolveType vars types)
@@ -411,24 +414,36 @@ typeOfExpr vars types expr = case expr of
 
   CallExpr a funcexpr argexprs -> do
     functype <- typeOfExpr vars types funcexpr
+    argTypes <- mapM (typeOfExpr vars types) argexprs
     case functype of 
-      TFunc _ Nothing reqargtypes optargtypes mvarargtype rettype -> do
-        let s = length argexprs
-        let r = length reqargtypes
-        let z = length optargtypes
-        if r > s || ((maybe True (const False) mvarargtype) && s > (r + z))
-          then if r > s
-                 then fail $ "expected at least " ++ (show r) ++ " arguments, got only " ++ (show s)
-                 else fail $ "expected at most " ++ (show (r+z)) ++ " args, but got " ++ (show s)
-          else do
-            zipWithM (\argexpr expectedtype -> do
-              argexprtype <- typeOfExpr vars types argexpr
-              if isSubType vars types argexprtype expectedtype
-                then return True
-                else fail $ (show argexprtype) ++ " is not a subtype of the expected argument type, " 
-                            ++ show expectedtype)
-              argexprs (reqargtypes ++ optargtypes ++ (maybe [] repeat mvarargtype))
-            return rettype
+      TFunc _ Nothing posArgTypes_ [] varArgType_ resultType_ -> do
+        let posArgTypes = map (resolveType vars types) posArgTypes_
+        let varArgType = liftM (resolveType vars types) varArgType_
+        let resultType = resolveType vars types resultType_
+        -- If (length posArgTypes) exceeds the length of argTypes, varArgTypes'
+        -- is empty.
+        let (posArgTypes',varArgTypes') = L.splitAt (length posArgTypes) 
+                                                    argTypes
+        let (suppliedArgTypes,missingArgTypes) =
+              L.splitAt (length posArgTypes') posArgTypes
+        let checkSubType (formal,actual) = 
+              case isSubType vars types actual formal of 
+                True -> return True
+                False -> fail $ "expected " ++ show formal ++ "; received " ++ 
+                                show actual ++ " at " ++ show a
+        mapM_ checkSubType (zip suppliedArgTypes posArgTypes')
+        let checkMissingArg actual = case actual of
+                TNullable _ _ -> return True
+                otherwise -> fail $ "non-null argument not supplied"
+        mapM_ checkMissingArg missingArgTypes
+        let checkVarArg actual = case varArgType of
+              Nothing -> fail "extra arguments supplied"
+              Just formal -> case isSubType vars types actual formal of
+                True -> return True
+                False ->
+                  fail $ "expected subtype of " ++ show formal ++ 
+                         ", received " ++ show actual ++ " (var-arity function)"
+        return resultType      
       TFunc _ (Just t) _ _ _ _ -> 
         fail $ "this-type not implemented " ++ show functype ++ ", " ++ show t
       otherwise -> do

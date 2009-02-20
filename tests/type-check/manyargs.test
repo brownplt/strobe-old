@@ -20,8 +20,8 @@ function (r1, r2, o1, o2) :: (int, int, int, double -> string) {
     return r1+r2+(o1 * 534) + "";
 } :: (int, int, int, double -> string);
 function() :: (-> string) {
-  function inner(r1, r2, o1, o2) :: (double, double, double, string -> string) {
-    return r1+r2+(o1 * 534) + o2;
+  function inner(r1, r2, o1, o2) :: (double, double, double?, string? -> string) {
+    return "cake" + r1+r2+(000 * 534);
   }
   inner(1, 2);
   inner(1, 2, 3);
@@ -77,10 +77,10 @@ function() :: (->) {
     var f2 :: double = b + (c / 3.9);
     return f;
   }
-  var g = testit(); 
-  var g2 = testit("ASTR");
-  var g3 = testit("ASTR", g2);
-  var g9 = testit(g2 + g3 + "", x << g3);
+  var g = 23;
+  var g2 = 45;
+  var g3 = 356;
+  var g9 = 4646;
   var g331 = testit("Ag", g9+g3^g2, x+3.0);
 } :: (->);
 
