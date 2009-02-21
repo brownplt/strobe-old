@@ -37,7 +37,13 @@ instance Eq (Id a) where
   Id _ s1 == Id _ s2 = s1 == s2
 -- TODO: Add a type for constructors.
 instance Eq (Type a) where
-  TObject _ props == TObject _ props2 = all id (zipWith (==) props props2)
+  TObject _ props1 == TObject _ props2 = 
+    (hasall props1 props2) && (hasall props2 props1) where
+      hasall p1 p2 = all
+        (\(o2id@(Id _ o2propname), o2proptype) -> maybe
+          False ((==) o2proptype) (lookup o2id p1))
+        p2
+     -- all id (zipWith (==) props props2)
   TId _ s == TId _ s2                 = s == s2
   TApp _ c1 v1 == TApp _ c2 v2        = c1 == c2 && v1 == v2
   TFunc _ tt1 req1 opt1 var1 ret1 ==

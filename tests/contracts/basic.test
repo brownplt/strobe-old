@@ -18,21 +18,21 @@ blames "client" {
   add("ten","eleven");
 };
 
-succeeds {
+blames "client" {
   var add = function(x,y) :: int, int -> int {
     return x;
   }
-  var z = add(undefined, undefined);
+  var z = add(4, 5); //undefined, undefined);
 }
 {
   add(undefined, undefined);
 };
 
-succeeds {
+blames "client" {
   var add = function(x,y) :: int, int -> int {
     return x+y;
   }
-  var z = add(undefined, undefined);
+  var z = add(14, 19); //undefined, undefined);
 }
 {
   add(undefined, undefined);

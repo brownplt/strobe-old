@@ -47,7 +47,7 @@ function () :: (-> Array<int>) {
   var y :: Array<double> = [2.0];
   y = z;
   return z;
-} :: (-> Array<int>);
+} @@ fails; //:: (-> Array<int>);
 
 //arrays of objects:
 //TODO: make these use iterators once those work.

@@ -20,7 +20,7 @@ import qualified Data.ByteString.Char8 as B
 
 import qualified WebBits.JavaScript as JS
 
-import TypedJavaScript.Syntax (Statement)
+import TypedJavaScript.Syntax (Statement,showSp)
 import TypedJavaScript.Lexer (semi,reservedOp, reserved,stringLiteral)
 import TypedJavaScript.Parser (parseBlockStmt)
 
@@ -34,11 +34,18 @@ import TypedJavaScript.Test
 --TODO: do what old rhino did for sucess/fail
 import System.Exit 
 
+--TODO: these can be considered type-check tests, too?
 runTest rs pos tjs js = do
-  env <- typeCheck [tjs] --TODO: print line numbers for type-check errors
-  tjs' <- return $ encapsulate (eraseTypesStmts [tjs]) env []
-  let str = "var window = { };\n" ++ render (JS.pp $ JS.BlockStmt pos [tjs',js])
-  feedRhino rs (B.pack str) --rhino (sourceName pos) (B.pack str)
+  --env <- typeCheck [tjs] --TODO: print line numbers for type-check errors
+  result <- E.try $ typeCheck [tjs]
+  case result of
+    Left (err::(E.SomeException)) -> return $ Left $ assertFailure 
+      ((showSp pos) ++ ": failed to type-check: " ++ (show $ err))
+    Right env -> return $ Right $ do
+      tjs' <- return $ encapsulate (eraseTypesStmts [tjs]) env []
+      let str = "var window = { };\n" ++ 
+                  render (JS.pp $ JS.BlockStmt pos [tjs',js])
+      feedRhino rs (B.pack str) --rhino (sourceName pos) (B.pack str)
 
 assertSucceeds :: RhinoService 
                -> SourcePos 
@@ -49,11 +56,16 @@ assertSucceeds rs pos tjs js = do
   --possible exception names so far: JavaScriptException, EcmaError
   --possible exception types so far: Exception, TypeError
   let regexp = B.pack $ "org.mozilla.javascript.[a-zA-Z0-9_]*: "
-  retstr <- runTest rs pos tjs js
-  case retstr =~ regexp of
-    True -> assertFailure $ "Expected success, but an exception was printed:\n" 
-                            ++ B.unpack retstr
-    False -> return ()                            
+  retval <- runTest rs pos tjs js
+  case retval of
+    Left failed -> failed
+    Right retstr' -> do
+      retstr <- retstr'
+      case retstr =~ regexp of
+        True -> assertFailure $ "Expected success, but an " ++ 
+                                "exception was printed:\n" ++
+                                B.unpack retstr
+        False -> return ()                            
 
 assertBlames :: RhinoService 
              -> SourcePos 
@@ -63,19 +75,23 @@ assertBlames :: RhinoService
              -> Assertion
 assertBlames rs pos blamed tjs js = do
   let regexp = B.pack $ blamed ++ " violated the contract"
-  retstr <- runTest rs pos tjs js
-  case retstr =~ regexp of
-    True -> return ()
-    False -> assertFailure $ "Expected contract violation blaming " ++ 
-                             blamed ++ " at " ++ show pos ++ "; rhino returned " 
-                             ++ B.unpack retstr
+  retval <- runTest rs pos tjs js
+  case retval of
+    Left fail -> fail
+    Right retstr' -> do
+      retstr <- retstr'
+      case retstr =~ regexp of
+        True -> return ()
+        False -> assertFailure $ "Expected contract violation blaming " ++ 
+                                 blamed ++ " at " ++ show pos ++ 
+                                 "; rhino returned " ++ B.unpack retstr
 
 closeRhinoTest :: RhinoService -> Assertion
 closeRhinoTest rs = do
   code <- stopRhino rs
   case code of
     ExitSuccess -> assertBool "Rhino succeed" True
-    ExitFailure n -> assertFailure $ "Rhino didn't close, exit code " ++ (show n)
+    ExitFailure n -> assertFailure $ "Rhino fail, exit code: " ++ (show n)
 
 parseTestCase :: RhinoService -> CharParser st Test
 parseTestCase rs = do

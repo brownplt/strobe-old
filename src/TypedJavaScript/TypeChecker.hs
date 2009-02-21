@@ -74,10 +74,15 @@ boolContext vars types t
 -- is t1 a subtype of t2?
 isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
 
+--objects are invariant in their common field types
+--TODO: verify that the 'case' here is well-founded
 isSubType vars types (TObject _ props1) (TObject _ props2) =
   all (\(o2id@(Id _ o2propname), o2proptype) -> maybe
-        False (\o1proptype -> isSubType vars types o1proptype o2proptype) 
-        (lookup o2id props1))
+        False (\o1proptype -> case (o1proptype,o2proptype) of
+                  (TObject{},TObject{}) -> isSubType --want to preserve this subtype among object props
+                    vars types o1proptype o2proptype
+                  _ -> o1proptype == o2proptype)     --but don't want subtype for other things
+              (lookup o2id props1))
       props2
 
 isSubType vars types (TFunc _ this2 req2 opt2 var2 ret2)  -- is F2 <= F1?
