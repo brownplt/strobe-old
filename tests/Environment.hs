@@ -1,4 +1,4 @@
--- |Environment test cases.  The .test files in the environment directory are
+-- |Environment test cases.  The .js files in the environment directory are
 -- parsed as:
 --
 -- tests ::= test ;
@@ -57,6 +57,6 @@ readTestFile path = do
     Right tests -> return $ TestList tests
     
 main = do
-  testPaths <- getPathsWithExtension ".test" "environment"
+  testPaths <- getPathsWithExtension ".js" "environment"
   testCases <- mapM readTestFile testPaths
   return (TestList testCases)

@@ -1,4 +1,4 @@
--- |Type-checker test cases.  The .test files in the type-check directory are
+-- |Type-checker test cases.  The .js files in the type-check directory are
 -- parsed as:
 --
 -- tests ::= test ;
@@ -80,6 +80,6 @@ readTestFile path = do
     Right tests -> return $ TestList tests
     
 main = do
-  testPaths <- getPathsWithExtension ".test" "type-check"
+  testPaths <- getPathsWithExtension ".js" "type-check"
   testCases <- mapM readTestFile testPaths
   return (TestList testCases)

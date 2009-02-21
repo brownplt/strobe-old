@@ -7,7 +7,7 @@ module TypedJavaScript.Test
   , isTjsFile
   , getJsPaths
   , getTjsPaths
-  , rhino
+  , rhinoShell
   , RhinoService, feedRhino, startRhinoService, stopRhino
   ) where
 
@@ -96,10 +96,10 @@ commandIO path args stdinStr = do
     ExitSuccess -> return (Right stdoutStr)
     ExitFailure n -> return (Left stderrStr)
 
-rhino :: FilePath        -- ^Path to the file
-      -> B.ByteString    -- ^JavaScript source
-      -> IO (Either B.ByteString B.ByteString) -- ^Result from Rhino
-rhino path {- not used -} src = do
+rhinoShell :: FilePath        -- ^Path to the file
+           -> B.ByteString    -- ^JavaScript source
+           -> IO (Either B.ByteString B.ByteString) -- ^Result from Rhino
+rhinoShell path {- not used -} src = do
   commandIO "/usr/bin/env" 
     ["java", "-classpath", "tests/rhino.jar:.:tests/:rhino.jar",
      "org.mozilla.javascript.tools.shell.Main"]

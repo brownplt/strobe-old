@@ -1,0 +1,3 @@
+#!/bin/bash
+echo javac -classpath .:rhino.jar RhinoService.java
+javac -classpath .:rhino.jar RhinoService.java

@@ -1,4 +1,4 @@
--- |Contract test-cases.  The .test files in the contracts directory are
+-- |Contract test-cases.  The .js files in the contracts directory are
 -- parsed as:
 --
 -- tests ::= test ;
@@ -27,7 +27,8 @@ import TypedJavaScript.Parser (parseBlockStmt)
 
 import TypedJavaScript.TypeChecker (typeCheck)
 import TypedJavaScript.TypeErasure (eraseTypesStmts)
-import TypedJavaScript.Contracts (encapsulate, encapsulateTypedModule, getContractsLib)
+import TypedJavaScript.Contracts (encapsulate, 
+  encapsulateTypedModule, getContractsLib)
 
 import TypedJavaScript.Test
 
@@ -43,9 +44,8 @@ runTest rs pos tjs js = do
       ((showSp pos) ++ ": failed to type-check: " ++ (show $ err))
     Right env -> return $ Right $ do
       tjs' <- return $ encapsulate (eraseTypesStmts [tjs]) env []
-      let str = "var window = { };\n" ++ 
-                  render (JS.pp $ JS.BlockStmt pos [tjs',js])
-      feedRhino rs (B.pack str) --rhino (sourceName pos) (B.pack str)
+      let str = render (JS.pp $ JS.BlockStmt pos [tjs',js])
+      feedRhino rs (B.pack str) 
 
 assertSucceeds :: RhinoService 
                -> SourcePos 
@@ -62,9 +62,8 @@ assertSucceeds rs pos tjs js = do
     Right retstr' -> do
       retstr <- retstr'
       case retstr =~ regexp of
-        True -> assertFailure $ (showSp pos) ++ ": Expected success, but an " ++ 
-                                "exception was printed:\n" ++
-                                B.unpack retstr
+        True -> assertFailure $ (showSp pos) ++ ": Expected success, but an" ++ 
+                                " exception was printed:\n" ++ B.unpack retstr
         False -> return ()                            
 
 assertBlames :: RhinoService 
@@ -82,9 +81,10 @@ assertBlames rs pos blamed tjs js = do
       retstr <- retstr'
       case retstr =~ regexp of
         True -> return ()
-        False -> assertFailure $ (showSp pos) ++ ": Expected contract violation blaming " ++ 
-                                 blamed ++ " at " ++ show pos ++ 
-                                 "; rhino returned " ++ B.unpack retstr
+        False -> assertFailure $ 
+          (showSp pos) ++ ": Expected contract violation blaming " ++ 
+          blamed ++ " at " ++ show pos ++ "; rhino returned " ++ 
+          B.unpack retstr
 
 closeRhinoTest :: RhinoService -> Assertion
 closeRhinoTest rs = do
@@ -122,11 +122,12 @@ main = do
 
   --feed the rs the contracts library code
   lib <- getContractsLib
-  let str = "var window = { };\n" ++ render (JS.pp $ JS.BlockStmt (initialPos "contractslib") lib)
+  let str = "var window = { };\n" ++ render 
+              (JS.pp $ JS.BlockStmt (initialPos "contractslib") lib)
   rez <- feedRhino rs $ B.pack str
-  --TODO: check for exceptions
+  --TODO: check for exceptions for this initial feeding
   putStrLn $ "Contracts lib initialized, rhino returned: " ++ B.unpack rez
   
-  testPaths <- getPathsWithExtension ".test" "contracts"
+  testPaths <- getPathsWithExtension ".js" "contracts"
   testCases <- mapM (readTestFile rs) testPaths
   return (TestList $ testCases ++ [TestCase $ closeRhinoTest rs])
