@@ -62,7 +62,7 @@ assertSucceeds rs pos tjs js = do
     Right retstr' -> do
       retstr <- retstr'
       case retstr =~ regexp of
-        True -> assertFailure $ "Expected success, but an " ++ 
+        True -> assertFailure $ (showSp pos) ++ ": Expected success, but an " ++ 
                                 "exception was printed:\n" ++
                                 B.unpack retstr
         False -> return ()                            
@@ -82,7 +82,7 @@ assertBlames rs pos blamed tjs js = do
       retstr <- retstr'
       case retstr =~ regexp of
         True -> return ()
-        False -> assertFailure $ "Expected contract violation blaming " ++ 
+        False -> assertFailure $ (showSp pos) ++ ": Expected contract violation blaming " ++ 
                                  blamed ++ " at " ++ show pos ++ 
                                  "; rhino returned " ++ B.unpack retstr
 
