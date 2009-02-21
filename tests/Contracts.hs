@@ -36,27 +36,34 @@ import TypedJavaScript.Test
 import System.Exit 
 
 --TODO: these can be considered type-check tests, too?
-runTest rs pos tjs js = do
+runTest rs pos tjs js shouldEncaps = do
   --env <- typeCheck [tjs] --TODO: print line numbers for type-check errors
   result <- E.try $ typeCheck [tjs]
   case result of
     Left (err::(E.SomeException)) -> return $ Left $ assertFailure 
       ((showSp pos) ++ ": failed to type-check: " ++ (show $ err))
     Right env -> return $ Right $ do
-      tjs' <- return $ encapsulate (eraseTypesStmts [tjs]) env []
-      let str = render (JS.pp $ JS.BlockStmt pos [tjs',js])
-      feedRhino rs (B.pack str) 
+      case shouldEncaps of
+        True -> do
+          tjs' <- return $ encapsulate (eraseTypesStmts [tjs]) env []
+          let str = render (JS.pp $ JS.BlockStmt pos [tjs',js])
+          feedRhino rs (B.pack str) 
+        False -> do
+          tjs' <- return $ eraseTypesStmts [tjs]
+          let str = render (JS.pp $ JS.BlockStmt pos (tjs' ++ [js]))
+          feedRhino rs (B.pack str)
 
 assertSucceeds :: RhinoService 
                -> SourcePos 
                -> Statement SourcePos
                -> JS.Statement SourcePos
+               -> Bool
                -> Assertion
-assertSucceeds rs pos tjs js = do
+assertSucceeds rs pos tjs js shouldEncaps = do
   --possible exception names so far: JavaScriptException, EcmaError
   --possible exception types so far: Exception, TypeError
   let regexp = B.pack $ "org.mozilla.javascript.[a-zA-Z0-9_]*: "
-  retval <- runTest rs pos tjs js
+  retval <- runTest rs pos tjs js shouldEncaps
   case retval of
     Left failed -> failed
     Right retstr' -> do
@@ -71,10 +78,11 @@ assertBlames :: RhinoService
              -> String -- ^guilty party
              -> Statement SourcePos
              -> JS.Statement SourcePos
+             -> Bool
              -> Assertion
-assertBlames rs pos blamed tjs js = do
+assertBlames rs pos blamed tjs js shouldEncaps = do
   let regexp = B.pack $ blamed ++ " violated the contract"
-  retval <- runTest rs pos tjs js
+  retval <- runTest rs pos tjs js shouldEncaps
   case retval of
     Left fail -> fail
     Right retstr' -> do
@@ -96,17 +104,19 @@ closeRhinoTest rs = do
 parseTestCase :: RhinoService -> CharParser st Test
 parseTestCase rs = do
   pos <- getPosition
+  shouldEncaps <- (reserved "dontencapsulate" >> return False) <|>
+                  (return True)
   let succeeds = do
         reserved "succeeds"
         tjs <- parseBlockStmt
         js <- JS.parseBlockStmt
-        return $ TestCase (assertSucceeds rs pos tjs js)
+        return $ TestCase (assertSucceeds rs pos tjs js shouldEncaps)
       blames = do
         reserved "blames"
         blamed <- stringLiteral
         tjs <- parseBlockStmt
         js <- JS.parseBlockStmt
-        return $ TestCase (assertBlames rs pos blamed tjs js)
+        return $ TestCase (assertBlames rs pos blamed tjs js shouldEncaps)
   succeeds <|> blames
   
 readTestFile :: RhinoService -> FilePath -> IO Test

@@ -1,4 +1,7 @@
-succeeds {
+dontencapsulate succeeds {
+  //dont encapsulate this test case, because the ones following it are
+  //going to use prototype stuff declared here.
+  
 }
 {
 
@@ -9,7 +12,7 @@ succeeds {
  *  For details, see the Prototype web site: http://www.prototypejs.org/
  *
  *--------------------------------------------------------------------------*/
-navigator = {userAgent: "Gecko"}};
+navigator = {userAgent: "Gecko"};
 
 var Prototype = {
   Version: '1.6.0.2',
