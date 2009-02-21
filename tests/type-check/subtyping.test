@@ -11,3 +11,33 @@ function (b,a) :: ((int -> {}), (int -> {x::string}) ->) { a = b; } @@ fails;
 function (b,a) :: ((double -> int), (int -> int) ->) { a = b; } @@ succeeds;
 function (b,a) :: ((int -> int), (double -> int) ->) { a = b; } @@ fails;
 //various things w/ req args, opt args, etc:
+
+//arrays:
+function (b,a) :: (Array<int>, Array<double> ->) { a = b; } @@ succeeds;
+function (b,a) :: (Array<double>, Array<int> ->) { a = b; } @@ fails;
+
+//BAD:
+function (b,a) :: (Array<int>, Array<double> ->) {
+    a = b;
+    a[0] = 19.43;
+} @@ fails;
+function (b,a) :: ({x::int,y::int}, {x::double}->) {
+    a = b;
+    a.x = 3.41;
+} @@ fails;
+
+//objects:
+function (b,a) :: ({x::int,y::int}, {x::int}->) {
+    a = b;
+    a.x = 3;
+} @@ succeeds;
+
+function () :: (->) {
+  var arrb :: Array<{x::int,y::int}> = [{x:5,y:6}];
+  arrb[0] = {x:5};
+} @@ fails;
+function () :: (->) {
+  var a :: {x :: int} = {x: 5};
+  var arrb :: Array<{x::int,y::int}> = [{x:5}];
+  a = arrb[0];
+} @@ fails;

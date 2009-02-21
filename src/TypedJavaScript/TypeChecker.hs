@@ -56,9 +56,10 @@ coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
 
 -- TODO: deal with TApp, add syntax for defining them , etc.
 
--- in pJS, anything can be used in a number and bool context without anything crashing.
--- for now, we're making this a lot stricter:
-numberContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
+-- in pJS, anything can be used in a number and bool context without 
+-- anything crashing.for now, we're making this a lot stricter:
+numberContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> 
+                              m (Type SourcePos)
 numberContext vars types t
    | t == (types ! "int")    = return t
    | t == (types ! "double") = return t
@@ -118,11 +119,11 @@ bestSuperType vars types t1 t2
 
 -- recursively resolve the type down to TApp, or a TFunc or a TObject containing
 -- only resolved types.
--- TODO: change to a Monad?
+-- TODO: change to a Monad.
 resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
 resolveType vars types t = case t of
   TNullable p t -> TNullable p (resolveType vars types t)
-  TId _ s -> types ! s
+  TId p s -> maybe (error $ (showSp p) ++ ": No such type ID: " ++ s) id $ M.lookup s types 
   TFunc pos this reqargs optargs vararg rettype -> do --TODO: question: how can I have a 'do' in here, without resolveType being a Monad?
     let rt = (resolveType vars types)
         rtm mtype = mtype >>= (Just . rt) --extract the type from the maybe type, call 'rt' on it, then wrap it in Just
@@ -174,25 +175,28 @@ allPathsReturn vars types rettype stmt = case stmt of
   -- any other statement does not return from the function
   _ -> return False
 
--- given the current var and type environment, and a raw environment representing
--- new variable declarations from, for example, a function, return the new variables
--- environment or fail on type error.
--- the variables initialized with expressions can reference other variables in the rawenv, but only
--- those declared above them.
--- the third argument is a list of IDs that this rawenv is forbidden to override
--- this starts off with just the function arguments, and each added variable is added to the list
+-- given the current var and type environment, and a raw environment
+-- representing new variable declarations from, for example, a
+-- function, return the new variables environment or fail on type
+-- error.  the variables initialized with expressions can reference
+-- other variables in the rawenv, but only those declared above them.
+-- the third argument is a list of IDs that this rawenv is forbidden
+-- to override this starts off with just the function arguments, and
+-- each added variable is added to the list
 processRawEnv :: (Monad m) => Env -> Env -> [String] -> RawEnv -> m Env
 processRawEnv vars types _ [] = return vars
 processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) = 
   if elem varname forbidden
     then fail $ "Can't re-define " ++ varname
     else case entry of
-      (Id _ _, Nothing, Nothing) -> fail "Invalid RawEnv contains var that has neither type nor expression"
+      (Id _ _, Nothing, Nothing) -> fail $ 
+        "Invalid RawEnv contains var that has neither type nor expression"
       (Id _ varname, Nothing, Just expr) -> do
         exprtype <- typeOfExpr vars types expr
-        processRawEnv (M.insert varname exprtype vars) types (varname:forbidden) rest
-      -- If a variable is declared with a type but is uninitialized, it
-      -- must be TNullable (since it is initialized to undefined).
+        processRawEnv (M.insert varname exprtype vars) 
+                      types (varname:forbidden) rest
+      -- If a variable is declared with a type but is uninitialized,
+      -- it must be TNullable (since it is initialized to undefined).
       (Id _ varname, Just vartype, Nothing) -> do
         let vartype' = (resolveType vars types vartype)
         case vartype' of
@@ -207,14 +211,18 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
           if not $ isSubType vars types exprtype vartype'
             then fail $ "expression " ++ (show expr) ++ 
                         " has type " ++ (show exprtype) ++ 
-                        " which is not a subtype of declared type " ++ (show vartype')
-            else processRawEnv (M.insert varname vartype' vars) types (varname:forbidden) rest
+                        " which is not a subtype of declared type " ++ 
+                        (show vartype')
+            else processRawEnv (M.insert varname vartype' vars) 
+                               types (varname:forbidden) rest
 
--- we need two environments - one mapping variable id's to their types, and
--- one matching type id's to their type. types gets extended with type statements,
--- variables with vardecls and 'external' statements.
--- this function reduces everything to TObject, TFunc, or a base-case TApp.
-typeOfExpr :: (Monad m) => Env -> Env -> (Expression SourcePos) -> m (Type SourcePos)
+-- we need two environments - one mapping variable id's to their
+-- types, and one matching type id's to their type. types gets
+-- extended with type statements, variables with vardecls and
+-- 'external' statements.  this function reduces everything to
+-- TObject, TFunc, or a base-case TApp.
+typeOfExpr :: (Monad m) => Env -> Env -> (Expression SourcePos) -> 
+                           m (Type SourcePos)
 typeOfExpr vars types expr = case expr of
   StringLit a _      -> return $ types ! "string"
   RegexpLit a _ _ _  -> return $ types ! "RegExp"
@@ -227,15 +235,18 @@ typeOfExpr vars types expr = case expr of
     if length exprs == 0
       then fail $ "Empty array literals are not yet supported."
       else let (e1:erest) = exprtypes in do
-             st <- foldM (\bestsofar newt -> maybe (fail $ "Array literal has no common supertype")
-                                                   return (bestSuperType vars types bestsofar newt))
+             st <- foldM (\bestsofar newt -> maybe 
+                           (fail $ "Array literal has no common supertype")
+                           return 
+                           (bestSuperType vars types bestsofar newt))
                          e1 erest
              return $ resolveType vars types $ TApp pos (TId pos "Array") [st]
 
   ObjectLit pos props  -> let
       procProps [] = return []
-      --TODO: object literals technically _could_ have numbers in them, they just
-      --TODO: wouldn't be accessible with our syntax. should we fail if we see them?
+      --TODO: object literals technically _could_ have numbers in
+      --them, they just wouldn't be accessible with our
+      --syntax. should we fail if we see them?
       procProps ((prop, giventype, expr):rest) = do
         --TODO: this might be refactorable into processRawEnv
         exprtype <- typeOfExpr vars types expr
@@ -243,24 +254,29 @@ typeOfExpr vars types expr = case expr of
         if not $ isSubType vars types exprtype giventype' 
           then fail $ "expression " ++ (show expr) ++ 
                       " has type " ++ (show exprtype) ++ 
-                      " which is not a subtype of declared type " ++ (show giventype')
+                      " which is not a subtype of declared type " ++ 
+                      (show giventype')
           else do
             let thisprop = (Id pos (propToString prop), giventype')
             restprops <- procProps rest
             if elem (propToString prop) $ map (\((Id _ s),_) -> s) restprops
-              then fail $ "duplicate property name in object literal: " ++ (propToString prop)
+              then fail $ "duplicate property name in object literal: " ++ 
+                          (propToString prop)
               else return (thisprop:restprops)
    in liftM (TObject pos) (procProps props)
 
   ThisRef a          -> return $ vars ! "this"
-  VarRef a (Id _ s)  -> maybe (fail ("unbound ID: " ++ s)) return (M.lookup s vars)
+  VarRef a (Id _ s)  -> maybe (fail ("unbound ID: " ++ s)) 
+                              return (M.lookup s vars)
 
   DotRef a expr id     -> do
     exprtype <- typeOfExpr vars types expr
-    --TODO: add an "objectContext" function that would convert string to String, double to Number, etc.
+    --TODO: add an "objectContext" function that would convert string
+    --to String, double to Number, etc.
     case exprtype of
       TObject _ props -> do
-        maybe (fail $ "object " ++ (show exprtype) ++ " has no '" ++ (show id) ++ "' property")
+        maybe (fail $ "object " ++ (show exprtype) ++ 
+                      " has no '" ++ (show id) ++ "' property")
               return (lookup id props)
       _ -> fail $ "dotref requires an object type, got a " ++ (show exprtype)
   BracketRef a contexpr keyexpr   -> do
@@ -270,8 +286,10 @@ typeOfExpr vars types expr = case expr of
         --TODO: once map-like things are done, add support for that here
         keytype <- (typeOfExpr vars types keyexpr >>= numberContext vars types)
         if keytype /= (types ! "int")
-          then fail $ "[] requires an int index, but " ++ (show keyexpr) ++ " has type " ++ (show keytype)
-          else maybe (fail $ "object " ++ (show conttype) ++ " is not an array.")
+          then fail $ "[] requires an int index, but " ++ (show keyexpr) ++ 
+                      " has type " ++ (show keytype)
+          else maybe (fail $ "object " ++ (show conttype) ++ 
+                             " is not an array.")
                      return (lookup (Id a "@[]") props)
       _ -> fail $ "[] requires an object, got " ++ (show conttype)
   NewExpr a xcon xvars -> fail "newexpr NYI"
@@ -289,8 +307,9 @@ typeOfExpr vars types expr = case expr of
       PrefixBNot   -> do ntype <- numberContext vars types xtype
                          if ntype == types ! "int"
                            then return $ types ! "int"
-                           else fail $ "~ operates on integers, got " ++ show xtype ++ 
-                                       " converted to " ++ show ntype
+                           else fail $ "~ operates on integers, got " ++ 
+                                       show xtype ++ " converted to " ++ 
+                                       show ntype
       PrefixPlus   -> numberContext vars types xtype
       PrefixMinus  -> numberContext vars types xtype
       PrefixTypeof -> return $ types ! "string"
@@ -300,7 +319,8 @@ typeOfExpr vars types expr = case expr of
       PrefixDelete -> return $ types ! "bool" --TODO: remove delete?
 
   InfixExpr a op l r -> do
-    -- TODO: is the monadism bad because it kills chances for automatic parallelization of our code? =(.
+    -- TODO: is the monadism bad because it kills chances for
+    -- automatic parallelization of our code? =(.
     ltype <- typeOfExpr vars types l
     rtype <- typeOfExpr vars types r
     let relation = 
@@ -317,12 +337,15 @@ typeOfExpr vars types expr = case expr of
         numop = \requireInts alwaysDouble -> do
           ln <- numberContext vars types ltype
           rn <- numberContext vars types rtype
-          if (ln == types ! "int" && rn == types ! "int") -- we are given all integers
+          if (ln == types ! "int" && rn == types ! "int") 
+            -- we are given all integers
             then if alwaysDouble 
               then return $ types ! "double" --e.g. division
               else return $ types ! "int"    --e.g. +, -, *
             else if requireInts
-              then fail $ "lhs and rhs must be ints, got " ++ show ln ++ ", " ++ show rn --e.g. >>, &, |
+              then fail $ "lhs and rhs must be ints, got " ++ 
+                          show ln ++ ", " ++ show rn 
+                          --e.g. >>, &, |
               else return $ types ! "double" --e.g. /
               
     case op of
@@ -333,11 +356,13 @@ typeOfExpr vars types expr = case expr of
       
       OpIn -> case rtype of 
                 TObject{} -> return $ types ! "bool"
-                _         -> fail $ "rhs of 'in' must be an object, got " ++  show rtype
+                _         -> fail $ "rhs of 'in' must be an object, got " 
+                                     ++ show rtype
       
       OpInstanceof -> case rtype of
         TFunc _ _ _ _ _ _ -> return $ types ! "bool"
-        _                 -> fail $ "rhs of 'instanceof' must be constructor, got " ++  show rtype
+        _ -> fail $ "rhs of 'instanceof' must be constructor, got " 
+                    ++ show rtype
 
       -- true == "1" will evaluate to true in tJS...
       OpEq        -> return $ types ! "bool" 
@@ -359,27 +384,32 @@ typeOfExpr vars types expr = case expr of
       OpBXor     -> numop True False
       OpBOr      -> numop True False
       OpAdd      -> do
-        -- from TDGTJ: 
-        -- If one operand is a string, the other is converted, and they are concatenated.
-        -- objects are converted to numbers or strings and then added or concatenated
-        -- first valueOf is tried - if numbers result, then numbers are added
-        -- then toString is tried. if toString returns a number, numbers are added.
-        -- if it returns a string, then strings are concatenated.
-        -- for now, let's just do strings or numbers:
+        -- from TDGTJ: If one operand is a string, the other is
+        -- converted, and they are concatenated.  objects are
+        -- converted to numbers or strings and then added or
+        -- concatenated first valueOf is tried - if numbers result,
+        -- then numbers are added then toString is tried. if toString
+        -- returns a number, numbers are added.  if it returns a
+        -- string, then strings are concatenated.  for now, let's just
+        -- do strings or numbers:
         if ltype == (types ! "string") || rtype == (types ! "string") 
           then return $ types ! "string"
           else numop False False
 
   AssignExpr a op lhs rhs -> 
-    -- TDGTJ: "In JavaScript, variables, properties of objects, and elements of arrays are lvalues." p62.
-    let rewrite infixop = typeOfExpr vars types (AssignExpr a OpAssign lhs (InfixExpr a infixop lhs rhs))
+    -- TDGTJ: "In JavaScript, variables, properties of objects, and
+    -- elements of arrays are lvalues." p62.
+    let rewrite infixop = typeOfExpr vars types 
+                                    (AssignExpr a OpAssign lhs 
+                                                (InfixExpr a infixop lhs rhs))
         procasgn = do
           ltype <- typeOfExpr vars types lhs
           rtype <- typeOfExpr vars types rhs
           case op of
             OpAssign -> if isSubType vars types rtype ltype 
               then return ltype
-              else fail $ "in assignment, rhs " ++ (show rtype) ++ " is not a subtype of lhs " ++ (show ltype)
+              else fail $ "in assignment, rhs " ++ (show rtype) ++ 
+                          " is not a subtype of lhs " ++ (show ltype)
             OpAssignAdd -> rewrite OpAdd
             OpAssignSub -> rewrite OpSub
             OpAssignMul -> rewrite OpMul
@@ -392,19 +422,24 @@ typeOfExpr vars types expr = case expr of
             OpAssignBXor -> rewrite OpBXor
             OpAssignBOr -> rewrite OpBOr
      in case lhs of
-          VarRef{} -> procasgn  --TODO: add checks for readonly fields, arrays, variables.
+          VarRef{} -> procasgn  --TODO: add checks for readonly
+                                --fields, arrays, variables.
           DotRef{} -> procasgn
           BracketRef{} -> procasgn
-          _ -> fail "lhs of assignment must be an lvalue: a variable, an object property, or an array element"
+          _ -> fail $ "lhs of assignment must be an lvalue: a variable," ++ 
+                      " an object property, or an array element"
   
   CondExpr a c t e -> do
     ctype <- typeOfExpr vars types c 
-    boolContext vars types ctype --boolContext will fail if something goes wrong with 'c'
+    boolContext vars types ctype --boolContext will fail if something
+                                 --goes wrong with 'c'
     ttype <- typeOfExpr vars types t
     etype <- typeOfExpr vars types e
-    -- TODO: potentially find the most common supertype of ttype and etype, and evaluate to that, instead of failing.
+    -- TODO: potentially find the most common supertype of ttype and
+    -- etype, and evaluate to that, instead of failing.
     if (ttype /= etype) 
-      then fail $ "then and else must have the same type in a ternary expression"
+      then fail $ "then and else must have the same type in a " ++ 
+                  "ternary expression"
       else return ttype
     
   ParenExpr a x -> typeOfExpr vars types x

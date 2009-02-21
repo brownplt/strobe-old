@@ -35,7 +35,7 @@ import TypedJavaScript.Test
 import System.Exit 
 
 runTest rs pos tjs js = do
-  env <- typeCheck [tjs]
+  env <- typeCheck [tjs] --TODO: print line numbers for type-check errors
   tjs' <- return $ encapsulate (eraseTypesStmts [tjs]) env []
   let str = "var window = { };\n" ++ render (JS.pp $ JS.BlockStmt pos [tjs',js])
   feedRhino rs (B.pack str) --rhino (sourceName pos) (B.pack str)
