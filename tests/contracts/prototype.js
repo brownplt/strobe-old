@@ -12,7 +12,6 @@ dontencapsulate succeeds {
 dontencapsulate succeeds {
   //dont encapsulate this test case, because the ones following it are
   //going to use prototype stuff declared here.
-
 }
 {
   print("Loading prototype.js...");
