@@ -1,6 +1,8 @@
 import java.io.*;
 import org.mozilla.javascript.*;
 
+import org.mozilla.javascript.tools.shell.*;
+
 /* Read from stdin a number, followed by a newline, followed by that many bytes
    If this first line is blank, then the service exits.
    Run those bytes as javascript code.
@@ -12,12 +14,15 @@ import org.mozilla.javascript.*;
 
 public class RhinoService
 {
+  final static String SENTINEL = ":%:%:";
   public static void main(String[] args) {
-    //initialize pJS:
-    ContextFactory cf = new ContextFactory();
+    //initialize pJS, augmented with Rhino shell
+    Global g = new Global();
+    ShellContextFactory cf = new ShellContextFactory();
+    g.init(cf);
     Context cx = cf.enterContext();
     //note: doesn't define Rhino shell vars like print.
-    Scriptable scope = cx.initStandardObjects();
+    Scriptable scope = g; //cx.initStandardObjects();
     try {
       boolean done=false;
       int scriptNumber = 0;
@@ -51,16 +56,18 @@ public class RhinoService
         if (done) break;
 
         //args: (scope, script, sourcename, line number, security context)
+        String toOutput = "";
         try {
           Object res = cx.evaluateString(scope, new String(script), 
                                          sourceName, 1, null);
           String sres = res.toString();
-          System.out.println((sres.length()+1) + "\n" + sres);
+          toOutput = sres;
         }
         catch (Exception e) {
-          System.out.println((e.toString().length()+1) + "\n" + e);
+          toOutput = e.toString();
         }
-
+        //print a sentinel in case the script had any output of its own
+        System.out.println("\n" + SENTINEL + "\n" + (toOutput.length()+1) + "\n" + toOutput);
       } 
     }
     catch (IOException e) {

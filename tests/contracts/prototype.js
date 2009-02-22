@@ -1,4 +1,17 @@
 dontencapsulate succeeds {
+  //creating a DOM environment in Rhino, thanks to John Resig
+  //http://ejohn.org/projects/bringing-the-browser-to-the-server/
+}
+{
+  //var z = {output: ""};
+  //runCommand("pwd", z);
+  //print(z.output);
+  load('env.js'); //must be in the 'tests' folder
+  window.location = 'tmp.html';
+};
+ 
+
+dontencapsulate succeeds {
   //dont encapsulate this test case, because the ones following it are
   //going to use prototype stuff declared here.
   
@@ -12,7 +25,15 @@ dontencapsulate succeeds {
  *  For details, see the Prototype web site: http://www.prototypejs.org/
  *
  *--------------------------------------------------------------------------*/
-navigator = {userAgent: "Gecko"};
+
+//for some reason, this function must be at the top:
+function $A(iterable) {
+  if (!iterable) return [];
+  if (iterable.toArray) return iterable.toArray();
+  var length = iterable.length || 0, results = new Array(length);
+  while (length--) results[length] = iterable[length];
+  return results;
+}
 
 var Prototype = {
   Version: '1.6.0.2',
@@ -813,13 +834,6 @@ Object.extend(Enumerable, {
   every:   Enumerable.all,
   some:    Enumerable.any
 });
-function $A(iterable) {
-  if (!iterable) return [];
-  if (iterable.toArray) return iterable.toArray();
-  var length = iterable.length || 0, results = new Array(length);
-  while (length--) results[length] = iterable[length];
-  return results;
-}
 
 if (Prototype.Browser.WebKit) {
   $A = function(iterable) {

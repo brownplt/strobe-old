@@ -29,6 +29,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Data.Generics
 import Test.HUnit
 
+import Text.Regex.Posix
 import Text.PrettyPrint.HughesPJ (render, vcat)
 import Text.ParserCombinators.Parsec (ParseError,sourceName,sourceLine,
   sourceColumn,errorPos,SourcePos)
@@ -120,11 +121,26 @@ startRhinoService = do
 
 feedRhino :: RhinoService -> B.ByteString -> IO B.ByteString
 feedRhino (RhinoService hStdin hStdout hStderr hProcess) input = do
+  let sentinelRegexp = B.pack $ "^:%:%:$"
+  --putStrLn "---"
+  --putStrLn $ show (B.length input + 1)
+  --B.putStrLn input
+  --putStrLn "---"
   hPutStrLn hStdin $ show (B.length input + 1)
   B.hPutStrLn hStdin input
   hFlush hStdin
-  outputlenStr <- hGetLine hStdout
-  B.hGet hStdout (read outputlenStr::Int)
+  let findOutputLength = do {
+    line <- hGetLine hStdout;
+    case line =~ sentinelRegexp of
+      True -> do      
+        outputlenStr <- hGetLine hStdout
+        return (read outputlenStr::Int)
+      False -> do
+        --putStrLn $ "Script output: " ++ line
+        findOutputLength }
+  outputLength <- findOutputLength
+  --putStrLn $ "Output length gotten from Rhino: " ++ show outputLength
+  B.hGet hStdout outputLength
   
 stopRhino :: RhinoService -> IO ExitCode 
 stopRhino (RhinoService hStdin hStdout hStderr hProcess) = do
