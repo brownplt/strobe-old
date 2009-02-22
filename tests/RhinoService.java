@@ -67,7 +67,7 @@ public class RhinoService
           toOutput = e.toString();
         }
         //print a sentinel in case the script had any output of its own
-        System.out.println("\n" + SENTINEL + "\n" + (toOutput.length()+1) + "\n" + toOutput);
+        System.out.println(SENTINEL + "\n" + (toOutput.length()+1) + "\n" + toOutput);
       } 
     }
     catch (IOException e) {

@@ -122,25 +122,30 @@ startRhinoService = do
 feedRhino :: RhinoService -> B.ByteString -> IO B.ByteString
 feedRhino (RhinoService hStdin hStdout hStderr hProcess) input = do
   let sentinelRegexp = B.pack $ "^:%:%:$"
-  --putStrLn "---"
-  --putStrLn $ show (B.length input + 1)
-  --B.putStrLn input
-  --putStrLn "---"
   hPutStrLn hStdin $ show (B.length input + 1)
   B.hPutStrLn hStdin input
   hFlush hStdin
-  let findOutputLength = do {
+  --there are two kinds of output: those that the script output itself
+  --to stdout, via the 'print' command, and what Rhino output as a result
+  --of evaluating the script.
+  --We have to process all the script's output before returning what
+  --we want, Rhino's output
+  let processOutput currentOutput = do {
     line <- hGetLine hStdout;
     case line =~ sentinelRegexp of
       True -> do      
         outputlenStr <- hGetLine hStdout
-        return (read outputlenStr::Int)
+        return (read outputlenStr::Int, currentOutput)
       False -> do
-        --putStrLn $ "Script output: " ++ line
-        findOutputLength }
-  outputLength <- findOutputLength
-  --putStrLn $ "Output length gotten from Rhino: " ++ show outputLength
-  B.hGet hStdout outputLength
+        processOutput (currentOutput ++ ">>" ++ line ++ "\n") }
+  (rhinoOutputLength,scriptOutput) <- processOutput []
+  case scriptOutput of
+    [] -> B.hGet hStdout rhinoOutputLength
+    _  -> do
+      putStrLn ""
+      putStrLn "Script output:"
+      putStr scriptOutput
+      B.hGet hStdout rhinoOutputLength
   
 stopRhino :: RhinoService -> IO ExitCode 
 stopRhino (RhinoService hStdin hStdout hStderr hProcess) = do

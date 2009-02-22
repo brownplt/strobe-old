@@ -34,17 +34,28 @@ var window = this;
 	});
 	
 	window.__defineGetter__("location", function(url){
-		return {
-			get protocol(){
-				return curLocation.getProtocol() + ":";
-			},
-			get href(){
-				return curLocation.toString();
-			},
-			toString: function(){
-				return this.href;
-			}
-		};
+            cls = curLocation.toString();
+            return {
+              get protocol(){
+                return curLocation.getProtocol() + ":";
+              },
+              get href(){
+                return cls;
+              },
+              get hash() {
+                return cls.slice(cls.search("#"));
+              },
+              get search() {
+                h = cls.search("#");
+                if (h != -1)
+                  return cls.slice(cls.search(/\?/),h);
+                else
+                  return cls.slice(cls.search(/\?/));
+              },
+              toString: function(){
+                return this.href;
+              }
+            };
 	});
 	
 	// Timers
