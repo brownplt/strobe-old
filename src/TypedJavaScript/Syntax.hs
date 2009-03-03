@@ -4,7 +4,9 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
          ForInit(..),ForInInit(..),Type(..),showSp, propToString, unId) where
 
-import Text.ParserCombinators.Parsec(SourcePos,sourceName,sourceLine) -- used by data JavaScript
+-- used by data JavaScript:
+import Text.ParserCombinators.Parsec(SourcePos,sourceName,sourceLine) 
+
 import Data.Generics(Data,Typeable)
 import WebBits.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..), 
   PostfixOp (..))
@@ -20,8 +22,8 @@ unId (Id _ s) = s
 
 data Id a = Id a String deriving (Ord,Data,Typeable)
 
---TODO: add TExtend syntax ( <- operator)
-data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)               
+--TODO: add TExtend syntax ( <- operator), and a syntax for constructors
+data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)
               | TFunc a (Maybe (Type a)) {- type of this -} 
                         [Type a] {- required args -} 
                         [Type a] {- optional args -}
@@ -30,12 +32,14 @@ data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)
               | TId a String -- an Id defined through a 'type' statement
               | TNullable a (Type a)
               | TApp a (Type a) [Type a]
+              | TUnion a [Type a]
     deriving (Data,Typeable,Ord)
 
 --equalities:
 instance Eq (Id a) where
   Id _ s1 == Id _ s2 = s1 == s2
--- TODO: Add a type for constructors.
+
+--TODO: maybe refactor A == B to mean A <: B and B <: A.
 instance Eq (Type a) where
   TObject _ props1 == TObject _ props2 = 
     (hasall props1 props2) && (hasall props2 props1) where
@@ -44,6 +48,9 @@ instance Eq (Type a) where
           False ((==) o2proptype) (lookup o2id p1))
         p2
      -- all id (zipWith (==) props props2)
+  TUnion _ types1 == TUnion _ types2 =
+    (hasall types1 types2) && (hasall types2 types1) where
+      hasall t1s t2s = all (\t2 -> any ((==) t2) t1s) t2s
   TId _ s == TId _ s2                 = s == s2
   TApp _ c1 v1 == TApp _ c2 v2        = c1 == c2 && v1 == v2
   TFunc _ tt1 req1 opt1 var1 ret1 ==
@@ -153,14 +160,12 @@ data Statement a
                       [(Id a, Type a)] {- optional args -}
                       (Maybe (Id a, Type a)) {- optional var arg -}
                       (Statement a) {-body-}
-  | TypeStmt a (Id a) (Type a) -- e.g. type Point :: {x :: int, y :: int};
+  | TypeStmt a (Id a) (Type a) -- e.g. "type Point :: {x :: int, y :: int};"
   deriving (Data,Typeable,Eq,Ord)  
   
 showSp :: SourcePos -> String
 showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)
   
---external statements should only go in the top-level
+--external statements should only go in the top-level?
 {- data Toplevel a
   =  ExternalStmt a (Id a) (Type a) -}
-
-

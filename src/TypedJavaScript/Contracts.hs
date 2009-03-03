@@ -30,12 +30,13 @@ toContract (TId pos id) =
   error $ "unbound identifier (" ++ show id ++ ") at " ++ show pos ++
           " while converting a type to a contract"
 -- TODO: This should not be hard-coded.  Fix  when we enable
--- user-defined types.
+-- user-defined types. Also add nullable contract.
 toContract (TApp pos constr args) = case (constr,args) of
   (TId _ "bool",[]) -> NamedContract pos "isBool"
   (TId _ "int",[]) -> NamedContract pos "isInt"
   (TId _ "string",[]) -> NamedContract pos "isString"
   (constr,args) -> error $ "toContract does not know " ++  show (constr,args)
+--toContract (TNullable pos t) = FlatContract pos JavaScript
 toContract x = error $ "toContract does not handle " ++ show x
 --TODO: add arrayOf for objects with @[] in them.
 

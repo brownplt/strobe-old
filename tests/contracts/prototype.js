@@ -8,10 +8,10 @@ dontencapsulate succeeds {
   window.location = 'tmp.html';
 };
 
-
 dontencapsulate succeeds {
   //dont encapsulate this test case, because the ones following it are
   //going to use prototype stuff declared here.
+  var Prototype = 43.9;
 }
 {
   print("Loading prototype.js...");
@@ -32,37 +32,38 @@ function $A(iterable) {
   return results;
 }
 
-var Prototype = {
-  Version: '1.6.0.2',
+//TODO: what'd be the point of typing this 'Prototype' object if:
+//1) Setting any element of it to something else will wipe out the contracts
+//2) You could add stuff to it without violating any contracts
+//Really must look into Mozilla getters and setters.
+var Prototype = {};
+Prototype.Version = '1.6.0.2';
 
-  Browser: {
-    IE:     !!(window.attachEvent && !window.opera),
-    Opera:  !!window.opera,
-    WebKit: navigator.userAgent.indexOf('AppleWebKit/') > -1,
-    Gecko:  navigator.userAgent.indexOf('Gecko') > -1 &&
-            navigator.userAgent.indexOf('KHTML') == -1,
-    MobileSafari: !!navigator.userAgent.match(/Apple.*Mobile.*Safari/)
-  },
+Prototype.Browser = {};
+Prototype.Browser.IE = !!(window.attachEvent && !window.opera);
+Prototype.Browser.Opera = !!window.opera;
+Prototype.Browser.WebKit = navigator.userAgent.indexOf('AppleWebKit/') > -1;
+Prototype.Browser.Gecko =  navigator.userAgent.indexOf('Gecko') > -1 &&
+                             navigator.userAgent.indexOf('KHTML') == -1;
+Prototype.Browser.MobileSafari = !!navigator.userAgent.match(/Apple.*Mobile.*Safari/);
 
-  BrowserFeatures: {
+Prototype.BrowserFeatures = {
     XPath: !!document.evaluate,
     ElementExtensions: !!window.HTMLElement,
     SpecificElementExtensions:
       document.createElement('div').__proto__ &&
       document.createElement('div').__proto__ !==
         document.createElement('form').__proto__
-  },
-
-  ScriptFragment: '<script[^>]*>([\\S\\s]*?)<\/script>',
-  JSONFilter: /^\/\*-secure-([\s\S]*)\*\/\s*$/,
-
-  emptyFunction: function() { },
-  K: function(x) { return x }
 };
+
+Prototype.ScriptFragment = '<script[^>]*>([\\S\\s]*?)<\/script>';
+Prototype.JSONFilter = /^\/\*-secure-([\s\S]*)\*\/\s*$/;
+
+Prototype.emptyFunction = function() { };
+Prototype.K = function(x) { return x };
 
 if (Prototype.Browser.MobileSafari)
   Prototype.BrowserFeatures.SpecificElementExtensions = false;
-
 
 /* Based on Alex Arnell's inheritance implementation. */
 var Class = {

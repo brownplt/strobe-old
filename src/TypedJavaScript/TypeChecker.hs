@@ -75,13 +75,16 @@ boolContext vars types t
 isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
 
 --objects are invariant in their common field types
---TODO: verify that the 'case' here is well-founded
+--TODO: verify that the 'case' here is well-founded, and that I'm not
+--      doing something silly.
 isSubType vars types (TObject _ props1) (TObject _ props2) =
   all (\(o2id@(Id _ o2propname), o2proptype) -> maybe
         False (\o1proptype -> case (o1proptype,o2proptype) of
-                  (TObject{},TObject{}) -> isSubType --want to preserve this subtype among object props
+                  --want to preserve this subtype among object props:
+                  (TObject{},TObject{}) -> isSubType 
                     vars types o1proptype o2proptype
-                  _ -> o1proptype == o2proptype)     --but don't want subtype for other things
+                  --but don't want subtype for other things:
+                  _ -> o1proptype == o2proptype)     
               (lookup o2id props1))
       props2
 
@@ -97,10 +100,18 @@ isSubType vars types (TFunc _ this2 req2 opt2 var2 ret2)  -- is F2 <= F1?
               all2    = (map Just $ req2 ++ opt2 ++ (maybe [] repeat var2)) ++ repeat Nothing
               all1    = (map Just $ req1 ++ opt1 ++ (maybe [] repeat var1)) ++ repeat Nothing
            in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
+
 isSubType vars types (TNullable _ t1) (TNullable _ t2) =
   isSubType vars types t1 t2
 isSubType vars types t1 (TNullable _ t2) =
   isSubType vars types t1 t2
+
+--the first of these cases works if both are unions; the second does not.
+isSubType vars types (TUnion _ ts) t = 
+  all (\ti -> isSubType vars types ti t) ts
+isSubType vars types t (TUnion _ ts) =
+  any (isSubType vars types t) ts
+
 isSubType vars types t1 t2 
  | (t1 == t2) = True
  | (t1 == types ! "int") = t2 == types ! "double"
@@ -108,6 +119,7 @@ isSubType vars types t1 t2
 
 --get the most specific supertype. best = most specific to save typing.
 --used for figuring out what an array literal should evaluate to.
+--TODO: should use union types here
 bestSuperType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Maybe (Type SourcePos)
 -- best super type of two objects is an object that has as many properties as are in both:
 bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
@@ -142,6 +154,7 @@ resolveType vars types t = case t of
         then error "Array only takes one type parameter"
         else (arrayType vars types (apps !! 0))
     else t --otherwise we likely have a base-case "int", "string", etc. TODO: make this throw 'unbound id' errors.
+  TUnion p ts -> TUnion p $ map (resolveType vars types) ts
   _ -> t  
 
 -- returns whether or not all possible paths return, and whether those return statements return subtypes of
@@ -324,8 +337,6 @@ typeOfExpr vars types expr = case expr of
       PrefixDelete -> return $ types ! "bool" --TODO: remove delete?
 
   InfixExpr a op l r -> do
-    -- TODO: is the monadism bad because it kills chances for
-    -- automatic parallelization of our code? =(.
     ltype <- typeOfExpr vars types l
     rtype <- typeOfExpr vars types r
     let relation = 
@@ -358,7 +369,7 @@ typeOfExpr vars types expr = case expr of
       OpLEq -> relation
       OpGT  -> relation
       OpGEq -> relation
-      
+      --TODO: maybe change OpIn to work for other types as well
       OpIn -> case rtype of 
                 TObject{} -> return $ types ! "bool"
                 _         -> fail $ "rhs of 'in' must be an object, got " 
@@ -427,8 +438,7 @@ typeOfExpr vars types expr = case expr of
             OpAssignBXor -> rewrite OpBXor
             OpAssignBOr -> rewrite OpBOr
      in case lhs of
-          VarRef{} -> procasgn  --TODO: add checks for readonly
-                                --fields, arrays, variables.
+          VarRef{} -> procasgn  --TODO: add checks for readonly things
           DotRef{} -> procasgn
           BracketRef{} -> procasgn
           _ -> fail $ "lhs of assignment must be an lvalue: a variable," ++ 

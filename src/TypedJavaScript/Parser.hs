@@ -100,6 +100,8 @@ type_' = do
 
 type_'' :: CharParser st (Type SourcePos)
 type_'' =
+  (do reservedOp "U";
+      parens $ withPos TUnion (type_'' `sepEndBy` comma)) <|>
   (parens type_) <|>
   (braces $ withPos TObject (field `sepEndBy` comma)) <|>
   constrOrId
