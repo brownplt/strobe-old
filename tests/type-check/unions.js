@@ -9,3 +9,4 @@ function(x) :: (U(int, bool) -> ) {
   z = 19;
 } :: (U(int, bool) ->);
 //TODO: should "var z = true;" have z's type be bool, or true?
+

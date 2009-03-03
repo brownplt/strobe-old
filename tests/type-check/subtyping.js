@@ -70,3 +70,16 @@ function (b, a) :: ({p :: {x :: int, y :: int}}, {p :: {x :: int}} ->) {
   a = b;
   a.p.x = 3;
 } @@ succeeds;
+
+//union subtyping
+function (b,a) :: (U(int, bool), int->) { a = b; } @@ fails;
+function (b,a) :: (U(int, double), double->) { a = b; } @@ succeeds;
+function (b,a) :: (U(int, bool), U(int, bool)->) { a = b; } @@ succeeds;
+
+//with 'any':
+function (b,a) :: (U(int, bool, string), any->) { a = b; } @@ succeeds;
+function (b,a) :: (any, any->) { a = b; } @@ succeeds;
+function (b,a) :: (any, U(int, bool, string)->) { a = b; } @@ fails;
+
+
+function (b,a) :: ((int -> int), (double -> int) ->) { a = b; } @@ fails;

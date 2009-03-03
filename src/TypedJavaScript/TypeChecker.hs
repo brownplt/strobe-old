@@ -48,7 +48,7 @@ arrayType vars types indxtype = let pos = corePos in
 coreTypeEnv :: Env
 coreTypeEnv = M.fromList $ 
   (map (\s -> (s, (TApp corePos (TId corePos s) [])))
-       ["string", "double", "int", "bool", "unit"]) ++
+       ["string", "double", "int", "bool", "unit", "any"]) ++
   [("@global", globalObjectType)]
 
 coreVarEnv :: Env
@@ -114,6 +114,7 @@ isSubType vars types t (TUnion _ ts) =
 
 isSubType vars types t1 t2 
  | (t1 == t2) = True
+ | (t2 == types ! "any") = True --TODO: Make sure 'any' is fine and that this line makes sense
  | (t1 == types ! "int") = t2 == types ! "double"
  | otherwise = False
 
