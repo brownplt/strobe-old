@@ -14,6 +14,7 @@ import TypedJavaScript.Syntax (Type (..))
 
 p = initialPos "TypedJavaScript.Types"
 
+--maps names to their type... should visible predicates be here?
 type Env = Map String (Type SourcePos)
 
 emptyEnv :: Env
@@ -27,7 +28,7 @@ argEnv :: [(String,Type SourcePos)] -- ^positional arguments
        -> Maybe (String,Type SourcePos) -- ^vararity argument
        -> Env
 argEnv posArgs varArg = addVarArg $ L.foldl' addPosArg emptyEnv posArgs where
-  addPosArg env (x,t) = M.insertWith' 
+  addPosArg env (x,t) = M.insertWith'
     (error $ "repeated identifier " ++ x ++ " in an argument list")
     x t env
   addVarArg env = case varArg of

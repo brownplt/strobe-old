@@ -8,6 +8,7 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
 import Text.ParserCombinators.Parsec(SourcePos,sourceName,sourceLine) 
 
 import Data.Generics(Data,Typeable)
+import qualified Data.Foldable as F
 import WebBits.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..), 
   PostfixOp (..))
 
@@ -34,6 +35,12 @@ data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)
               | TApp a (Type a) [Type a]
               | TUnion a [Type a]
     deriving (Data,Typeable,Ord)
+
+data VisiblePred a = VPId a (Id a)
+                     | VPType a (Type a)
+                     | VPTrue a
+                     | VPFalse a
+                     | VPUnk a --TODO: what is the real name of this?
 
 --equalities:
 instance Eq (Id a) where
@@ -169,3 +176,7 @@ showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)
 --external statements should only go in the top-level?
 {- data Toplevel a
   =  ExternalStmt a (Id a) (Type a) -}
+  
+{-exprPos :: (Expression SourcePos) -> SourcePos
+exprPos x = maybe (error "Expression has no SourcePos")
+                  id (F.find (const True) x)-}

@@ -10,7 +10,8 @@ function (b,a) :: ((int -> {}), (int -> {x::string}) ->) { a = b; } @@ fails;
 //contra-variant arg types:
 function (b,a) :: ((double -> int), (int -> int) ->) { a = b; } @@ succeeds;
 function (b,a) :: ((int -> int), (double -> int) ->) { a = b; } @@ fails;
-//various things w/ req args, opt args, etc:
+
+//TODO: various things w/ req args, opt args, etc:
 
 //arrays: invariant:
 function (b,a) :: (Array<int>, Array<double> ->) { a = b; } @@ fails;
@@ -81,5 +82,3 @@ function (b,a) :: (U(int, bool, string), any->) { a = b; } @@ succeeds;
 function (b,a) :: (any, any->) { a = b; } @@ succeeds;
 function (b,a) :: (any, U(int, bool, string)->) { a = b; } @@ fails;
 
-
-function (b,a) :: ((int -> int), (double -> int) ->) { a = b; } @@ fails;

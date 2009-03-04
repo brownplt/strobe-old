@@ -48,8 +48,9 @@ arrayType vars types indxtype = let pos = corePos in
 coreTypeEnv :: Env
 coreTypeEnv = M.fromList $ 
   (map (\s -> (s, (TApp corePos (TId corePos s) [])))
-       ["string", "double", "int", "bool", "unit", "any"]) ++
-  [("@global", globalObjectType)]
+       ["string", "double", "int", "any", "true", "false"]) ++
+  [("@global", globalObjectType), ("unit", unitType),
+   ("bool", (TUnion corePos [coreTypeEnv ! "true", coreTypeEnv ! "false"]))]
 
 coreVarEnv :: Env
 coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
@@ -68,8 +69,8 @@ numberContext vars types t
 -- bool is also much freer in pJS. 
 boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 boolContext vars types t
-    | t == (types ! "bool") = return t
-    | otherwise             = fail $ "expected bool, got " ++ show t
+    | isSubType vars types t (types ! "bool") = return t
+    | otherwise = fail $ "expected sub-type of bool, got " ++ show t
 
 -- is t1 a subtype of t2?
 isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
@@ -119,25 +120,34 @@ isSubType vars types t1 t2
  | otherwise = False
 
 --get the most specific supertype. best = most specific to save typing.
---used for figuring out what an array literal should evaluate to.
---TODO: should use union types here
-bestSuperType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Maybe (Type SourcePos)
--- best super type of two objects is an object that has as many properties as are in both:
+--used for array literals and ternary expressions
+--TODO: this no longer returns Nothing                            
+bestSuperType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> 
+                 Maybe (Type SourcePos)
+
+-- best super type of two objects is an object that has as
+-- many properties as are in both:
 bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
   --take everything that is in both objects. worst-case: {}.
   Just $ TObject (initialPos "bestSuperType") $ 
                  Y.mapMaybe (\(prop1id, t1) -> liftM ((,) prop1id) 
                               (lookup prop1id props2 >>= bestSuperType vars types t1)) 
                             props1 
+--TODO: this no longer returns Nothing                            
 bestSuperType vars types t1 t2
  | (t1 == t2) = Just t1
  | (isSubType vars types t1 t2) = Just t2
  | (isSubType vars types t2 t1) = Just t1
- | otherwise = Nothing --error $ "No common super type between " ++ (show t1) ++ " and " ++ (show t2) 
+ | otherwise = Just $ TUnion (initialPos "super-type union") [t1, t2] 
+
+--TODO: Add a 'reduceUnionType' function which will take a union of many
+--types and reduce it to the simplest one possible.
+--Example: U(true, true, false, int, double, false) --> U(true, false, double)
+--Example: U(U(true, int), false) --> U(true, false, int)
 
 -- recursively resolve the type down to TApp, or a TFunc or a TObject containing
 -- only resolved types.
--- TODO: change to a Monad.
+-- TODO: change to a Monad?
 resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
 resolveType vars types t = case t of
   TNullable p t -> TNullable p (resolveType vars types t)
@@ -194,6 +204,16 @@ allPathsReturn vars types rettype stmt = case stmt of
   -- any other statement does not return from the function
   _ -> return False
 
+--infer the type of 'v' in a "var v = expr", given the expr.
+inferLocally :: (Monad m) => Env -> Env -> (Expression SourcePos) ->
+                             m (Type SourcePos)
+inferLocally vars types expr = do
+  exprtype <- typeOfExpr vars types expr
+  case () of 
+    _ | exprtype == (types ! "true")  -> return (types ! "bool")
+      | exprtype == (types ! "false") -> return (types ! "bool")
+      | otherwise -> return exprtype
+
 -- given the current var and type environment, and a raw environment
 -- representing new variable declarations from, for example, a
 -- function, return the new variables environment or fail on type
@@ -211,7 +231,8 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
       (Id _ _, Nothing, Nothing) -> fail $ 
         "Invalid RawEnv contains var that has neither type nor expression"
       (Id _ varname, Nothing, Just expr) -> do
-        exprtype <- typeOfExpr vars types expr
+        --local type inference
+        exprtype <- inferLocally vars types expr
         processRawEnv (M.insert varname exprtype vars) 
                       types (varname:forbidden) rest
       -- If a variable is declared with a type but is uninitialized,
@@ -247,7 +268,8 @@ typeOfExpr vars types expr = case expr of
   RegexpLit a _ _ _  -> return $ types ! "RegExp"
   NumLit a _         -> return $ types ! "double"
   IntLit a _         -> return $ types ! "int"
-  BoolLit a _        -> return $ types ! "bool"
+  BoolLit a b        -> if b then return (types ! "true") 
+                             else return (types ! "false")
   NullLit a          -> fail "NullLit NYI"
   ArrayLit pos exprs   -> do
     exprtypes <- mapM (typeOfExpr vars types) exprs
@@ -451,12 +473,8 @@ typeOfExpr vars types expr = case expr of
                                  --goes wrong with 'c'
     ttype <- typeOfExpr vars types t
     etype <- typeOfExpr vars types e
-    -- TODO: potentially find the most common supertype of ttype and
-    -- etype, and evaluate to that, instead of failing.
-    if (ttype /= etype) 
-      then fail $ "then and else must have the same type in a " ++ 
-                  "ternary expression"
-      else return ttype
+    maybe (fail $ "then and else of a ternary have no super type")
+          return (bestSuperType vars types ttype etype)
     
   ParenExpr a x -> typeOfExpr vars types x
   ListExpr a exprs -> do
