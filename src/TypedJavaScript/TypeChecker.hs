@@ -60,7 +60,7 @@ coreTypeEnv = M.fromList $
    makePred s = (TFunc corePos Nothing 
                     [coreTypeEnv ! "any"] [] Nothing
                     (coreTypeEnv ! "bool")
-                    (LPType corePos (coreTypeEnv ! s)))
+                    (LPType (coreTypeEnv ! s)))
 
 
 coreVarEnv :: Env
@@ -106,7 +106,7 @@ isSubType vars types f2@(TFunc _ this2 req2 opt2 var2 ret2 lp2)  -- is F2 <= F1?
    in ist ret2 ret1                       --covariance of return types
       && length req2 >= length req1       --at least as many req args
       && (var2==Nothing || var1/=Nothing) --f2 has varargs -> f1 has varargs
-      && (lp1 == lp2 || lp1 == LPNone (typePos f1)) --from TypedScheme
+      && (lp1 == lp2 || lp1 == LPNone) --from TypedScheme
       && --contravariance of arg types. TODO: fix this.
          (let maxargs = max (length req2 + length opt2 + (maybe 0 (const 1) var2)) 
                             (length req1 + length opt1 + (maybe 0 (const 1) var1))
@@ -167,7 +167,7 @@ resolveType vars types t = case t of
   TFunc pos this reqargs optargs vararg rettype lp -> do --TODO: question: how can I have a 'do' in here, without resolveType being a Monad?
     let rt = (resolveType vars types)
         --TODO: make sure latent preds should be resolved in this manner
-        rtl (LPType p t) = (LPType p (rt t))
+        rtl (LPType t) = (LPType (rt t))
         rtl unk = unk
         rtm mtype = mtype >>= (Just . rt) --extract the type from the maybe type, call 'rt' on it, then wrap it in Just
     TFunc pos (rtm this) (map rt reqargs) (map rt optargs) (rtm vararg) (rt rettype) (rtl lp)
@@ -292,8 +292,8 @@ typeOfExpr vars types expr = case expr of
   --TODO: potential discrepancy in TS paper. T-True has
   --G |- true : Boolean; true, whereas in TS, true ends up having
   --type "true", not "Boolean".
-  BoolLit a b        -> if b then return (types ! "true", VPTrue a) 
-                             else return (types ! "false", VPFalse a)
+  BoolLit a b        -> if b then return (types ! "true", VPTrue) 
+                             else return (types ! "false", VPFalse)
   NullLit a          -> fail "NullLit NYI"
   ArrayLit pos exprs   -> do
     exprtypes' <- mapM (typeOfExpr vars types) exprs
@@ -333,9 +333,9 @@ typeOfExpr vars types expr = case expr of
    in do propArray <- procProps props
          return (TObject pos propArray, error "objectlit vp NYI")
 
-  ThisRef a          -> return $ (vars ! "this", VPId a "this")
+  ThisRef a          -> return $ (vars ! "this", VPId "this")
   VarRef a (Id _ s)  -> maybe (fail ("unbound ID: " ++ s)) 
-                              (\t -> return (t, VPId a s)) (M.lookup s vars)
+                              (\t -> return (t, VPId s)) (M.lookup s vars)
   DotRef a expr id     -> do
     (exprtype, vp) <- typeOfExpr vars types expr
     --TODO: add an "objectContext" function that would convert string
@@ -369,7 +369,7 @@ typeOfExpr vars types expr = case expr of
   PostfixExpr a op x -> do
     (xtype, vp) <- typeOfExpr vars types x
     ntype <- numberContext vars types xtype
-    return (ntype, VPNone a)
+    return (ntype, VPNone)
   
   PrefixExpr a op x -> do
     (xtype,vp) <- typeOfExpr vars types x
@@ -392,7 +392,7 @@ typeOfExpr vars types expr = case expr of
       --typeof DOES differentiate, somehow. will deal with it later.
       PrefixTypeof -> return (types ! "string", error "typeof vp NYI (imprtnt!")
      where
-      novp m = m >>= \t -> return (t, VPNone a)
+      novp m = m >>= \t -> return (t, VPNone)
 
   InfixExpr a op l r -> do
     --here we will do exciting things with || and &&
@@ -400,28 +400,28 @@ typeOfExpr vars types expr = case expr of
     (rtype,rvp) <- typeOfExpr vars types r
     let relation = 
           if (ltype == (types ! "string") && rtype == (types ! "string"))
-            then return $ (types ! "bool", VPNone a)
+            then return $ (types ! "bool", VPNone)
             else do
               numberContext vars types ltype
               numberContext vars types rtype
-              return (types ! "bool", VPNone a)
+              return (types ! "bool", VPNone)
         logical = do
           boolContext vars types ltype
           boolContext vars types rtype
-          return (types ! "bool", VPNone a)
+          return (types ! "bool", VPNone)
         numop = \requireInts alwaysDouble -> do
           ln <- numberContext vars types ltype
           rn <- numberContext vars types rtype
           if (ln == types ! "int" && rn == types ! "int") 
             -- we are given all integers
             then if alwaysDouble 
-              then return (types ! "double",VPNone a) --e.g. division
-              else return (types ! "int",VPNone a)    --e.g. +, -, *
+              then return (types ! "double",VPNone) --e.g. division
+              else return (types ! "int",VPNone)    --e.g. +, -, *
             else if requireInts
               then fail $ "lhs and rhs must be ints, got " ++ 
                           show ln ++ ", " ++ show rn 
                           --e.g. >>, &, |
-              else return (types ! "double",VPNone a) --e.g. /
+              else return (types ! "double",VPNone) --e.g. /
               
     case op of
       OpLT  -> relation
@@ -470,7 +470,7 @@ typeOfExpr vars types expr = case expr of
         -- string, then strings are concatenated.  for now, let's just
         -- do strings or numbers:
         if ltype == (types ! "string") || rtype == (types ! "string") 
-          then return $ (types ! "string", VPNone a)
+          then return $ (types ! "string", VPNone)
           else numop False False
   
   AssignExpr a op lhs rhs -> 
@@ -485,7 +485,7 @@ typeOfExpr vars types expr = case expr of
           (rtype, rvp) <- typeOfExpr vars types rhs
           case op of
             OpAssign -> if isSubType vars types rtype ltype 
-              then return (ltype, VPNone a)
+              then return (ltype, VPNone)
               else fail $ "in assignment, rhs " ++ (show rtype) ++ 
                           " is not a subtype of lhs " ++ (show ltype)
             OpAssignAdd -> rewrite OpAdd
@@ -508,7 +508,7 @@ typeOfExpr vars types expr = case expr of
   
   CondExpr a c t e -> do
     --TODO: the fabled 'if'. important!
-    fail "Cond NYI"
+    --fail "Cond NYI"
     (ctype,cvp) <- typeOfExpr vars types c 
     boolContext vars types ctype --boolContext will fail if something
                                  --goes wrong with 'c'
@@ -524,12 +524,11 @@ typeOfExpr vars types expr = case expr of
     return $ last typelist
 
   CallExpr a funcexpr argexprs -> do
-    fail "Function calling with vps NYI!"
     (functype,fvp) <- typeOfExpr vars types funcexpr
     argTypes_VP <- mapM (typeOfExpr vars types) argexprs
     let argTypes = map fst argTypes_VP    
     case functype of 
-      TFunc _ Nothing posArgTypes_ [] varArgType_ resultType_ vp -> do
+      TFunc _ Nothing posArgTypes_ [] varArgType_ resultType_ lp -> do
         let posArgTypes = map (resolveType vars types) posArgTypes_
         let varArgType = liftM (resolveType vars types) varArgType_
         let resultType = resolveType vars types resultType_
@@ -556,7 +555,20 @@ typeOfExpr vars types expr = case expr of
                 False ->
                   fail $ "expected subtype of " ++ show formal ++ 
                          ", received " ++ show actual ++ " (var-arity function)"
-        return (resultType, error "callexpr vp nyi (important!!!)")
+        mapM_ checkVarArg varArgTypes' 
+        
+        --if we have a 1-arg func that has a latent pred, applied to 
+        --a visible pred of VID, then this is a T-AppPred
+        let isvpid (VPId _) = True
+            isvpid _        = False
+            a1vp            = snd (argTypes_VP !! 0)            
+        if varArgType_ == Nothing && length posArgTypes_ == 1 && lp /= LPNone &&
+           isvpid a1vp
+          then let (VPId id) = a1vp
+                   (LPType ltype) = lp
+                in return (resultType, VPType ltype id)
+          else return (resultType, VPNone)
+        
       TFunc _ (Just t) _ _ _ _ _ -> 
         fail $ "this-type not implemented " ++ show functype ++ ", " ++ show t
       otherwise -> do
@@ -564,7 +576,7 @@ typeOfExpr vars types expr = case expr of
                " at " ++ show a
 
   FuncExpr _ argnames functype bodyblock@(BlockStmt _ bodystmts) -> do
-    fail "Function exprs with vps NYI!"
+    --fail "Function exprs with vps NYI!"
     functype <- return $ resolveType vars types functype
     case functype of
       TFunc _ Nothing reqargtypes optargtypes mvarargtype rettype vp -> do
@@ -609,13 +621,13 @@ typeCheckStmt vars types stmt = case stmt of
     typeOfExpr vars types expr
     return True
   IfStmt pos c t e -> do 
-     fail "If with VP NYI!"
+     --fail "If with VP NYI!"
      (ctype,cvp) <- typeOfExpr vars types c
      boolContext vars types ctype
      results <- mapM (typeCheckStmt vars types) [t, e]
      return $ all id results
   IfSingleStmt pos c t -> do
-     fail "If with VP NYI!"
+     --fail "If with VP NYI!"
      (ctype,cvp) <- typeOfExpr vars types c
      boolContext vars types ctype
      result <- typeCheckStmt vars types t

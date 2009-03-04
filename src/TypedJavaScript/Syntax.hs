@@ -39,13 +39,15 @@ data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)
               | TUnion a [Type a]
     deriving (Data,Typeable,Ord)
 
-data VisiblePred a = VPId a (String)
-                     | VPType a (Type a) (String)
-                     | VPTrue a | VPFalse a
-                     | VPNone a
+--visible pred is always paired with a type, so can get its pos from there
+--latent pred is always part of a function, so can get its pos from there
+data VisiblePred a = VPId (String)
+                     | VPType (Type a) (String)
+                     | VPTrue | VPFalse
+                     | VPNone
     deriving (Data,Typeable,Ord)
 
-data LatentPred a = LPType a (Type a) | LPNone a
+data LatentPred a = LPType (Type a) | LPNone
     deriving (Data,Typeable,Ord)
 
 --equalities:
@@ -74,17 +76,17 @@ instance Eq (Type a) where
 
 --TODO: these might be unnecessary:
 instance Eq (VisiblePred a) where
-  VPId _ i1      == VPId _ i2       = i1 == i2
-  VPType _ t1 i1 == VPType _ t2 i2  = t1 == t2 && i1 == i2
-  VPTrue _       == VPTrue _        = True
-  VPFalse _      == VPFalse _       = True
-  VPNone _       == VPNone _        = True
-  v1             == v2              = False
+  VPId i1      == VPId i2       = i1 == i2
+  VPType t1 i1 == VPType t2 i2  = t1 == t2 && i1 == i2
+  VPTrue       == VPTrue        = True
+  VPFalse      == VPFalse       = True
+  VPNone       == VPNone        = True
+  v1           == v2            = False
 
 instance Eq (LatentPred a) where
-  LPType _ t1    == LPType _ t2     = t1 == t2
-  LPNone _       == LPNone _        = True
-  l1             == l2              = False
+  LPType t1    == LPType t2     = t1 == t2
+  LPNone       == LPNone        = True
+  l1           == l2            = False
 
 --property within an object literal
 --TODO: remove PropString?

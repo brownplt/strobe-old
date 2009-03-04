@@ -26,6 +26,7 @@ function (withx) :: ({x :: double} -> double) {
   return rez;
 } @@ fails;
 
+//due to object fields being invariant, this next case now fails:
 function () :: (-> double) {
   var ultrarez :: double = 0;
   function sumx(withx) :: ({x :: double}... -> double) {
@@ -41,7 +42,26 @@ function () :: (-> double) {
   ultrarez += sumx({x: 1}, {x: 3.2}, {x: -43.1e2});
   ultrarez += sumx({x: 1, y: 41}, {x: 3.2, z: (3 + "string")}, {x: -43e2, ijustdont: "giveadarn"});
   return ultrarez;
-} :: (-> double); //TODO: if this is set to ":: ({x :: double}... -> double);", we get a strange prettyprinted error. look into the prettyprinter
+} @@ fails;
+
+function () :: (-> double) {
+  var ultrarez :: double = 0;
+  function sumx(withx) :: ({x :: double}... -> double) {
+    var rez = 0.0;
+    for (var i=0; i < withx.length; ++i)
+      rez += withx[i].x;
+    return rez;
+  };
+
+  ultrarez += sumx();
+  ultrarez += sumx({x: 13.1});
+  ultrarez += sumx({x: 3.2});
+  ultrarez += sumx({x: 1.41}, {x: 3.2}, {x: -43.1e2});
+  ultrarez += sumx({x: 1.31, y: 41}, {x: 3.2, z: (3 + "string")}, {x: -43e2, ijustdont: "giveadarn"});
+  return ultrarez;
+} :: ( -> double);
+
+
 
 (function (withx) :: ({x :: double} -> double) {
   var rez = 0.0;
@@ -64,7 +84,7 @@ function () :: (-> double) {
   }
 
   return num;
-})(39.4, 
+})(39.4,
    function (x) :: (double -> double) { return x*2; },
    function (x) :: (double -> double) { return x / x + 9; },
    function (x) :: (double -> double) { return -x; },

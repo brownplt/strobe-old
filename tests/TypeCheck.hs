@@ -27,7 +27,6 @@ import TypedJavaScript.PrettyPrint
 
 assertType :: SourcePos -> Expression SourcePos -> Type SourcePos -> Assertion
 assertType pos expr expectedType = do
-  --actualType <- typeOfExpr coreVarEnv coreTypeEnv expr
   actualType <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
   case actualType of
     Left (err::(E.SomeException)) -> assertFailure (
