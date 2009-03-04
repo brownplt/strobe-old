@@ -50,21 +50,21 @@ coreTypeEnv = M.fromList $
   (map (\s -> (s, (TApp corePos (TId corePos s) [])))
        ["string", "double", "int", "any", "true", "false"]) ++
   [("@global", globalObjectType), ("unit", unitType),
-   ("bool", (TUnion corePos [coreTypeEnv ! "true", coreTypeEnv ! "false"])),
---TODO: remove isInt et. al.  as a built-in once it's no longer necessary
-   ("isInt", makePred "int"),
+   ("bool", (TUnion corePos [coreTypeEnv ! "true", coreTypeEnv ! "false"]))]
+
+coreVarEnv :: Env
+coreVarEnv = M.fromList $ [("this", coreTypeEnv ! "@global")] ++
+  --TODO: remove isInt et. al. as built-ins once they're no longer necessary
+  [("isInt", makePred "int"),
    ("isDouble", makePred "double"),
    ("isString", makePred "string"),
-   ("isBool", makePred "bool")] 
+   ("isBool", makePred "bool")]
  where
    makePred s = (TFunc corePos Nothing 
                     [coreTypeEnv ! "any"] [] Nothing
                     (coreTypeEnv ! "bool")
                     (LPType (coreTypeEnv ! s)))
 
-
-coreVarEnv :: Env
-coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
 
 -- TODO: deal with TApp, add syntax for defining them , etc.
 
@@ -150,12 +150,23 @@ bestSuperType vars types t1 t2
  | (t1 == t2) = Just t1
  | (isSubType vars types t1 t2) = Just t2
  | (isSubType vars types t2 t1) = Just t1
- | otherwise = Just $ TUnion (typePos t1) [t1, t2] 
+ | otherwise = Just $ reduceUnion vars types $ TUnion (typePos t1) [t1, t2] 
 
---TODO: Add a 'reduceUnionType' function which will take a union of many
---types and reduce it to the simplest one possible.
+--take a union of many types and reduce it to the simplest one possible.
 --Example: U(true, true, false, int, double, false) --> U(true, false, double)
 --Example: U(U(true, int), false) --> U(true, false, int)
+--So far, this just flattens the union
+reduceUnion :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
+reduceUnion vars types (TUnion pos ts) = 
+  case (foldl
+         (\res t -> case t of
+                      TUnion _ tocomb -> res ++ tocomb
+                      regular -> res ++ [regular])
+         [] ts) of
+   [onet] -> onet
+   noneormanyt -> TUnion pos noneormanyt
+
+reduceUnion vars types t = t
 
 -- recursively resolve the type down to TApp, or a TFunc or a TObject containing
 -- only resolved types.
@@ -163,14 +174,21 @@ bestSuperType vars types t1 t2
 resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
 resolveType vars types t = case t of
   TNullable p t -> TNullable p (resolveType vars types t)
-  TId p s -> maybe (error $ (showSp p) ++ ": No such type ID: " ++ s) id $ M.lookup s types 
-  TFunc pos this reqargs optargs vararg rettype lp -> do --TODO: question: how can I have a 'do' in here, without resolveType being a Monad?
+  TId p s -> maybe (error $ (showSp p) ++ ": No such type ID: " ++ s) 
+                   id $ M.lookup s types 
+  TFunc pos this reqargs optargs vararg rettype lp -> do   
+   --TODO: question: how can I have a 'do' in here, without
+   --resolveType being a Monad?   
     let rt = (resolveType vars types)
         --TODO: make sure latent preds should be resolved in this manner
         rtl (LPType t) = (LPType (rt t))
         rtl unk = unk
-        rtm mtype = mtype >>= (Just . rt) --extract the type from the maybe type, call 'rt' on it, then wrap it in Just
-    TFunc pos (rtm this) (map rt reqargs) (map rt optargs) (rtm vararg) (rt rettype) (rtl lp)
+        --rtm: extract the type from the maybe type, call 'rt' on it, then
+        --wrap it in Just
+        rtm mtype = mtype >>= (Just . rt) 
+    TFunc pos (rtm this) 
+              (map rt reqargs) (map rt optargs) (rtm vararg) 
+              (rt rettype) (rtl lp)
   TObject pos props -> if (map fst props) /= nub (map fst props)
     then error "duplicate property name in object type."
     else TObject pos $ map (\(id,t) -> (id, resolveType vars types t)) props
@@ -179,15 +197,18 @@ resolveType vars types t = case t of
       if length apps /= 1 
         then error "Array only takes one type parameter"
         else (arrayType vars types (apps !! 0))
-    else t --otherwise we likely have a base-case "int", "string", etc. TODO: make this throw 'unbound id' errors.
-  TUnion p ts -> TUnion p $ map (resolveType vars types) ts
+    else t --otherwise we likely have a base-case "int", "string",
+           --etc. TODO: make this throw 'unbound id' errors.
+  TUnion p ts -> reduceUnion vars types $ 
+                             TUnion p $ map (resolveType vars types) ts
   _ -> t  
 
--- returns whether or not all possible paths return, and whether those return statements return subtypes of
--- the supplied type
--- motivation: when checking functions with return values, at least one of the statements must have all
--- paths returning.
-allPathsReturn :: (Monad m) => Env -> Env -> (Type SourcePos) -> (Statement SourcePos) -> m Bool
+-- returns whether or not all possible paths return, and whether those
+-- return statements return subtypes of the supplied type 
+-- motivation: when checking functions with return values, at least
+-- one of the statements must have all paths returning.
+allPathsReturn :: (Monad m) => Env -> Env -> 
+                  (Type SourcePos) -> (Statement SourcePos) -> m Bool
 allPathsReturn vars types rettype stmt = case stmt of
   BlockStmt _ stmts -> do
     results <- mapM (allPathsReturn vars types rettype) stmts
@@ -197,13 +218,15 @@ allPathsReturn vars types rettype stmt = case stmt of
     return $ any id results
   IfSingleStmt _ _ t -> return False
   SwitchStmt _ _ clauses -> do
-    -- TODO: True if there is a default clause where all paths return, False otherwise
+    -- TODO: Switch: True if there is a default clause where all paths
+    -- return, False otherwise
     fail "allPathsReturn, SwitchStmt, NYI" 
   WhileStmt _ _ body -> allPathsReturn vars types rettype body
   DoWhileStmt _ body _ -> allPathsReturn vars types rettype body
   ForInStmt _ _ _ body -> allPathsReturn vars types rettype body
   ForStmt _ _ _ _ body -> allPathsReturn vars types rettype body
-  TryStmt _ body catches mfinally -> fail "allPathsReturn, TryStmt, NYI" -- true if all catches and/or the finally have a return
+  -- Try: true if all catches and/or the finally have a return
+  TryStmt _ body catches mfinally -> fail "allPathsReturn, TryStmt, NYI" 
   ThrowStmt{} -> return True
   ReturnStmt _ (Just expr) -> do
     (exprtype, lp) <- typeOfExpr vars types expr
@@ -271,6 +294,60 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
             else processRawEnv (M.insert varname vartype' vars) 
                                types (varname:forbidden) rest
 
+-- Helpers for occurrence typing, from TypedScheme paper
+restrict :: Env -> Env ->
+            (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
+restrict vars types s t
+ | isSubType vars types s t = s
+ | otherwise = case t of
+     TUnion pos ts -> reduceUnion vars types $ 
+                        TUnion pos (map (restrict vars types s) ts)
+     _ -> t
+
+remove :: Env -> Env -> 
+          (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
+remove vars types s t
+ | isSubType vars types s t = TUnion (typePos s) []
+ | otherwise = case t of
+     TUnion pos ts -> reduceUnion vars types $ 
+                        TUnion pos (map (remove vars types s) ts)
+     --TODO: make sure remove is correct
+     _ -> reduceUnion vars types $ 
+            TUnion (typePos s) 
+                   (filter (\hm -> not $ isSubType vars types hm t)
+                           (case s of
+                             TUnion _ ts -> ts
+                             _ -> [s]))
+     
+--TODO: in TS, 'false' is false, and everything else is true the same
+--is not true in JS, so we have to think about how to handle gammaPlus
+--and gammaMinus with VPIds.
+
+gammaPlus :: Env -> Env -> (VisiblePred SourcePos) -> Env
+gammaPlus vars types (VPType t x) = 
+  M.insert x (restrict vars types (vars ! x) t) vars
+--gammaPlus vars types (VPId x) = M.insert x (remove (G ! x), falseType)
+gammaPlus vars types (VPId x) = error "Gamma + VPId NYI" 
+gammaPlus vars types _ = vars
+
+gammaMinus :: Env -> Env -> VisiblePred SourcePos -> Env
+gammaMinus vars types (VPType t x) = 
+  M.insert x (remove vars types (vars ! x) t) vars
+--gammaMinus vars types (VPId x) = M.insert x falseType
+gammaMinus vars types (VPId x) = error "Gamma - VPId NYI" 
+gammaMinus vars types _ = vars
+
+combpred :: VisiblePred SourcePos -> VisiblePred SourcePos -> 
+            VisiblePred SourcePos -> VisiblePred SourcePos
+combpred (VPType t x1) VPTrue (VPType s x2) =
+  if (x1 == x2) 
+    then VPType (TUnion (typePos t) [t, s]) x1 --reduceUnion here?
+    else VPNone
+combpred VPTrue f1 f2 = f1
+combpred VPFalse f1 f2 = f2
+combpred f VPTrue VPFalse = f
+combpred f1 f2 f3 = if f2 == f3 then f2 else VPNone
+
 -- we need two environments - one mapping variable id's to their
 -- types, and one matching type id's to their type. types gets
 -- extended with type statements, variables with vardecls and
@@ -279,7 +356,6 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
 -- This function returns the type, as well as the visible predicate
 typeOfExpr :: (Monad m) => Env -> Env -> (Expression SourcePos) -> 
                            m (Type SourcePos, VisiblePred SourcePos)
-
 typeOfExpr vars types expr = case expr of
   --Here we have the joy of parsing literals according to what pJS considers
   --true and false in a bool context.
@@ -297,7 +373,7 @@ typeOfExpr vars types expr = case expr of
   NullLit a          -> fail "NullLit NYI"
   ArrayLit pos exprs   -> do
     exprtypes' <- mapM (typeOfExpr vars types) exprs
-    --TODO: see if we have to do anything else for array literal latent preds
+    --TODO: see if we have to do anything else for array literal visible preds
     let exprtypes = map fst exprtypes'
     if length exprs == 0
       then fail $ "Empty array literals are not yet supported."
@@ -354,7 +430,7 @@ typeOfExpr vars types expr = case expr of
         --TODO: once map-like things are done, add support for that here
         (keytype', vp) <- typeOfExpr vars types keyexpr
         keytype <- numberContext vars types keytype'
-        if keytype /= (types ! "int")
+        if keytype /= (types ! "int") --TODO: change to 'subtype of int'
           then fail $ "[] requires an int index, but " ++ (show keyexpr) ++ 
                       " has type " ++ (show keytype)
           else maybe (fail $ "object " ++ (show conttype) ++ 
@@ -395,7 +471,7 @@ typeOfExpr vars types expr = case expr of
       novp m = m >>= \t -> return (t, VPNone)
 
   InfixExpr a op l r -> do
-    --here we will do exciting things with || and &&
+    --here we will do exciting things with || and &&, eventually
     (ltype,lvp) <- typeOfExpr vars types l
     (rtype,rvp) <- typeOfExpr vars types r
     let relation = 
@@ -408,7 +484,7 @@ typeOfExpr vars types expr = case expr of
         logical = do
           boolContext vars types ltype
           boolContext vars types rtype
-          return (types ! "bool", VPNone)
+          return (types ! "bool", error "vp for logical infix NYI (important!)")
         numop = \requireInts alwaysDouble -> do
           ln <- numberContext vars types ltype
           rn <- numberContext vars types rtype
@@ -507,15 +583,13 @@ typeOfExpr vars types expr = case expr of
                       " an object property, or an array element"
   
   CondExpr a c t e -> do
-    --TODO: the fabled 'if'. important!
-    --fail "Cond NYI"
     (ctype,cvp) <- typeOfExpr vars types c 
     boolContext vars types ctype --boolContext will fail if something
                                  --goes wrong with 'c'
-    (ttype,tvp) <- typeOfExpr vars types t
-    (etype,evp) <- typeOfExpr vars types e
+    (ttype,tvp) <- typeOfExpr (gammaPlus vars types cvp) types t
+    (etype,evp) <- typeOfExpr (gammaMinus vars types cvp) types e
     maybe (fail $ "then and else of a ternary have no super type")
-          (\t -> return (t, error "cond vp nyi"))
+          (\t -> return (t, combpred cvp tvp evp))
           (bestSuperType vars types ttype etype)
     
   ParenExpr a x -> typeOfExpr vars types x
@@ -557,13 +631,13 @@ typeOfExpr vars types expr = case expr of
                          ", received " ++ show actual ++ " (var-arity function)"
         mapM_ checkVarArg varArgTypes' 
         
-        --if we have a 1-arg func that has a latent pred, applied to 
-        --a visible pred of VID, then this is a T-AppPred
+        --if we have a 1-arg func that has a latent pred, applied to a
+        --visible pred of VID, then this is a T-AppPred        
         let isvpid (VPId _) = True
             isvpid _        = False
-            a1vp            = snd (argTypes_VP !! 0)            
-        if varArgType_ == Nothing && length posArgTypes_ == 1 && lp /= LPNone &&
-           isvpid a1vp
+            a1vp            = snd (argTypes_VP !! 0)
+        if varArgType_ == Nothing && length posArgTypes_ == 1 
+           && lp /= LPNone && isvpid a1vp
           then let (VPId id) = a1vp
                    (LPType ltype) = lp
                 in return (resultType, VPType ltype id)

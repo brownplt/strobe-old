@@ -71,6 +71,7 @@ x @@ fails; //unbound ID
 0 == 0 ? 10 + 9 : 9 - x @@ fails;
 0 == 0 ? (3 == 0) + 10 : 9 - 30 @@ fails;
 0 == 0 ? 9 + 10 : 10 == 0 @@ fails;
+0 == 0 ? 10 == 0 : 9 + 10 @@ fails;
 0 == 0 ? true : 9 - 30 @@ fails;
 20 + 9 ? 10 + 9 : 9 - 30 @@ fails;
 (4 == 0) == 0 ? 9 + 10 : 9 - 30 :: double;
@@ -124,10 +125,10 @@ x @@ fails; //unbound ID
 
 /*
 ;application
-(test (type-of (parse '{with {multit : (number -> (number -> number)) 
+(test (type-of (parse '{with {multit : (number -> (number -> number))
                                      {fun {x : number} : (number -> number) {fun {y : number} : number {* x y}}}}
                              {multit 3}})) (t-fun (t-num) (t-num)))
-(test (type-of (parse '{with {multit : (number -> (number -> number)) 
+(test (type-of (parse '{with {multit : (number -> (number -> number))
                                      {fun {x : number} : (number -> number) {fun {y : number} : number {* x y}}}}
                              {{multit 3} 9}})) (t-num))
 */
@@ -146,7 +147,7 @@ x @@ fails; //unbound ID
 (function (toapp) :: ((double -> string) -> (double -> string)) {
     return (function (x) :: (double -> string) { return toapp(x); })})
   (function (n) :: (double -> string) { return ""+n;})(93) :: string;
-    
+
 /*
 ;some more list ops, then more intricate testing
 ;isnempty
@@ -157,7 +158,7 @@ x @@ fails; //unbound ID
 
 (test (type-of (parse '{ncons 1 {ncons 2 {ncons 3 {ncons 4 nempty}}}}))
       (t-nlist))
-               
+
 (test/exn (type-of (parse '{ncons {ncons {ncons {ncons 4 5} 6} 7} 8})) "expected nlist")
 (test/exn (type-of (parse '{ncons {ncons {ncons {ncons 4 nexmpty} 6} 7} 8})) "No type binding")
 (test/exn (type-of (parse '{ncons {ncons {ncons {ncons 4 nempty} 6} 7} 8})) "expected number")
@@ -173,32 +174,32 @@ x @@ fails; //unbound ID
                                      {fun {srclist : nlist}  : (nlist -> ((nlist -> number) -> ((number -> nlist) -> ((nlist -> number) -> nlist))))
                                           {fun {restlist : nlist} : ((nlist -> number) -> ((number -> nlist) -> ((nlist -> number) -> nlist)))
                                                {fun {app1 : (nlist -> number)} : ((number -> nlist) -> ((nlist -> number) -> nlist))
-                                                    {fun {app2 : (number -> nlist)} : ((nlist -> number) -> nlist) 
+                                                    {fun {app2 : (number -> nlist)} : ((nlist -> number) -> nlist)
                                                          {fun {app3 : (nlist -> number)} : nlist
                                                               {ncons {app3 {nrest {app2 {- {app1 srclist} 49}}}} restlist}}}}}}}
-                             {{{{{madapp {ncons {+ 1 {nfirst nempty}} {ncons {/ 9 4} nempty}}} 
+                             {{{{{madapp {ncons {+ 1 {nfirst nempty}} {ncons {/ 9 4} nempty}}}
                                          {ncons {* 3 1} {with {x : nlist {nrest nempty}} x}}}
-                                         {fun {l   : nlist}  : number {nfirst {nrest {nrest l}}}}} 
-                                         {fun {num : number} : nlist  {bif {zero? {- num {* 4 num}}} 
-                                                                           nempty 
+                                         {fun {l   : nlist}  : number {nfirst {nrest {nrest l}}}}}
+                                         {fun {num : number} : nlist  {bif {zero? {- num {* 4 num}}}
+                                                                           nempty
                                                                            {ncons num {ncons num nempty}}}}}
                                          {fun {l   : nlist}  : number {bif {nempty? l}
                                                                            42
                                                                            {nfirst l}}}}}))
       (t-nlist))
-                             
+
 (test/exn (type-of (parse '{with {madapp : (nlist -> (nlist -> ((nlist -> number) -> ((number -> nlist) -> ((nlist -> number) -> nlist)))))
                                      {fun {srclist : nlist}  : (nlist -> ((nlist -> number) -> ((number -> nlist) -> ((nlist -> number) -> nlist))))
                                           {fun {restlist : nlist} : ((nlist -> number) -> ((number -> nlist) -> ((nlist -> number) -> nlist)))
                                                {fun {app1 : (number -> number)} : ((number -> nlist) -> ((nlist -> number) -> nlist))
-                                                    {fun {app2 : (number -> nlist)} : ((nlist -> number) -> nlist) 
+                                                    {fun {app2 : (number -> nlist)} : ((nlist -> number) -> nlist)
                                                          {fun {app3 : (nlist -> number)} : nlist
                                                               {ncons {app3 {nrest {app2 {- {app1 srclist} 49}}}} restlist}}}}}}}
-                             {{{{{madapp {ncons {+ 1 {nfirst nempty}} {ncons {/ 9 4} nempty}}} 
+                             {{{{{madapp {ncons {+ 1 {nfirst nempty}} {ncons {/ 9 4} nempty}}}
                                          {ncons {* 3 1} {with {x : nlist {nrest nempty}} x}}}
-                                         {fun {l   : nlist}  : number {nfirst {nrest {nrest l}}}}} 
-                                         {fun {num : number} : nlist  {bif {zero? {- num {* 4 num}}} 
-                                                                           nempty 
+                                         {fun {l   : nlist}  : number {nfirst {nrest {nrest l}}}}}
+                                         {fun {num : number} : nlist  {bif {zero? {- num {* 4 num}}}
+                                                                           nempty
                                                                            {ncons num {ncons num nempty}}}}}
                                          {fun {l   : nlist}  : number {bif {nempty? l}
                                                                            42
@@ -209,14 +210,14 @@ x @@ fails; //unbound ID
                                      {fun {srclist : nlist}  : (nlist -> ((nlist -> number) -> ((number -> nlist) -> ((nlist -> number) -> nlist))))
                                           {fun {restlist : nlist} : ((nlist -> number) -> ((number -> boolean) -> ((nlist -> number) -> nlist)))
                                                {fun {app1 : (nlist -> number)} : ((number -> nlist) -> ((nlist -> number) -> nlist))
-                                                    {fun {app2 : (number -> nlist)} : ((nlist -> number) -> nlist) 
+                                                    {fun {app2 : (number -> nlist)} : ((nlist -> number) -> nlist)
                                                          {fun {app3 : (nlist -> number)} : nlist
                                                               {ncons {app3 {nrest {app2 {- {app1 srclist} 49}}}} restlist}}}}}}}
-                             {{{{{madapp {ncons {+ 1 {nfirst nempty}} {ncons {/ 9 4} nempty}}} 
+                             {{{{{madapp {ncons {+ 1 {nfirst nempty}} {ncons {/ 9 4} nempty}}}
                                          {ncons {* 3 1} {with {x : nlist {nrest nempty}} x}}}
-                                         {fun {l   : nlist}  : number {nfirst {nrest {nrest l}}}}} 
-                                         {fun {num : number} : nlist  {bif {zero? {- num {* 4 num}}} 
-                                                                           nempty 
+                                         {fun {l   : nlist}  : number {nfirst {nrest {nrest l}}}}}
+                                         {fun {num : number} : nlist  {bif {zero? {- num {* 4 num}}}
+                                                                           nempty
                                                                            {ncons num {ncons num nempty}}}}}
                                          {fun {l   : nlist}  : number {bif {nempty? l}
                                                                            42
@@ -232,10 +233,10 @@ x @@ fails; //unbound ID
     return x + z; })})(4)(3) :: double;
 (function (x) :: (double -> double) {
   return (function (z) :: (double -> double) {
-    return x + z; })})(4)(3) @@ fails; 
+    return x + z; })})(4)(3) @@ fails;
 (function (x) :: (double -> double) {
-  return x + x;})(4)(3) @@ fails; 
-  
+  return x + x;})(4)(3) @@ fails;
+
 (function (a) :: (->) {return;}) @@ fails;
 
 /*
