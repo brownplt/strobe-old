@@ -8,9 +8,11 @@ function(x) :: (U(int, bool) -> ) {
   z = false;
   z = 19;
 } :: (U(int, bool) ->);
-//TODO: should "var z = true;" have z's type be bool, or true?
 
-var z = true;
-
+//magical local inference infers "bool", not "true"!
+function() :: (->) {
+  var z = true;
+  z = false;
+} :: (->);
 
 

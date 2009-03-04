@@ -50,7 +50,18 @@ coreTypeEnv = M.fromList $
   (map (\s -> (s, (TApp corePos (TId corePos s) [])))
        ["string", "double", "int", "any", "true", "false"]) ++
   [("@global", globalObjectType), ("unit", unitType),
-   ("bool", (TUnion corePos [coreTypeEnv ! "true", coreTypeEnv ! "false"]))]
+   ("bool", (TUnion corePos [coreTypeEnv ! "true", coreTypeEnv ! "false"])),
+--TODO: remove isInt et. al.  as a built-in once it's no longer necessary
+   ("isInt", makePred "int"),
+   ("isDouble", makePred "double"),
+   ("isString", makePred "string"),
+   ("isBool", makePred "bool")] 
+ where
+   makePred s = (TFunc corePos Nothing 
+                    [coreTypeEnv ! "any"] [] Nothing
+                    (coreTypeEnv ! "bool")
+                    (LPType corePos (coreTypeEnv ! s)))
+
 
 coreVarEnv :: Env
 coreVarEnv = M.fromList [("this", coreTypeEnv ! "@global")]
@@ -89,12 +100,13 @@ isSubType vars types (TObject _ props1) (TObject _ props2) =
               (lookup o2id props1))
       props2
 
-isSubType vars types (TFunc _ this2 req2 opt2 var2 ret2)  -- is F2 <= F1?
-                     (TFunc _ this1 req1 opt1 var1 ret1) =
+isSubType vars types f2@(TFunc _ this2 req2 opt2 var2 ret2 lp2)  -- is F2 <= F1?
+                     f1@(TFunc _ this1 req1 opt1 var1 ret1 lp1) =
   let ist = isSubType vars types       
    in ist ret2 ret1                       --covariance of return types
       && length req2 >= length req1       --at least as many req args
       && (var2==Nothing || var1/=Nothing) --f2 has varargs -> f1 has varargs
+      && (lp1 == lp2 || lp1 == LPNone (typePos f1)) --from TypedScheme
       && --contravariance of arg types. TODO: fix this.
          (let maxargs = max (length req2 + length opt2 + (maybe 0 (const 1) var2)) 
                             (length req1 + length opt1 + (maybe 0 (const 1) var1))
@@ -133,12 +145,12 @@ bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
                  Y.mapMaybe (\(prop1id, t1) -> liftM ((,) prop1id) 
                               (lookup prop1id props2 >>= bestSuperType vars types t1)) 
                             props1 
---TODO: this no longer returns Nothing                            
+--TODO: this no longer returns Nothing, so no need for it to return Maybe
 bestSuperType vars types t1 t2
  | (t1 == t2) = Just t1
  | (isSubType vars types t1 t2) = Just t2
  | (isSubType vars types t2 t1) = Just t1
- | otherwise = Just $ TUnion (initialPos "super-type union") [t1, t2] 
+ | otherwise = Just $ TUnion (typePos t1) [t1, t2] 
 
 --TODO: Add a 'reduceUnionType' function which will take a union of many
 --types and reduce it to the simplest one possible.
@@ -152,10 +164,13 @@ resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
 resolveType vars types t = case t of
   TNullable p t -> TNullable p (resolveType vars types t)
   TId p s -> maybe (error $ (showSp p) ++ ": No such type ID: " ++ s) id $ M.lookup s types 
-  TFunc pos this reqargs optargs vararg rettype -> do --TODO: question: how can I have a 'do' in here, without resolveType being a Monad?
+  TFunc pos this reqargs optargs vararg rettype lp -> do --TODO: question: how can I have a 'do' in here, without resolveType being a Monad?
     let rt = (resolveType vars types)
+        --TODO: make sure latent preds should be resolved in this manner
+        rtl (LPType p t) = (LPType p (rt t))
+        rtl unk = unk
         rtm mtype = mtype >>= (Just . rt) --extract the type from the maybe type, call 'rt' on it, then wrap it in Just
-    TFunc pos (rtm this) (map rt reqargs) (map rt optargs) (rtm vararg) (rt rettype)
+    TFunc pos (rtm this) (map rt reqargs) (map rt optargs) (rtm vararg) (rt rettype) (rtl lp)
   TObject pos props -> if (map fst props) /= nub (map fst props)
     then error "duplicate property name in object type."
     else TObject pos $ map (\(id,t) -> (id, resolveType vars types t)) props
@@ -191,7 +206,7 @@ allPathsReturn vars types rettype stmt = case stmt of
   TryStmt _ body catches mfinally -> fail "allPathsReturn, TryStmt, NYI" -- true if all catches and/or the finally have a return
   ThrowStmt{} -> return True
   ReturnStmt _ (Just expr) -> do
-    exprtype <- typeOfExpr vars types expr
+    (exprtype, lp) <- typeOfExpr vars types expr
     if isSubType vars types exprtype rettype
       then return True
       else fail $ (show exprtype) ++ " is not a subtype of the expected " ++
@@ -208,7 +223,7 @@ allPathsReturn vars types rettype stmt = case stmt of
 inferLocally :: (Monad m) => Env -> Env -> (Expression SourcePos) ->
                              m (Type SourcePos)
 inferLocally vars types expr = do
-  exprtype <- typeOfExpr vars types expr
+  (exprtype, lp) <- typeOfExpr vars types expr
   case () of 
     _ | exprtype == (types ! "true")  -> return (types ! "bool")
       | exprtype == (types ! "false") -> return (types ! "bool")
@@ -245,7 +260,7 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
           otherwise -> fail $ "unintialized variables must have nullable " ++
                               "types (suffix '?')"
       (Id _ varname, Just vartype, Just expr) -> do
-        exprtype <- typeOfExpr vars types expr
+        (exprtype,lp) <- typeOfExpr vars types expr
         let vartype' = (resolveType vars types vartype)
         seq vartype' $ 
           if not $ isSubType vars types exprtype vartype'
@@ -261,28 +276,39 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
 -- extended with type statements, variables with vardecls and
 -- 'external' statements.  this function reduces everything to
 -- TObject, TFunc, or a base-case TApp.
+-- This function returns the type, as well as the visible predicate
 typeOfExpr :: (Monad m) => Env -> Env -> (Expression SourcePos) -> 
-                           m (Type SourcePos)
+                           m (Type SourcePos, VisiblePred SourcePos)
+
 typeOfExpr vars types expr = case expr of
-  StringLit a _      -> return $ types ! "string"
-  RegexpLit a _ _ _  -> return $ types ! "RegExp"
-  NumLit a _         -> return $ types ! "double"
-  IntLit a _         -> return $ types ! "int"
-  BoolLit a b        -> if b then return (types ! "true") 
-                             else return (types ! "false")
+  --Here we have the joy of parsing literals according to what pJS considers
+  --true and false in a bool context.
+  --However, since for now we only allow booleans in a bool context, we can
+  --ignore this! TODO: correct this later.
+  StringLit a _      -> return (types ! "string", (error "string vp NYI"))
+  RegexpLit a _ _ _  -> return (types ! "RegExp", (error "regex  vp NYI"))
+  NumLit a _         -> return (types ! "double", (error "numlit vp NYI"))
+  IntLit a _         -> return (types ! "int", (error "intlit vp NYI"))
+  --TODO: potential discrepancy in TS paper. T-True has
+  --G |- true : Boolean; true, whereas in TS, true ends up having
+  --type "true", not "Boolean".
+  BoolLit a b        -> if b then return (types ! "true", VPTrue a) 
+                             else return (types ! "false", VPFalse a)
   NullLit a          -> fail "NullLit NYI"
   ArrayLit pos exprs   -> do
-    exprtypes <- mapM (typeOfExpr vars types) exprs
+    exprtypes' <- mapM (typeOfExpr vars types) exprs
+    --TODO: see if we have to do anything else for array literal latent preds
+    let exprtypes = map fst exprtypes'
     if length exprs == 0
       then fail $ "Empty array literals are not yet supported."
       else let (e1:erest) = exprtypes in do
              st <- foldM (\bestsofar newt -> maybe 
                            (fail $ "Array literal has no common supertype")
-                           return 
+                           return
                            (bestSuperType vars types bestsofar newt))
                          e1 erest
-             return $ resolveType vars types $ TApp pos (TId pos "Array") [st]
-
+             return (resolveType vars types $ TApp pos (TId pos "Array") [st],
+                     (error "arraylit vp NYI"))
   ObjectLit pos props  -> let
       procProps [] = return []
       --TODO: object literals technically _could_ have numbers in
@@ -290,7 +316,7 @@ typeOfExpr vars types expr = case expr of
       --syntax. should we fail if we see them?
       procProps ((prop, giventype, expr):rest) = do
         --TODO: this might be refactorable into processRawEnv
-        exprtype <- typeOfExpr vars types expr
+        (exprtype, vp) <- typeOfExpr vars types expr
         let giventype' = maybe exprtype (resolveType vars types) giventype
         if not $ isSubType vars types exprtype giventype' 
           then fail $ "expression " ++ (show expr) ++ 
@@ -304,88 +330,98 @@ typeOfExpr vars types expr = case expr of
               then fail $ "duplicate property name in object literal: " ++ 
                           (propToString prop)
               else return (thisprop:restprops)
-   in liftM (TObject pos) (procProps props)
+   in do propArray <- procProps props
+         return (TObject pos propArray, error "objectlit vp NYI")
 
-  ThisRef a          -> return $ vars ! "this"
+  ThisRef a          -> return $ (vars ! "this", VPId a "this")
   VarRef a (Id _ s)  -> maybe (fail ("unbound ID: " ++ s)) 
-                              return (M.lookup s vars)
-
+                              (\t -> return (t, VPId a s)) (M.lookup s vars)
   DotRef a expr id     -> do
-    exprtype <- typeOfExpr vars types expr
+    (exprtype, vp) <- typeOfExpr vars types expr
     --TODO: add an "objectContext" function that would convert string
     --to String, double to Number, etc.
     case exprtype of
       TObject _ props -> do
         maybe (fail $ "object " ++ (show exprtype) ++ 
                       " has no '" ++ (show id) ++ "' property")
-              return (lookup id props)
+              (\t -> return (t, error "dotref vp NYI"))
+              (lookup id props)
       _ -> fail $ "dotref requires an object type, got a " ++ (show exprtype)
   BracketRef a contexpr keyexpr   -> do
-    conttype <- typeOfExpr vars types contexpr
+    (conttype, vp) <- typeOfExpr vars types contexpr
     case conttype of
       TObject _ props -> do
         --TODO: once map-like things are done, add support for that here
-        keytype <- (typeOfExpr vars types keyexpr >>= numberContext vars types)
+        (keytype', vp) <- typeOfExpr vars types keyexpr
+        keytype <- numberContext vars types keytype'
         if keytype /= (types ! "int")
           then fail $ "[] requires an int index, but " ++ (show keyexpr) ++ 
                       " has type " ++ (show keytype)
           else maybe (fail $ "object " ++ (show conttype) ++ 
                              " is not an array.")
-                     return (lookup (Id a "@[]") props)
+                     (\t -> return (t,error "bracketref vp NYI"))
+                     (lookup (Id a "@[]") props)
       _ -> fail $ "[] requires an object, got " ++ (show conttype)
   NewExpr a xcon xvars -> fail "newexpr NYI"
   
+  --none of these expressions differentiate their type,
+  --so their visible predicate is VPNone (the * in TS paper)
   PostfixExpr a op x -> do
-    xtype <- typeOfExpr vars types x
-    numberContext vars types xtype
+    (xtype, vp) <- typeOfExpr vars types x
+    ntype <- numberContext vars types xtype
+    return (ntype, VPNone a)
   
   PrefixExpr a op x -> do
-    xtype <- typeOfExpr vars types x
+    (xtype,vp) <- typeOfExpr vars types x
     case op of
-      PrefixInc    -> numberContext vars types xtype
-      PrefixDec    -> numberContext vars types xtype
-      PrefixLNot   -> boolContext vars types xtype
+      PrefixInc    -> novp $ numberContext vars types xtype
+      PrefixDec    -> novp $ numberContext vars types xtype
+      PrefixLNot   -> novp $ boolContext vars types xtype
       PrefixBNot   -> do ntype <- numberContext vars types xtype
                          if ntype == types ! "int"
-                           then return $ types ! "int"
+                           then novp $ return $ types ! "int"
                            else fail $ "~ operates on integers, got " ++ 
                                        show xtype ++ " converted to " ++ 
                                        show ntype
-      PrefixPlus   -> numberContext vars types xtype
-      PrefixMinus  -> numberContext vars types xtype
-      PrefixTypeof -> return $ types ! "string"
+      PrefixPlus   -> novp $ numberContext vars types xtype
+      PrefixMinus  -> novp $ numberContext vars types xtype
       -- Void has been removed.  We are just sharing operator syntax with
       -- JavaScript.  It makes compiling to JavaScript much easier.
       PrefixVoid   -> fail "void has been removed"
-      PrefixDelete -> return $ types ! "bool" --TODO: remove delete?
+      PrefixDelete -> novp $ return $ types ! "bool" --TODO: remove delete?
+      --typeof DOES differentiate, somehow. will deal with it later.
+      PrefixTypeof -> return (types ! "string", error "typeof vp NYI (imprtnt!")
+     where
+      novp m = m >>= \t -> return (t, VPNone a)
 
   InfixExpr a op l r -> do
-    ltype <- typeOfExpr vars types l
-    rtype <- typeOfExpr vars types r
+    --here we will do exciting things with || and &&
+    (ltype,lvp) <- typeOfExpr vars types l
+    (rtype,rvp) <- typeOfExpr vars types r
     let relation = 
           if (ltype == (types ! "string") && rtype == (types ! "string"))
-            then return $ types ! "bool"
+            then return $ (types ! "bool", VPNone a)
             else do
               numberContext vars types ltype
               numberContext vars types rtype
-              return $ types ! "bool"
+              return (types ! "bool", VPNone a)
         logical = do
           boolContext vars types ltype
           boolContext vars types rtype
-          return $ types ! "bool"
+          return (types ! "bool", VPNone a)
         numop = \requireInts alwaysDouble -> do
           ln <- numberContext vars types ltype
           rn <- numberContext vars types rtype
           if (ln == types ! "int" && rn == types ! "int") 
             -- we are given all integers
             then if alwaysDouble 
-              then return $ types ! "double" --e.g. division
-              else return $ types ! "int"    --e.g. +, -, *
+              then return (types ! "double",VPNone a) --e.g. division
+              else return (types ! "int",VPNone a)    --e.g. +, -, *
             else if requireInts
               then fail $ "lhs and rhs must be ints, got " ++ 
                           show ln ++ ", " ++ show rn 
                           --e.g. >>, &, |
-              else return $ types ! "double" --e.g. /
+              else return (types ! "double",VPNone a) --e.g. /
               
     case op of
       OpLT  -> relation
@@ -394,20 +430,22 @@ typeOfExpr vars types expr = case expr of
       OpGEq -> relation
       --TODO: maybe change OpIn to work for other types as well
       OpIn -> case rtype of 
-                TObject{} -> return $ types ! "bool"
+                TObject{} -> return $ (types ! "bool", error "opin vp nyi")
                 _         -> fail $ "rhs of 'in' must be an object, got " 
                                      ++ show rtype
       
       OpInstanceof -> case rtype of
-        TFunc _ _ _ _ _ _ -> return $ types ! "bool"
+        TFunc _ _ _ _ _ _ _ -> return $ (
+           types ! "bool", error "instanceof vp NYI (important?)")
         _ -> fail $ "rhs of 'instanceof' must be constructor, got " 
                     ++ show rtype
 
       -- true == "1" will evaluate to true in tJS...
-      OpEq        -> return $ types ! "bool" 
-      OpNEq       -> return $ types ! "bool"      
-      OpStrictEq  -> return $ types ! "bool"
-      OpStrictNEq -> return $ types ! "bool"
+      -- these might have important visible predicates, too:
+      OpEq        -> return (types ! "bool", error "opeq vp NYI")
+      OpNEq       -> return (types ! "bool", error "opneq vp NYI")
+      OpStrictEq  -> return (types ! "bool", error "opseq vp NYI")
+      OpStrictNEq -> return (types ! "bool", error "opsneq vp NYI")
       
       OpLAnd -> logical 
       OpLOr  -> logical
@@ -432,21 +470,22 @@ typeOfExpr vars types expr = case expr of
         -- string, then strings are concatenated.  for now, let's just
         -- do strings or numbers:
         if ltype == (types ! "string") || rtype == (types ! "string") 
-          then return $ types ! "string"
+          then return $ (types ! "string", VPNone a)
           else numop False False
-
+  
   AssignExpr a op lhs rhs -> 
     -- TDGTJ: "In JavaScript, variables, properties of objects, and
     -- elements of arrays are lvalues." p62.
+    -- TODO: see if any of these need special vps. guess: no.
     let rewrite infixop = typeOfExpr vars types 
                                     (AssignExpr a OpAssign lhs 
                                                 (InfixExpr a infixop lhs rhs))
         procasgn = do
-          ltype <- typeOfExpr vars types lhs
-          rtype <- typeOfExpr vars types rhs
+          (ltype, lvp) <- typeOfExpr vars types lhs
+          (rtype, rvp) <- typeOfExpr vars types rhs
           case op of
             OpAssign -> if isSubType vars types rtype ltype 
-              then return ltype
+              then return (ltype, VPNone a)
               else fail $ "in assignment, rhs " ++ (show rtype) ++ 
                           " is not a subtype of lhs " ++ (show ltype)
             OpAssignAdd -> rewrite OpAdd
@@ -468,13 +507,16 @@ typeOfExpr vars types expr = case expr of
                       " an object property, or an array element"
   
   CondExpr a c t e -> do
-    ctype <- typeOfExpr vars types c 
+    --TODO: the fabled 'if'. important!
+    fail "Cond NYI"
+    (ctype,cvp) <- typeOfExpr vars types c 
     boolContext vars types ctype --boolContext will fail if something
                                  --goes wrong with 'c'
-    ttype <- typeOfExpr vars types t
-    etype <- typeOfExpr vars types e
+    (ttype,tvp) <- typeOfExpr vars types t
+    (etype,evp) <- typeOfExpr vars types e
     maybe (fail $ "then and else of a ternary have no super type")
-          return (bestSuperType vars types ttype etype)
+          (\t -> return (t, error "cond vp nyi"))
+          (bestSuperType vars types ttype etype)
     
   ParenExpr a x -> typeOfExpr vars types x
   ListExpr a exprs -> do
@@ -482,10 +524,12 @@ typeOfExpr vars types expr = case expr of
     return $ last typelist
 
   CallExpr a funcexpr argexprs -> do
-    functype <- typeOfExpr vars types funcexpr
-    argTypes <- mapM (typeOfExpr vars types) argexprs
+    fail "Function calling with vps NYI!"
+    (functype,fvp) <- typeOfExpr vars types funcexpr
+    argTypes_VP <- mapM (typeOfExpr vars types) argexprs
+    let argTypes = map fst argTypes_VP    
     case functype of 
-      TFunc _ Nothing posArgTypes_ [] varArgType_ resultType_ -> do
+      TFunc _ Nothing posArgTypes_ [] varArgType_ resultType_ vp -> do
         let posArgTypes = map (resolveType vars types) posArgTypes_
         let varArgType = liftM (resolveType vars types) varArgType_
         let resultType = resolveType vars types resultType_
@@ -512,19 +556,22 @@ typeOfExpr vars types expr = case expr of
                 False ->
                   fail $ "expected subtype of " ++ show formal ++ 
                          ", received " ++ show actual ++ " (var-arity function)"
-        return resultType      
-      TFunc _ (Just t) _ _ _ _ -> 
+        return (resultType, error "callexpr vp nyi (important!!!)")
+      TFunc _ (Just t) _ _ _ _ _ -> 
         fail $ "this-type not implemented " ++ show functype ++ ", " ++ show t
       otherwise -> do
         fail $ "expression in function position has type " ++ show functype ++
                " at " ++ show a
 
   FuncExpr _ argnames functype bodyblock@(BlockStmt _ bodystmts) -> do
+    fail "Function exprs with vps NYI!"
     functype <- return $ resolveType vars types functype
     case functype of
-      TFunc _ Nothing reqargtypes optargtypes mvarargtype rettype -> do
-        if length argnames /= (length reqargtypes) + (length optargtypes) + (maybe 0 (const 1) mvarargtype)
-          then fail $ "Inconsistent function definition - argument number mismatch in arglist and type"
+      TFunc _ Nothing reqargtypes optargtypes mvarargtype rettype vp -> do
+        if length argnames /= (length reqargtypes) + (length optargtypes) + 
+                              (maybe 0 (const 1) mvarargtype)
+          then fail $ "Inconsistent function definition - argument number "
+                      ++ "mismatch in arglist and type"
           else do
             let args = argEnv (zip (map unId argnames) reqargtypes)
                          -- deliberately incomprehensible
@@ -535,22 +582,23 @@ typeOfExpr vars types expr = case expr of
                                   (globalEnv bodystmts)
             guaranteedReturn <- allPathsReturn vars types rettype bodyblock 
             if rettype /= (types ! "unit") && (not guaranteedReturn)
-              then fail "Some path doesn't return a value, but the function's return type is not undefined"
+              then fail $ "Some path doesn't return a value, but the "
+                          ++ "function's return type is not undefined"
               else do
                 typeCheckStmt vars types bodyblock
-                return functype
+                return (functype, error "funcexpr vp nyi (important!)")
                       
       TFunc {} -> fail "Functions with thistypes not implemented yet."
 
       _ -> fail $ "Function must have a function type, given " ++ show functype
 
-  FuncExpr _ _ _ _ -> fail "Function's body must be a BlockStmt" --just in case the parser fails somehow.
+  --just in case the parser fails somehow.
+  FuncExpr _ _ _ _ -> fail "Function's body must be a BlockStmt" 
 
--- type check everything except return statements, handled in typeOfExpr _ _ FuncExpr{},
--- and var declarations, handled in whatever calls typeCheckStmt; both cases use
--- Environment.hs .
+-- type check everything except return statements, handled in
+-- typeOfExpr _ _ FuncExpr{}, and var declarations, handled in
+-- whatever calls typeCheckStmt; both cases use Environment.hs .
 -- return True, or fail
-
 typeCheckStmt :: (Monad m) => Env -> Env -> (Statement SourcePos) -> m Bool
 typeCheckStmt vars types stmt = case stmt of 
   BlockStmt pos stmts -> do
@@ -561,12 +609,14 @@ typeCheckStmt vars types stmt = case stmt of
     typeOfExpr vars types expr
     return True
   IfStmt pos c t e -> do 
-     ctype <- typeOfExpr vars types c
+     fail "If with VP NYI!"
+     (ctype,cvp) <- typeOfExpr vars types c
      boolContext vars types ctype
      results <- mapM (typeCheckStmt vars types) [t, e]
      return $ all id results
   IfSingleStmt pos c t -> do
-     ctype <- typeOfExpr vars types c
+     fail "If with VP NYI!"
+     (ctype,cvp) <- typeOfExpr vars types c
      boolContext vars types ctype
      result <- typeCheckStmt vars types t
      return result
@@ -586,12 +636,12 @@ typeCheckStmt vars types stmt = case stmt of
      return $ all id results-}
      
   WhileStmt pos expr statement -> do
-     exprtype <- typeOfExpr vars types expr
+     (exprtype, evp) <- typeOfExpr vars types expr
      boolContext vars types exprtype     
      typeCheckStmt vars types statement
   DoWhileStmt pos statement expr -> do
      res <- typeCheckStmt vars types statement
-     exprtype <- typeOfExpr vars types expr
+     (exprtype, evp) <- typeOfExpr vars types expr
      boolContext vars types exprtype
      return res
    
@@ -599,25 +649,28 @@ typeCheckStmt vars types stmt = case stmt of
   ContinueStmt _ _ -> return True
   LabelledStmt _ _ stmt -> typeCheckStmt vars types stmt
   
-  --TODO: now that we have arrays and objects, we should be able to do for in loops.
+  --TODO: now that we have arrays and objects, we should be able to do
+  --for in loops.
   ForInStmt _ (ForInVar (Id _ varname) vartype) inexpr body -> 
     fail "for..in loops NYI"
   ForInStmt _ (ForInNoVar (Id _ varname)) inexpr body -> 
     fail "for..in loops NYI"
     
-  ForStmt _ init test incr body -> do
+  ForStmt a init test incr body -> do
     --var decls in the init are already processed by now
     let checkinit = case init of
           ExprInit expr -> (typeOfExpr vars types expr >> return True)
           _ -> return True
---        parsetest = case test of
           
     checkinit
-    testtype <- maybe (return $ types ! "bool") (typeOfExpr vars types) test
+    --treat an empty test as "true"
+    (testtype,vp) <- maybe (typeOfExpr vars types (BoolLit a True))
+                           (typeOfExpr vars types) test
     boolContext vars types testtype
     --we don't care about the incr type, but it has to type-check
     --we use (types ! "bool") as filler so that 'maybe' can type properly
-    maybe (return $ types ! "bool") (typeOfExpr vars types) incr
+    (incrtype,ivp) <- maybe (typeOfExpr vars types (BoolLit a True))
+                            (typeOfExpr vars types) incr
     typeCheckStmt vars types body
     
   ReturnStmt{} -> return True --handled elsewhere  

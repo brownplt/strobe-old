@@ -30,10 +30,13 @@ assertType pos expr expectedType = do
   --actualType <- typeOfExpr coreVarEnv coreTypeEnv expr
   actualType <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
   case actualType of
-    Left (err::(E.SomeException)) -> assertFailure ((showSp pos) ++ ": user error: " ++ (show err))
-    Right exprType -> do
+    Left (err::(E.SomeException)) -> assertFailure (
+      (showSp pos) ++ ": user error: " ++ (show err))
+    Right (exprType, evp) -> do
       let resolvedType = resolveType coreVarEnv coreTypeEnv expectedType
-      assertBool ((showSp pos) ++ ": type mismatch, " ++ (show exprType) ++ " is not a subtype of " ++ (show resolvedType)) 
+      assertBool ((showSp pos) ++ ": type mismatch, " ++ 
+                  (show exprType) ++ " is not a subtype of " ++ 
+                  (show resolvedType)) 
                  (isSubType coreVarEnv coreTypeEnv exprType resolvedType)
 
 assertTypeError :: SourcePos -> Expression SourcePos -> Assertion
@@ -41,7 +44,8 @@ assertTypeError pos expr = do
   result <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
   case result of
     Left (err::(E.SomeException)) -> return () -- error expected
-    Right exprType -> assertFailure ((showSp pos) ++ ": expected fail, got: " ++ (show $ pp exprType))
+    Right (exprType,evp) -> assertFailure (
+      (showSp pos) ++ ": expected fail, got: " ++ (show $ pp exprType))
 
 assertTypeSuccess :: SourcePos -> Expression SourcePos -> Assertion
 assertTypeSuccess pos expr = do

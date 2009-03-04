@@ -2,12 +2,14 @@
 module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
-         ForInit(..),ForInInit(..),Type(..),showSp, propToString, unId) where
+         ForInit(..),ForInInit(..),Type(..),VisiblePred(..),LatentPred(..),
+         showSp, propToString, unId,
+         exprPos, stmtPos, typePos) where
 
 -- used by data JavaScript:
 import Text.ParserCombinators.Parsec(SourcePos,sourceName,sourceLine) 
 
-import Data.Generics(Data,Typeable)
+import Data.Generics(Data,Typeable,gfindtype)
 import qualified Data.Foldable as F
 import WebBits.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..), 
   PostfixOp (..))
@@ -30,17 +32,21 @@ data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)
                         [Type a] {- optional args -}
                         (Maybe (Type a)) {- optional var arg -}
                         (Type a) {- ret type -}
+                        (LatentPred a) {- latent predicate -} 
               | TId a String -- an Id defined through a 'type' statement
               | TNullable a (Type a)
               | TApp a (Type a) [Type a]
               | TUnion a [Type a]
     deriving (Data,Typeable,Ord)
 
-data VisiblePred a = VPId a (Id a)
-                     | VPType a (Type a)
-                     | VPTrue a
-                     | VPFalse a
-                     | VPUnk a --TODO: what is the real name of this?
+data VisiblePred a = VPId a (String)
+                     | VPType a (Type a) (String)
+                     | VPTrue a | VPFalse a
+                     | VPNone a
+    deriving (Data,Typeable,Ord)
+
+data LatentPred a = LPType a (Type a) | LPNone a
+    deriving (Data,Typeable,Ord)
 
 --equalities:
 instance Eq (Id a) where
@@ -60,11 +66,25 @@ instance Eq (Type a) where
       hasall t1s t2s = all (\t2 -> any ((==) t2) t1s) t2s
   TId _ s == TId _ s2                 = s == s2
   TApp _ c1 v1 == TApp _ c2 v2        = c1 == c2 && v1 == v2
-  TFunc _ tt1 req1 opt1 var1 ret1 ==
-    TFunc _ tt2 req2 opt2 var2 ret2   = tt1 == tt2 && req1 == req2 && 
-                                        opt1 == opt2 && var1 == var2 && 
-                                        ret1 == ret2
+  TFunc _ tt1 req1 opt1 var1 ret1 lp1 ==
+    TFunc _ tt2 req2 opt2 var2 ret2 lp2 = tt1 == tt2 && req1 == req2 && 
+                                          opt1 == opt2 && var1 == var2 && 
+                                          ret1 == ret2 && lp1 == lp2
   t1 == t2                            = False
+
+--TODO: these might be unnecessary:
+instance Eq (VisiblePred a) where
+  VPId _ i1      == VPId _ i2       = i1 == i2
+  VPType _ t1 i1 == VPType _ t2 i2  = t1 == t2 && i1 == i2
+  VPTrue _       == VPTrue _        = True
+  VPFalse _      == VPFalse _       = True
+  VPNone _       == VPNone _        = True
+  v1             == v2              = False
+
+instance Eq (LatentPred a) where
+  LPType _ t1    == LPType _ t2     = t1 == t2
+  LPNone _       == LPNone _        = True
+  l1             == l2              = False
 
 --property within an object literal
 --TODO: remove PropString?
@@ -162,11 +182,11 @@ data Statement a
   -- FunctionStatements turn into expressions with an assignment. 
   -- TODO: add generics to functions/constructors?
   -- | FunctionStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Maybe (Type a)) {-ret type-}  (Statement a) {-body-}
-  | ConstructorStmt a (Id a) {-name-} 
+{-  | ConstructorStmt a (Id a) {-name-} 
                       [(Id a, Type a)] {- required args -}
                       [(Id a, Type a)] {- optional args -}
                       (Maybe (Id a, Type a)) {- optional var arg -}
-                      (Statement a) {-body-}
+                      (Statement a) {-body-} -}
   | TypeStmt a (Id a) (Type a) -- e.g. "type Point :: {x :: int, y :: int};"
   deriving (Data,Typeable,Eq,Ord)  
   
@@ -176,7 +196,15 @@ showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)
 --external statements should only go in the top-level?
 {- data Toplevel a
   =  ExternalStmt a (Id a) (Type a) -}
-  
-{-exprPos :: (Expression SourcePos) -> SourcePos
+
+-- <3 generics:
+exprPos :: (Expression SourcePos) -> SourcePos
 exprPos x = maybe (error "Expression has no SourcePos")
-                  id (F.find (const True) x)-}
+                  id (gfindtype x)
+stmtPos :: (Statement SourcePos) -> SourcePos
+stmtPos x = maybe (error "Statement has no SourcePos")
+                  id (gfindtype x)
+typePos :: (Type SourcePos) -> SourcePos
+typePos x = maybe (error "Type has no SourcePos")
+                  id (gfindtype x)
+

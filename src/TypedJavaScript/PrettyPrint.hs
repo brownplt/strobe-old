@@ -34,7 +34,7 @@ commaSep:: (PrettyPrintable a) => [a] -> Doc
 commaSep = hsep.(punctuate comma).(map pp)
 
 instance PrettyPrintable (Type a) where
-  pp (TFunc _ this reqs opts vararg ret) = 
+  pp (TFunc _ this reqs opts vararg ret lp) = 
     parens $ ppThis <+> ppArgs <> ppVararg <+> text "->" <+> pp ret where
       ppArgs = hsep $ punctuate comma $ 
         map pp reqs ++ map (\t -> pp t <> text "?") opts

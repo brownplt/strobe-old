@@ -79,11 +79,14 @@ type_ = do
         reservedOp "..."
         reservedOp "->"
         r <- type_ <|> (return $ TApp p (TId p "unit") [])
-        return (TFunc p Nothing (L.init ts) [] (Just $L.last ts) r)
+        return (TFunc p Nothing (L.init ts) [] (Just $L.last ts) r (LPNone p))
   let func = do
         reservedOp "->"
         r <- type_ <|> (return $ TApp p (TId p "unit") [])
-        return (TFunc p Nothing ts [] Nothing r) 
+        return (TFunc p Nothing ts [] Nothing r (LPNone p))
+        --Nonte: latent predicates really aren't part of the syntax,
+        --but the parser has to deal with them. type checker should fill
+        --them in properly.
   case ts of
     []  -> func -- function of zero arguments
     [t] -> vararity <|> func <|> (return t)
@@ -352,13 +355,14 @@ parseFunctionStmt = do
 
 parseConstructorStmt :: StatementParser st
 parseConstructorStmt = do
+  fail "Consructors not yet implemented" {-
   pos <- getPosition
   name <- try (reserved "constructor" >> identifier) -- TODO: remove this 'try'?
   args <- parens ((do id <- identifier 
                       thetype <- parseType
                       return (id, thetype)) `sepBy` comma)
   body <- parseBlockStmt <?> "function body in { ... }"
-  return (ConstructorStmt pos name args [] Nothing body)
+  return (ConstructorStmt pos name args [] Nothing body) -}
 
 parseTypeStmt :: StatementParser st
 parseTypeStmt = do
