@@ -1,6 +1,6 @@
 (true ? 4 : 5) :: double;
 (true ? "hi there" : "bob jones") :: string;
-(true ? "HELLO" : 6) @@ fails;
+(true ? "HELLO" : 6) :: U(int, string);
 (function (a) :: (double -> double) { return a; }) :: (double -> double);
 (function (a) :: (double -> double) { return a; })(20) :: double;
 (function (a) :: (double -> double) { return a+5; })(20) :: double;
@@ -70,26 +70,16 @@ x @@ fails; //unbound ID
 
 0 == 0 ? 10 + 9 : 9 - x @@ fails;
 0 == 0 ? (3 == 0) + 10 : 9 - 30 @@ fails;
-0 == 0 ? 9 + 10 : 10 == 0 @@ fails;
-0 == 0 ? 10 == 0 : 9 + 10 @@ fails;
-0 == 0 ? true : 9 - 30 @@ fails;
+0 == 0 ? 9 + 10 : 10 == 0 :: U(bool, int);
+0 == 0 ? 10 == 0 : 9 + 10 :: U(bool, int);
+0 == 0 ? true : 9 - 30 :: U(true, int);
 20 + 9 ? 10 + 9 : 9 - 30 @@ fails;
 (4 == 0) == 0 ? 9 + 10 : 9 - 30 :: double;
-(function (a) :: (double -> bool) { return a == 0; })(4 == 0) ? 9 + 10 : 9 - 30 @@ fails;
+(function (a) :: (double -> bool) {
+   return a == 0; })(4 == 0) ? 9 + 10 : 9 - 30 @@ fails;
+(function (a) :: (double -> bool) {
+   return a == 0; })(4) ? 9 + 10 : "blerK" :: U(int, string);
 
-/*
-;with
-(test (type-of (parse '{with {x : number 100} x})) (t-num))
-(test (type-of (parse '{with {x : number 100} true})) (t-bool))
-(test (type-of (parse '{with {x : number 100} nempty})) (t-nlist))
-
-(test (type-of (parse '{with {x : number {* {+ {- 4 3} 5} 30}} nempty})) (t-nlist))
-(test (type-of (parse '{with {x : number {* {+ {- 4 3} 5} 30}} nempty})) (t-nlist))
-(test (type-of (parse '{with {x : number {bif {zero? 0} {+ 9 3} {- 9 4}}} nempty})) (t-nlist))
-
-(test/exn (type-of (parse '{with {x : number {zero? 4}} x})) "expected bound-type")
-(test/exn (type-of (parse '{with {x : number nempty} x})) "expected bound-type")
-*/
 
 (function (x) :: (double -> double) { return x; }) :: (double -> double);
 (function (x) :: (string -> double) { return x; }) @@ fails;
@@ -102,11 +92,14 @@ x @@ fails; //unbound ID
 
 //more complicated functions:
 (function (x) :: (double -> (double -> double)) {
-    return (function (y) :: (double -> double) { return x * y; }); }) :: (double -> (double -> double));
+    return (function (y) :: (double -> double) {
+              return x * y; }); }) :: (double -> (double -> double));
 (function (x) :: (double -> (double -> double)) {
-    return (function (y) :: (double -> double) { return x * z; }); }) @@ fails; //z is not defined
+    return (function (y) :: (double -> double) {
+              return x * z; }); }) @@ fails; //z is not defined
 (function (x) :: (double -> (string -> double)) {
-    return (function (x) :: (string -> double) { return (x=="" ? 5 : 10); }); }) :: (double -> (string -> double));
+    return (function (x) :: (string -> double) {
+              return (x=="" ? 5 : 10); }); }) :: (double -> (string -> double));
 (function (x) :: (string -> double) {
     return x;}) @@ fails; //expected string, got double
 
@@ -115,23 +108,11 @@ x @@ fails; //unbound ID
 "moileben"("stringy machine") @@ fails;
 
 (function (x) :: (double -> (double -> double)) {
-    return (function (y) :: (double -> double) { return x * y; }); })(33) :: (double -> double);
+    return (function (y) :: (double -> double) {
+              return x * y; }); })(33) :: (double -> double);
 (function (x) :: (double -> (double -> double)) {
-    return (function (y) :: (double -> double) { return x * y; }); })(33)(29) :: double;
-
-
-
-//TODO: maybe add a way to.. set variables in this thing.
-
-/*
-;application
-(test (type-of (parse '{with {multit : (number -> (number -> number))
-                                     {fun {x : number} : (number -> number) {fun {y : number} : number {* x y}}}}
-                             {multit 3}})) (t-fun (t-num) (t-num)))
-(test (type-of (parse '{with {multit : (number -> (number -> number))
-                                     {fun {x : number} : (number -> number) {fun {y : number} : number {* x y}}}}
-                             {{multit 3} 9}})) (t-num))
-*/
+    return (function (y) :: (double -> double) {
+              return x * y; }); })(33)(29) :: double;
 
 //TODO: add testing w/  arrays, once we get those:
 (function (x) :: (double -> double) { return x; })("45") @@ fails;
@@ -140,7 +121,10 @@ x @@ fails; //unbound ID
 
 //NOTE: functional programming is ugly in javascript...
 (function (toapp) :: ((double -> string) -> (double -> string)) {
-    return (function (x) :: (double -> string) { return toapp(x); })}) :: ((double -> string) -> (double -> string));
+    return (function (x) :: (double -> string) {
+              return toapp(x); })}) ::
+      ((double -> string) -> (double -> string));
+
 (function (toapp) :: ((double -> string) -> (double -> string)) {
     return (function (x) :: (double -> string) { return toapp(x); })})
   (function (n) :: (double -> string) { return ""+n;}) :: (double -> string);

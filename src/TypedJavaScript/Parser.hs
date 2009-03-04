@@ -112,7 +112,10 @@ type_'' =
 constrOrId :: CharParser st (Type SourcePos)
 constrOrId = do
   p <- getPosition
-  (Id _ id) <- identifier
+  --true and false are now types:
+  id <- (reserved "true" >> return "true") 
+        <|> (reserved "false" >> return "false") 
+        <|> (identifier >>= \(Id _ id) -> return id)
   let constr = do
         args <- (angles $ type_ `sepBy` comma) <?> "type application"
         return (TApp p (TId p id) args)

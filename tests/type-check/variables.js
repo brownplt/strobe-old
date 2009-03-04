@@ -31,12 +31,12 @@ function (x) :: (double -> double) {
 
 //more complex
 function (ignore) :: (int -> string) {
-  var a = 3; 
+  var a = 3;
   var b = 19 + a;
   var c = "A STRING";
   var d = "ANOTHeR STRING";
   var e = (a*4 == (b - 23)) ? c : d;
-  
+
   if (a*b == 4)
   {
       if (e == c) {
@@ -48,12 +48,12 @@ function (ignore) :: (int -> string) {
       return c+d;
 } :: (int -> string);
 function (ignore) :: (int -> string) {
-  var a = 3; 
+  var a = 3;
   var b = 19 + a;
   var c = "A STRING";
   var d = "ANOTHeR STRING";
   var e = (a*4 == (b - 23)) ? c : d;
-  
+
   if (a*b == 4)
   {
       if (e == c) {
@@ -64,12 +64,12 @@ function (ignore) :: (int -> string) {
   return c+d;
 } :: (int -> string);
 function (ignore) :: (int -> string) {
-  var a = 3; 
+  var a = 3;
   var b = 19 + a;
   var c = "A STRING";
   var d = "ANOTHeR STRING";
   var e = (a*4 == (b - 23)) ? c : d;
-  
+
   if (a*b == 4)
   {
       if (e == c) {
@@ -99,7 +99,7 @@ function (x) :: (double -> string) {
   var y = 5;
   var y = "stringy";
   return y;
-} @@ fails; 
+} @@ fails;
 //javascript doesn't have scoping, so this also should fail:
 function (x) :: (double -> string) {
   var y = 5;
@@ -132,13 +132,15 @@ function (x) :: (double -> string) {
   var y = "string1";
   var y = "stringy";
   return y;
-} @@ fails; 
+} @@ fails;
 function (x) :: (double -> string) {
   var x = x + 9;
   return x + "s";
-} @@ fails; 
-//this next one works just fine, as it is, but should we allow re-declaring
-//variables with differing types / redeclaring them at all?
+} @@ fails;
+
+//TODO: this next one works just fine, as it is, but should we allow
+//re-declaring variables with differing types / redeclaring them at
+//all?
 function (x) :: (double -> double) {
   var f :: string = "captain planet";
   function doit(ahahah) :: (string -> double) {
@@ -148,5 +150,18 @@ function (x) :: (double -> double) {
   return doit(f);
 } :: (double -> double);
 
+/*
+;with
+(test (type-of (parse '{with {x : number 100} x})) (t-num))
+(test (type-of (parse '{with {x : number 100} true})) (t-bool))
+(test (type-of (parse '{with {x : number 100} nempty})) (t-nlist))
+
+(test (type-of (parse '{with {x : number {* {+ {- 4 3} 5} 30}} nempty})) (t-nlist))
+(test (type-of (parse '{with {x : number {* {+ {- 4 3} 5} 30}} nempty})) (t-nlist))
+(test (type-of (parse '{with {x : number {bif {zero? 0} {+ 9 3} {- 9 4}}} nempty})) (t-nlist))
+
+(test/exn (type-of (parse '{with {x : number {zero? 4}} x})) "expected bound-type")
+(test/exn (type-of (parse '{with {x : number nempty} x})) "expected bound-type")
+*/
 
 

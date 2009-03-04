@@ -77,6 +77,10 @@ function (b,a) :: (U(int, bool), int->) { a = b; } @@ fails;
 function (b,a) :: (U(int, double), double->) { a = b; } @@ succeeds;
 function (b,a) :: (U(int, bool), U(int, bool)->) { a = b; } @@ succeeds;
 
+0 == 0 ? true : 9 - 30 :: U(bool, int);
+0 == 0 ? true : 9 - 30 :: U(true, false, int);
+0 == 0 ? true : 9 - 30 :: U(true, false, bool, int);
+
 //with 'any':
 function (b,a) :: (U(int, bool, string), any->) { a = b; } @@ succeeds;
 function (b,a) :: (any, any->) { a = b; } @@ succeeds;
