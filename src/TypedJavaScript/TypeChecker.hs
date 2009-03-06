@@ -366,7 +366,7 @@ typeOfExpr vars types expr = case expr of
   NumLit a _         -> return (types ! "double", (error "numlit vp NYI"))
   IntLit a _         -> return (types ! "int", (error "intlit vp NYI"))
   --TODO: potential discrepancy in TS paper. T-True has
-  --G |- true : Boolean; true, whereas in TS, true ends up having
+  --G |- true : Boolean; true, whereas in TS impl, true ends up having
   --type "true", not "Boolean".
   BoolLit a b        -> if b then return (types ! "true", VPTrue) 
                              else return (types ! "false", VPFalse)
