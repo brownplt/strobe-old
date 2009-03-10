@@ -134,6 +134,8 @@ isSubType vars types t (TUnion _ ts) =
 isSubType _ _ _ (TId _ "any") = True -- TODO: O RLY?
 isSubType _ _ (TId _ "int") (TId _ "double") = True
 isSubType _ _ (TId _ x) (TId _ y) = x == y
+isSubType v t (TApp _ (TId _ "Array") args1) (TApp _ (TId _ "Array") args2) =
+  args1 == args2
 isSubType v t (TApp _ c1 args1) (TApp _ c2 args2) =
   isSubType v t c2 c1 && 
   (and $ zipWith (isSubType v t) args1 args2) &&
