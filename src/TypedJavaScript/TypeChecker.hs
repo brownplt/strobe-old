@@ -637,36 +637,23 @@ typeOfExpr vars types expr = case expr of
         fail $ "expression in function position has type " ++ show functype ++
                " at " ++ show a
 
-  --FuncExpr _ formals declaredType' (BlockStmt _ body) -> do
-  --  declared
-  FuncExpr _ argnames functype bodyblock@(BlockStmt _ bodystmts) -> do
-    --fail "Function exprs with vps NYI!"
-    case functype of
-      TFunc _ Nothing reqargtypes mvarargtype rettype vp -> do
-        if length argnames /= (length reqargtypes) + 
-                              (maybe 0 (const 1) mvarargtype)
-          then fail $ "Inconsistent function definition - argument number "
-                      ++ "mismatch in arglist and type"
-          else do
-            let args = argEnv (zip (map unId argnames) reqargtypes)
-                         -- deliberately incomprehensible
-                         (liftM (((,)(unId $ L.last argnames)).
-                                 (arrayType vars types)) mvarargtype)
-            -- M.union is left-biased; identifiers are correctly shadowed
-            vars <- processRawEnv (M.union args vars) types (M.keys args)
-                                  (globalEnv bodystmts)
-            guaranteedReturn <- allPathsReturn vars types rettype bodyblock 
-            if rettype /= (types ! "unit") && (not guaranteedReturn)
-              then fail $ "Some path doesn't return a value, but the " ++
-                          "function's return type is " ++ show rettype
-              else do
-                typeCheckStmt vars types bodyblock
-                return (functype, error "funcexpr vp nyi (important!)")
-                      
-      TFunc {} -> fail "Functions with thistypes not implemented yet."
-
-      _ -> fail $ "Function must have a function type, given " ++ show functype
-
+  FuncExpr _ formals type_ (BlockStmt p' body) -> case deconstrFnType type_ of
+    Nothing -> fail $ "declared type on a function is not a function type"
+    Just (vars_t,args_t,result_t) -> do
+      unless (length args_t == length formals) $
+        fail $ "this function's type specifies " ++ (show $ length args_t) ++
+               " arguments, but its definition has only " ++ 
+               (show $ length formals) ++ " arguments"
+      -- ignore var-arity
+      let args = argEnv (zip (map unId formals) args_t) Nothing
+      vars <- processRawEnv (M.union args vars) types (M.keys args) 
+                            (globalEnv body)
+      doesAlwaysReturn <- allPathsReturn vars types result_t (BlockStmt p' body)
+      unless (result_t == unitType || doesAlwaysReturn) $
+        fail $ "All paths do not return, but function\'s return type is " ++
+               show result_t
+      typeCheckStmt vars types (BlockStmt p' body)
+      return (type_, error "vp for FuncExpr NYI")
   --just in case the parser fails somehow.
   FuncExpr _ _ _ _ -> fail "Function's body must be a BlockStmt" 
 

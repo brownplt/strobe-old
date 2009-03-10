@@ -6,6 +6,7 @@ module TypedJavaScript.Types
   , inferLit
   , eqLit
   , unTVal
+  , deconstrFnType
   ) where
 
 import Text.ParserCombinators.Parsec.Pos (initialPos,SourcePos)
@@ -40,6 +41,15 @@ argEnv posArgs varArg = addVarArg $ L.foldl' addPosArg emptyEnv posArgs where
     Just (x,t) -> M.insertWith'
       (error $ "repeated identifier " ++ x ++ " in an argument list")
       x t env
+
+-- |Deconstructs the declared type of a function, returning a list of quantified
+-- variables, the types of each argument, and a return type.  As we enrich the
+-- type-checker to handle more of a function type, include them here.
+deconstrFnType :: Type a -> Maybe ([String],[Type a],Type a)
+deconstrFnType (TFunc _ _ args _ result vp) = Just ([],args,result)
+deconstrFnType (TForall ids (TFunc _ _ args _ result vp)) = 
+  Just (ids,args,result)
+deconstrFnType _ = Nothing  
 
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
 -- expressions in types
