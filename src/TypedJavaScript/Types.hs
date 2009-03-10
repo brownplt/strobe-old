@@ -3,9 +3,11 @@ module TypedJavaScript.Types
   , emptyEnv
   , argEnv
   , unitType
+  , inferLit
   ) where
 
 import Text.ParserCombinators.Parsec.Pos (initialPos,SourcePos)
+import TypedJavaScript.Syntax (Expression (..))
 import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Data.List as L
@@ -21,7 +23,7 @@ emptyEnv :: Env
 emptyEnv = M.empty
 
 unitType :: Type SourcePos
-unitType = TApp p (TId p "unit") []
+unitType = (TId p "unit")
 
 -- |Builds the local enviroment of a function.
 argEnv :: [(String,Type SourcePos)] -- ^positional arguments
@@ -37,3 +39,14 @@ argEnv posArgs varArg = addVarArg $ L.foldl' addPosArg emptyEnv posArgs where
       (error $ "repeated identifier " ++ x ++ " in an argument list")
       x t env
 
+-- |Infers the type of a literal value.  Used by the parser to parse 'literal
+-- expressions in types
+inferLit :: Monad m 
+         => Expression a
+         -> m (Type a)
+inferLit (StringLit p _) = return (TId p "string")
+inferLit (NumLit p _) = return (TId p "double")
+inferLit (IntLit p _) = return (TId p "integer")
+inferLit (BoolLit p _) = return (TId p "bool")
+inferLit expr =
+  fail $ "Cannot use as a literal"

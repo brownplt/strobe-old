@@ -37,6 +37,7 @@ data Type a
   | TNullable a (Type a)
   | TApp a (Type a) [Type a]
   | TUnion a [Type a]
+  | TVal (Expression a) (Type a) -- expr should be a literal
   | TForall [String] (Type a)
   deriving (Data,Typeable,Ord)
 

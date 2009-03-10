@@ -17,6 +17,7 @@ module TypedJavaScript.Parser
   , parseAssignExpr
   ) where
 
+import qualified TypedJavaScript.Types as Types
 import TypedJavaScript.Lexer hiding (identifier)
 import qualified TypedJavaScript.Lexer as Lexer
 import TypedJavaScript.Syntax
@@ -48,6 +49,7 @@ identifier =
 {- The syntax for types is:
 
  type ::= identifier
+        | 'literal
         | type?
         | type [,*] -> type
         | type [,+] ... -> type
@@ -71,6 +73,7 @@ Disambiguation:
           | ( type )
           | { id: type' [,* }
           | constr<type [,*]>
+          | 'literal
 
  -} 
 
@@ -92,11 +95,11 @@ type_fn = do
   let vararity = do
         reservedOp "..."
         reservedOp "->"
-        r <- type_ <|> (return $ TApp p (TId p "unit") [])
+        r <- type_ <|> (return Types.unitType)
         return (TFunc p Nothing (L.init ts) (Just $L.last ts) r (LPNone))
   let func = do
         reservedOp "->"
-        r <- type_ <|> (return $ TApp p (TId p "unit") [])
+        r <- type_ <|> (return Types.unitType)
         return (TFunc p Nothing ts Nothing r (LPNone))
         --Nonte: latent predicates really aren't part of the syntax,
         --but the parser has to deal with them. type checker should fill
@@ -121,15 +124,20 @@ type_'' =
       parens $ withPos TUnion (type_'' `sepEndBy` comma)) <|>
   (parens type_) <|>
   (braces $ withPos TObject (field `sepEndBy` comma)) <|>
+  valueType <|>
   constrOrId
+
+valueType :: CharParser st (Type SourcePos)
+valueType = do
+  char '\'' -- the expression must immediately follow, no spaces
+  e <- parseSimpleExpr'
+  t <- Types.inferLit e
+  return (TVal e t)
 
 constrOrId :: CharParser st (Type SourcePos)
 constrOrId = do
   p <- getPosition
-  --true and false are now types:
-  id <- (reserved "true" >> return "true") 
-        <|> (reserved "false" >> return "false") 
-        <|> (identifier >>= \(Id _ id) -> return id)
+  id <- identifier >>= \(Id _ id) -> return id
   let constr = do
         args <- (angles $ type_ `sepBy` comma) <?> "type application"
         return (TApp p (TId p id) args)

@@ -49,6 +49,7 @@ instance PrettyPrintable (Type a) where
   pp (TNullable _ t) = pp t <> text "?"
   pp (TApp _ constr args) = 
     pp constr <> text "<" <> (hsep $ punctuate comma $ map pp args) <> text ">"
+  pp (TVal e _) = text "'" <> pp e
   pp (TForall ids t) =
     text "forall" <+> (hsep $ punctuate comma $ map text ids) <+> text "." <+>
     pp t

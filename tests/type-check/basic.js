@@ -72,7 +72,7 @@ x @@ fails; //unbound ID
 0 == 0 ? (3 == 0) + 10 : 9 - 30 @@ fails;
 0 == 0 ? 9 + 10 : 10 == 0 :: U(bool, int);
 0 == 0 ? 10 == 0 : 9 + 10 :: U(bool, int);
-0 == 0 ? true : 9 - 30 :: U(true, int);
+0 == 0 ? true : 9 - 30 :: U('true, int);
 20 + 9 ? 10 + 9 : 9 - 30 @@ fails;
 (4 == 0) == 0 ? 9 + 10 : 9 - 30 :: double;
 (function (a) :: (double -> bool) {

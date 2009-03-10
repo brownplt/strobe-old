@@ -16,7 +16,7 @@ import Data.List (foldl', nub)
 import qualified Data.List as L
 import qualified Data.Map as M
 import Data.Map(Map, (!))
-import Control.Monad(liftM, liftM2, zipWithM, foldM)
+import Control.Monad
 
 import Text.ParserCombinators.Parsec(SourcePos)
 import Text.ParserCombinators.Parsec.Pos
@@ -47,10 +47,9 @@ arrayType vars types indxtype = let pos = corePos in
 
 coreTypeEnv :: Env
 coreTypeEnv = M.fromList $ 
-  (map (\s -> (s, (TApp corePos (TId corePos s) [])))
-       ["string", "double", "int", "any", "true", "false"]) ++
-  [("@global", globalObjectType), ("unit", unitType),
-   ("bool", (TUnion corePos [coreTypeEnv ! "true", coreTypeEnv ! "false"]))]
+  (map (\s -> (s, (TId corePos s)))
+       ["string", "double", "int", "any", "bool"]) ++
+  [("@global", globalObjectType), ("unit", unitType)]
 
 coreVarEnv :: Env
 coreVarEnv = M.fromList $ [("this", coreTypeEnv ! "@global")] ++
@@ -82,6 +81,7 @@ boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 boolContext vars types t
     | isSubType vars types t (types ! "bool") = return t
     | otherwise = fail $ "expected sub-type of bool, got " ++ show t
+
 
 -- is t1 a subtype of t2?
 isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
@@ -124,12 +124,15 @@ isSubType vars types (TUnion _ ts) t =
   all (\ti -> isSubType vars types ti t) ts
 isSubType vars types t (TUnion _ ts) =
   any (isSubType vars types t) ts
-
-isSubType vars types t1 t2 
- | (t1 == t2) = True
- | (t2 == types ! "any") = True --TODO: Make sure 'any' is fine and that this line makes sense
- | (t1 == types ! "int") = t2 == types ! "double"
- | otherwise = False
+isSubType _ _ _ (TId _ "any") = True -- TODO: O RLY?
+isSubType _ _ (TId _ "int") (TId _ "double") = True
+isSubType _ _ (TId _ x) (TId _ y) = x == y
+isSubType v t (TApp _ c1 args1) (TApp _ c2 args2) =
+  isSubType v t c2 c1 && 
+  (and $ zipWith (isSubType v t) args1 args2) &&
+  (length args1 == length args2)
+isSubType v t (TVal _ t1) t2 = isSubType v t t1 t2
+isSubType _ _ _ _ = False
 
 --get the most specific supertype. best = most specific to save typing.
 --used for array literals and ternary expressions
@@ -171,6 +174,8 @@ reduceUnion vars types t = t
 -- recursively resolve the type down to TApp, or a TFunc or a TObject containing
 -- only resolved types.
 -- TODO: change to a Monad?
+resolveType _ _ x = x
+{-
 resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
 resolveType vars types t = case t of
   TNullable p t -> TNullable p (resolveType vars types t)
@@ -202,6 +207,7 @@ resolveType vars types t = case t of
   TUnion p ts -> reduceUnion vars types $ 
                              TUnion p $ map (resolveType vars types) ts
   _ -> t  
+-}
 
 -- returns whether or not all possible paths return, and whether those
 -- return statements return subtypes of the supplied type 
@@ -242,15 +248,15 @@ allPathsReturn vars types rettype stmt = case stmt of
   -- any other statement does not return from the function
   _ -> return False
 
---infer the type of 'v' in a "var v = expr", given the expr.
+-- |If typeOfExpr returns a refined type (i.e. a 'TVal'), omit the refinement
+-- and return the base type.
 inferLocally :: (Monad m) => Env -> Env -> (Expression SourcePos) ->
                              m (Type SourcePos)
 inferLocally vars types expr = do
   (exprtype, lp) <- typeOfExpr vars types expr
-  case () of 
-    _ | exprtype == (types ! "true")  -> return (types ! "bool")
-      | exprtype == (types ! "false") -> return (types ! "bool")
-      | otherwise -> return exprtype
+  case exprtype of
+    (TVal _ t) -> return t
+    otherwise -> return exprtype
 
 -- given the current var and type environment, and a raw environment
 -- representing new variable declarations from, for example, a
@@ -368,8 +374,8 @@ typeOfExpr vars types expr = case expr of
   --TODO: potential discrepancy in TS paper. T-True has
   --G |- true : Boolean; true, whereas in TS impl, true ends up having
   --type "true", not "Boolean".
-  BoolLit a b        -> if b then return (types ! "true", VPTrue) 
-                             else return (types ! "false", VPFalse)
+  BoolLit a b        -> if b then return (TVal expr (types ! "bool"), VPTrue) 
+                             else return (TVal expr (types ! "bool"), VPFalse)
   NullLit a          -> fail "NullLit NYI"
   ArrayLit pos exprs   -> do
     exprtypes' <- mapM (typeOfExpr vars types) exprs
@@ -422,6 +428,8 @@ typeOfExpr vars types expr = case expr of
                       " has no '" ++ (show id) ++ "' property")
               (\t -> return (t, error "dotref vp NYI"))
               (lookup id props)
+      (TApp _ (TId _ "Array") [t_elt]) -> do
+        return (t_elt,VPNone) -- TODO: is this correct?
       _ -> fail $ "dotref requires an object type, got a " ++ (show exprtype)
   BracketRef a contexpr keyexpr   -> do
     (conttype, vp) <- typeOfExpr vars types contexpr
@@ -437,6 +445,16 @@ typeOfExpr vars types expr = case expr of
                              " is not an array.")
                      (\t -> return (t,error "bracketref vp NYI"))
                      (lookup (Id a "@[]") props)
+      (TApp _ (TId _ "Array") [t_elt]) -> do
+        (keytype', vp) <- typeOfExpr vars types keyexpr
+        keytype <- numberContext vars types keytype'
+        -- TODO: this admits subtypes of int
+        unless (isSubType vars types keytype (TId a "int")) $
+          fail $ "[] requires an int index, but " ++ (show keyexpr) ++ 
+                 " has type " ++ (show keytype)
+        return (t_elt,VPNone) -- TODO: is this correct?
+          
+        
       _ -> fail $ "[] requires an object, got " ++ (show conttype)
   NewExpr a xcon xvars -> fail "newexpr NYI"
   
@@ -650,6 +668,8 @@ typeOfExpr vars types expr = case expr of
         fail $ "expression in function position has type " ++ show functype ++
                " at " ++ show a
 
+  --FuncExpr _ formals declaredType' (BlockStmt _ body) -> do
+  --  declared
   FuncExpr _ argnames functype bodyblock@(BlockStmt _ bodystmts) -> do
     --fail "Function exprs with vps NYI!"
     functype <- return $ resolveType vars types functype
@@ -669,8 +689,8 @@ typeOfExpr vars types expr = case expr of
                                   (globalEnv bodystmts)
             guaranteedReturn <- allPathsReturn vars types rettype bodyblock 
             if rettype /= (types ! "unit") && (not guaranteedReturn)
-              then fail $ "Some path doesn't return a value, but the "
-                          ++ "function's return type is not undefined"
+              then fail $ "Some path doesn't return a value, but the " ++
+                          "function's return type is " ++ show rettype
               else do
                 typeCheckStmt vars types bodyblock
                 return (functype, error "funcexpr vp nyi (important!)")
