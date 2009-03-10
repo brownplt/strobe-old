@@ -21,7 +21,7 @@ import qualified WebBits.JavaScript as JavaScript
 
 -- |'toContract' assumes that the supplied type is closed and well-formed.
 toContract :: Type SourcePos -> Contract
-toContract (TFunc pos Nothing reqargs [] maybeVararg result _) =
+toContract (TFunc pos Nothing reqargs maybeVararg result _) =
   FunctionContract pos (map toContract reqargs) varargCtc (toContract result)
     where varargCtc = case maybeVararg of
                         Nothing -> Nothing

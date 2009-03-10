@@ -61,7 +61,7 @@ coreVarEnv = M.fromList $ [("this", coreTypeEnv ! "@global")] ++
    ("isBool", makePred "bool")]
  where
    makePred s = (TFunc corePos Nothing 
-                    [coreTypeEnv ! "any"] [] Nothing
+                    [coreTypeEnv ! "any"] Nothing
                     (coreTypeEnv ! "bool")
                     (LPType (coreTypeEnv ! s)))
 
@@ -100,18 +100,18 @@ isSubType vars types (TObject _ props1) (TObject _ props2) =
               (lookup o2id props1))
       props2
 
-isSubType vars types f2@(TFunc _ this2 req2 opt2 var2 ret2 lp2)  -- is F2 <= F1?
-                     f1@(TFunc _ this1 req1 opt1 var1 ret1 lp1) =
+isSubType vars types f2@(TFunc _ this2 req2 var2 ret2 lp2)  -- is F2 <= F1?
+                     f1@(TFunc _ this1 req1 var1 ret1 lp1) =
   let ist = isSubType vars types       
    in ist ret2 ret1                       --covariance of return types
       && length req2 >= length req1       --at least as many req args
       && (var2==Nothing || var1/=Nothing) --f2 has varargs -> f1 has varargs
       && (lp1 == lp2 || lp1 == LPNone) --from TypedScheme
       && --contravariance of arg types. TODO: fix this.
-         (let maxargs = max (length req2 + length opt2 + (maybe 0 (const 1) var2)) 
-                            (length req1 + length opt1 + (maybe 0 (const 1) var1))
-              all2    = (map Just $ req2 ++ opt2 ++ (maybe [] repeat var2)) ++ repeat Nothing
-              all1    = (map Just $ req1 ++ opt1 ++ (maybe [] repeat var1)) ++ repeat Nothing
+         (let maxargs = max (length req2 + (maybe 0 (const 1) var2)) 
+                            (length req1 +  (maybe 0 (const 1) var1))
+              all2    = (map Just $ req2 ++ (maybe [] repeat var2)) ++ repeat Nothing
+              all1    = (map Just $ req1 ++ (maybe [] repeat var1)) ++ repeat Nothing
            in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
 
 isSubType vars types (TNullable _ t1) (TNullable _ t2) =
@@ -176,7 +176,7 @@ resolveType vars types t = case t of
   TNullable p t -> TNullable p (resolveType vars types t)
   TId p s -> maybe (error $ (showSp p) ++ ": No such type ID: " ++ s) 
                    id $ M.lookup s types 
-  TFunc pos this reqargs optargs vararg rettype lp -> do   
+  TFunc pos this reqargs vararg rettype lp -> do   
    --TODO: question: how can I have a 'do' in here, without
    --resolveType being a Monad?   
     let rt = (resolveType vars types)
@@ -187,7 +187,7 @@ resolveType vars types t = case t of
         --wrap it in Just
         rtm mtype = mtype >>= (Just . rt) 
     TFunc pos (rtm this) 
-              (map rt reqargs) (map rt optargs) (rtm vararg) 
+              (map rt reqargs) (rtm vararg) 
               (rt rettype) (rtl lp)
   TObject pos props -> if (map fst props) /= nub (map fst props)
     then error "duplicate property name in object type."
@@ -511,7 +511,7 @@ typeOfExpr vars types expr = case expr of
                                      ++ show rtype
       
       OpInstanceof -> case rtype of
-        TFunc _ _ _ _ _ _ _ -> return $ (
+        TFunc _ _ _ _ _ _ -> return $ (
            types ! "bool", error "instanceof vp NYI (important?)")
         _ -> fail $ "rhs of 'instanceof' must be constructor, got " 
                     ++ show rtype
@@ -603,7 +603,7 @@ typeOfExpr vars types expr = case expr of
     argTypes_VP <- mapM (typeOfExpr vars types) argexprs
     let argTypes = map fst argTypes_VP    
     case functype of 
-      TFunc _ Nothing posArgTypes_ [] varArgType_ resultType_ lp -> do
+      TFunc _ Nothing posArgTypes_ varArgType_ resultType_ lp -> do
         let posArgTypes = map (resolveType vars types) posArgTypes_
         let varArgType = liftM (resolveType vars types) varArgType_
         let resultType = resolveType vars types resultType_
@@ -644,7 +644,7 @@ typeOfExpr vars types expr = case expr of
                 in return (resultType, VPType ltype id)
           else return (resultType, VPNone)
         
-      TFunc _ (Just t) _ _ _ _ _ -> 
+      TFunc _ (Just t) _ _ _ _ -> 
         fail $ "this-type not implemented " ++ show functype ++ ", " ++ show t
       otherwise -> do
         fail $ "expression in function position has type " ++ show functype ++
@@ -654,8 +654,8 @@ typeOfExpr vars types expr = case expr of
     --fail "Function exprs with vps NYI!"
     functype <- return $ resolveType vars types functype
     case functype of
-      TFunc _ Nothing reqargtypes optargtypes mvarargtype rettype vp -> do
-        if length argnames /= (length reqargtypes) + (length optargtypes) + 
+      TFunc _ Nothing reqargtypes mvarargtype rettype vp -> do
+        if length argnames /= (length reqargtypes) + 
                               (maybe 0 (const 1) mvarargtype)
           then fail $ "Inconsistent function definition - argument number "
                       ++ "mismatch in arglist and type"

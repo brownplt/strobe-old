@@ -93,11 +93,11 @@ type_fn = do
         reservedOp "..."
         reservedOp "->"
         r <- type_ <|> (return $ TApp p (TId p "unit") [])
-        return (TFunc p Nothing (L.init ts) [] (Just $L.last ts) r (LPNone))
+        return (TFunc p Nothing (L.init ts) (Just $L.last ts) r (LPNone))
   let func = do
         reservedOp "->"
         r <- type_ <|> (return $ TApp p (TId p "unit") [])
-        return (TFunc p Nothing ts [] Nothing r (LPNone))
+        return (TFunc p Nothing ts Nothing r (LPNone))
         --Nonte: latent predicates really aren't part of the syntax,
         --but the parser has to deal with them. type checker should fill
         --them in properly.
