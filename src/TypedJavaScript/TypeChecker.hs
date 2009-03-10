@@ -1,6 +1,5 @@
 module TypedJavaScript.TypeChecker
   ( typeOfExpr
-  , resolveType
   , typeCheckStmt
   , typeCheck
   , isSubType
@@ -42,8 +41,8 @@ globalObjectType = TObject corePos []
 
 arrayType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
 arrayType vars types indxtype = let pos = corePos in 
-  (TObject pos [(Id pos "@[]", resolveType vars types indxtype),
-                (Id pos "length", resolveType vars types (TId pos "int"))])
+  (TObject pos [(Id pos "@[]", indxtype),
+                (Id pos "length", (TId pos "int"))])
 
 coreTypeEnv :: Env
 coreTypeEnv = M.fromList $ 
@@ -188,44 +187,6 @@ flattenUnion vars types (TUnion pos ts) =
 
 flattenUnion vars types t = t
 
--- recursively resolve the type down to TApp, or a TFunc or a TObject containing
--- only resolved types.
--- TODO: change to a Monad?
-resolveType _ _ x = x
-{-
-resolveType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
-resolveType vars types t = case t of
-  TNullable p t -> TNullable p (resolveType vars types t)
-  TId p s -> maybe (error $ (showSp p) ++ ": No such type ID: " ++ s) 
-                   id $ M.lookup s types 
-  TFunc pos this reqargs vararg rettype lp -> do   
-   --TODO: question: how can I have a 'do' in here, without
-   --resolveType being a Monad?   
-    let rt = (resolveType vars types)
-        --TODO: make sure latent preds should be resolved in this manner
-        rtl (LPType t) = (LPType (rt t))
-        rtl unk = unk
-        --rtm: extract the type from the maybe type, call 'rt' on it, then
-        --wrap it in Just
-        rtm mtype = mtype >>= (Just . rt) 
-    TFunc pos (rtm this) 
-              (map rt reqargs) (rtm vararg) 
-              (rt rettype) (rtl lp)
-  TObject pos props -> if (map fst props) /= nub (map fst props)
-    then error "duplicate property name in object type."
-    else TObject pos $ map (\(id,t) -> (id, resolveType vars types t)) props
-  TApp pos (TId _ s) apps -> 
-    if s == "Array" then
-      if length apps /= 1 
-        then error "Array only takes one type parameter"
-        else (arrayType vars types (apps !! 0))
-    else t --otherwise we likely have a base-case "int", "string",
-           --etc. TODO: make this throw 'unbound id' errors.
-  TUnion p ts -> flattenUnion vars types $ 
-                             TUnion p $ map (resolveType vars types) ts
-  _ -> t  
--}
-
 -- returns whether or not all possible paths return, and whether those
 -- return statements return subtypes of the supplied type 
 -- motivation: when checking functions with return values, at least
@@ -299,7 +260,7 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
       -- If a variable is declared with a type but is uninitialized,
       -- it must be TNullable (since it is initialized to undefined).
       (Id _ varname, Just vartype, Nothing) -> do
-        let vartype' = (resolveType vars types vartype)
+        let vartype' = vartype 
         case vartype' of
           TNullable _ _ -> processRawEnv (M.insert varname vartype' vars) types
                                          (varname:forbidden) rest
@@ -307,7 +268,7 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
                               "types (suffix '?')"
       (Id _ varname, Just vartype, Just expr) -> do
         (exprtype,lp) <- typeOfExpr vars types expr
-        let vartype' = (resolveType vars types vartype)
+        let vartype' = vartype 
         seq vartype' $ 
           if not $ isSubType vars types exprtype vartype'
             then fail $ "expression " ++ (show expr) ++ 
@@ -406,8 +367,7 @@ typeOfExpr vars types expr = case expr of
                            return
                            (bestSuperType vars types bestsofar newt))
                          e1 erest
-             return (resolveType vars types $ TApp pos (TId pos "Array") [st],
-                     (error "arraylit vp NYI"))
+             return (TApp pos (TId pos "Array") [st],(error "arraylit vp NYI"))
   ObjectLit pos props  -> let
       procProps [] = return []
       --TODO: object literals technically _could_ have numbers in
@@ -416,7 +376,9 @@ typeOfExpr vars types expr = case expr of
       procProps ((prop, giventype, expr):rest) = do
         --TODO: this might be refactorable into processRawEnv
         (exprtype, vp) <- typeOfExpr vars types expr
-        let giventype' = maybe exprtype (resolveType vars types) giventype
+        let giventype' = case giventype of
+                           Nothing -> exprtype
+                           Just t -> t
         if not $ isSubType vars types exprtype giventype' 
           then fail $ "expression " ++ (show expr) ++ 
                       " has type " ++ (show exprtype) ++ 
@@ -638,10 +600,7 @@ typeOfExpr vars types expr = case expr of
     argTypes_VP <- mapM (typeOfExpr vars types) argexprs
     let argTypes = map fst argTypes_VP    
     case functype of 
-      TFunc _ Nothing posArgTypes_ varArgType_ resultType_ lp -> do
-        let posArgTypes = map (resolveType vars types) posArgTypes_
-        let varArgType = liftM (resolveType vars types) varArgType_
-        let resultType = resolveType vars types resultType_
+      TFunc _ Nothing posArgTypes varArgType resultType lp -> do
         -- If (length posArgTypes) exceeds the length of argTypes, varArgTypes'
         -- is empty.
         let (posArgTypes',varArgTypes') = L.splitAt (length posArgTypes) 
@@ -672,7 +631,7 @@ typeOfExpr vars types expr = case expr of
         let isvpid (VPId _) = True
             isvpid _        = False
             a1vp            = snd (argTypes_VP !! 0)
-        if varArgType_ == Nothing && length posArgTypes_ == 1 
+        if varArgType == Nothing && length posArgTypes == 1 
            && lp /= LPNone && isvpid a1vp
           then let (VPId id) = a1vp
                    (LPType ltype) = lp
@@ -689,7 +648,6 @@ typeOfExpr vars types expr = case expr of
   --  declared
   FuncExpr _ argnames functype bodyblock@(BlockStmt _ bodystmts) -> do
     --fail "Function exprs with vps NYI!"
-    functype <- return $ resolveType vars types functype
     case functype of
       TFunc _ Nothing reqargtypes mvarargtype rettype vp -> do
         if length argnames /= (length reqargtypes) + 

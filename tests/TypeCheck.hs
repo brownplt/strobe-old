@@ -21,7 +21,7 @@ import TypedJavaScript.Syntax (Type,Expression,showSp)
 import TypedJavaScript.Lexer (semi,reservedOp,reserved)
 import TypedJavaScript.Parser (parseType,parseExpression)
 import TypedJavaScript.TypeChecker (typeOfExpr,coreTypeEnv,coreVarEnv,
-  resolveType,isSubType)
+  isSubType)
 import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
 
@@ -32,11 +32,10 @@ assertType pos expr expectedType = do
     Left (err::(E.SomeException)) -> assertFailure (
       (showSp pos) ++ ": user error: " ++ (show err))
     Right (exprType, evp) -> do
-      let resolvedType = resolveType coreVarEnv coreTypeEnv expectedType
       assertBool ((showSp pos) ++ ": type mismatch, " ++ 
                   (show exprType) ++ " is not a subtype of " ++ 
-                  (show resolvedType)) 
-                 (isSubType coreVarEnv coreTypeEnv exprType resolvedType)
+                  (show expectedType)) 
+                 (isSubType coreVarEnv coreTypeEnv exprType expectedType)
 
 assertTypeError :: SourcePos -> Expression SourcePos -> Assertion
 assertTypeError pos expr = do
