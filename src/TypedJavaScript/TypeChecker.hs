@@ -136,6 +136,7 @@ isSubType (TApp _ c1 args1) (TApp _ c2 args2) =
   (length args1 == length args2)
 isSubType(TVal v1 t1) (TVal v2 t2) = v1 `eqLit` v2 && t1 <: t2
 isSubType (TVal _ t1) t2 = t1 <: t2
+isSubType (TForall ids1 t1) (TForall ids2 t2) = ids1 == ids2 && t1 == t2
 isSubType _ _ = False
 
 --get the most specific supertype. best = most specific to save typing.
@@ -587,59 +588,52 @@ typeOfExpr vars types expr = case expr of
     typelist <- mapM (typeOfExpr vars types) exprs
     return $ last typelist
 
-  -- Monomorphic function application
-  CallExpr a funcexpr [] argexprs -> do
-    (functype,fvp) <- typeOfExpr vars types funcexpr
-    argTypes_VP <- mapM (typeOfExpr vars types) argexprs
-    let argTypes = map fst argTypes_VP    
-    case functype of 
-      TFunc _ Nothing posArgTypes varArgType resultType lp -> do
-        -- If (length posArgTypes) exceeds the length of argTypes, varArgTypes'
-        -- is empty.
-        let (posArgTypes',varArgTypes') = L.splitAt (length posArgTypes) 
-                                                    argTypes
-        let (suppliedArgTypes,missingArgTypes) =
-              L.splitAt (length posArgTypes') posArgTypes
-        let checkSubType (formal,actual) = 
-              case isSubType actual formal of 
-                True -> return True
-                False -> fail $ "expected " ++ show formal ++ "; received " ++ 
-                                show actual ++ " at " ++ show a
-        mapM_ checkSubType (zip suppliedArgTypes posArgTypes')
+
+  CallExpr p fn typeArgs args -> do
+    -- descend into function and arguments
+    (fn_t,fn_vp) <- typeOfExpr vars types fn
+    (actuals_t,args_vp) <- liftM unzip $ mapM (typeOfExpr vars types) args
+    -- instantiate the type of the function.  applyType will fail if there is
+    -- an argument-count mismatch.
+    instFn_t <- applyType fn_t typeArgs
+    -- ensure that we have a function
+    case deconstrFnType instFn_t of
+      Nothing -> fail $ "applied expression is not a function at " ++ show p
+      Just ([],formals_t,result_t,latentPred) -> do
+        let (supplied_t,missing_t) = L.splitAt (length actuals_t) formals_t
+        unless (length formals_t >= length actuals_t) $ do
+          fail $ "function expects " ++ show (length formals_t) ++
+                 " arguments, but " ++ show (length actuals_t) ++ 
+                 " were supplied"
+        let checkArg (actual,formal) = case actual <: formal of
+              True -> return True
+              False -> fail $ "expected " ++ show formal ++ "; received " ++ 
+                              show actual ++ " at " ++ show p
+        mapM_ checkArg (zip actuals_t supplied_t)
         let checkMissingArg actual = case actual of
-                TNullable _ _ -> return True
-                otherwise -> fail $ "non-null argument not supplied"
-        mapM_ checkMissingArg missingArgTypes
-        let checkVarArg actual = case varArgType of
-              Nothing -> fail "extra arguments supplied"
-              Just formal -> case isSubType actual formal of
-                True -> return True
-                False ->
-                  fail $ "expected subtype of " ++ show formal ++ 
-                         ", received " ++ show actual ++ " (var-arity function)"
-        mapM_ checkVarArg varArgTypes' 
-        
+              TNullable _ _ -> return True
+              otherwise -> fail $ "non-null argument not supplied"
+        mapM_ checkMissingArg missing_t
+
         --if we have a 1-arg func that has a latent pred, applied to a
         --visible pred of VID, then this is a T-AppPred        
         let isvpid (VPId _) = True
             isvpid _        = False
-            a1vp            = snd (argTypes_VP !! 0)
-        if varArgType == Nothing && length posArgTypes == 1 
-           && lp /= LPNone && isvpid a1vp
+            a1vp            = args_vp !! 0
+        if length formals_t == 1 
+           && latentPred /= LPNone && isvpid a1vp
           then let (VPId id) = a1vp
-                   (LPType ltype) = lp
-                in return (resultType, VPType ltype id)
-          else return (resultType, VPNone)
-        
-      TFunc _ (Just t) _ _ _ _ -> 
-        fail $ "this-type not implemented " ++ show functype ++ ", " ++ show t
-      otherwise -> do
-        fail $ "expression in function position has type " ++ show functype ++
-               " at " ++ show a
+                   (LPType ltype) = latentPred
+                in return (result_t, VPType ltype id)
+          else return (result_t, VPNone)
+      Just (typeArgs,_,_,_) ->
+        -- This should not happen:
+        -- forall a b c. forall x y z . int -> bool
+        fail $ "funciton type still has uninstantiated type variables"
 
   FuncExpr _ formals type_ (BlockStmt p' body) -> case deconstrFnType type_ of
     Nothing -> fail $ "declared type on a function is not a function type"
-    Just (vars_t,args_t,result_t) -> do
+    Just (vars_t,args_t,result_t,latentP) -> do
       unless (length args_t == length formals) $
         fail $ "this function's type specifies " ++ (show $ length args_t) ++
                " arguments, but its definition has only " ++ 

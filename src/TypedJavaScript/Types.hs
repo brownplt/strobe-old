@@ -7,10 +7,13 @@ module TypedJavaScript.Types
   , eqLit
   , unTVal
   , deconstrFnType
+  , applyType
   ) where
 
+import Control.Monad
 import Text.ParserCombinators.Parsec.Pos (initialPos,SourcePos)
-import TypedJavaScript.Syntax (Expression (..))
+import TypedJavaScript.PrettyPrint()
+import TypedJavaScript.Syntax
 import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Data.List as L
@@ -45,11 +48,48 @@ argEnv posArgs varArg = addVarArg $ L.foldl' addPosArg emptyEnv posArgs where
 -- |Deconstructs the declared type of a function, returning a list of quantified
 -- variables, the types of each argument, and a return type.  As we enrich the
 -- type-checker to handle more of a function type, include them here.
-deconstrFnType :: Type a -> Maybe ([String],[Type a],Type a)
-deconstrFnType (TFunc _ _ args _ result vp) = Just ([],args,result)
-deconstrFnType (TForall ids (TFunc _ _ args _ result vp)) = 
-  Just (ids,args,result)
-deconstrFnType _ = Nothing  
+deconstrFnType :: Type a -> Maybe ([String],[Type a],Type a,LatentPred a)
+deconstrFnType (TFunc _ _ args _ result latentP) = Just ([],args,result,latentP)
+deconstrFnType (TForall ids (TFunc _ _ args _ result latentP)) = 
+  Just (ids,args,result,latentP)
+deconstrFnType _ = Nothing
+
+-- |This is _not_ capture-free.
+substType :: String -> Type a -> Type a -> Type a
+substType var sub (TForall formals body) 
+  | var `elem` formals = TForall formals body
+  | otherwise = TForall formals (substType var sub body)
+substType var sub (TApp p constr args) = 
+  TApp p constr (map (substType var sub) args)
+substType var sub (TUnion p ts) = 
+  TUnion p (map (substType var sub) ts)
+substType var sub (TVal e t) = 
+  TVal e t -- should not need to subst
+substType var sub (TNullable p t) =
+  TNullable p (substType var sub t)
+substType var sub (TId p var')
+  | var == var' = sub
+  | otherwise =  TId p var'
+substType var sub (TFunc p Nothing args vararg ret latentP) =
+  TFunc p Nothing (map (substType var sub) args)
+        (liftM (substType var sub) vararg)
+        (substType var sub ret)
+        latentP
+substType var sub (TObject p fields) =
+  TObject p (map (\(v,t) -> (v,substType var sub t)) fields)
+substType _ _ (TFunc _ (Just _) _ _ _ _) = error "cannot substitute into functions with this-types"
+
+applyType :: Monad m => Type a -> [Type a] -> m (Type a)
+applyType (TForall formals body) actuals = do
+  unless (length formals == length actuals) $ do
+    fail $ "quantified type has " ++ show (length formals) ++ " variables " ++
+           "but " ++ show (length actuals) ++ " were supplied"
+  return $ foldr (uncurry substType) body (zip formals actuals)
+applyType t [] = return t
+applyType t actuals =
+  fail $ "type " ++ show t ++ " is not quantified, but " ++ 
+         show (length actuals)  ++ " type arguments were supplied"
+  
 
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
 -- expressions in types
