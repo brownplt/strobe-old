@@ -120,12 +120,18 @@ type_' = do
 
 type_'' :: CharParser st (Type SourcePos)
 type_'' =
-  (do reservedOp "U";
-      parens $ withPos TUnion (type_'' `sepEndBy` comma)) <|>
-  (parens type_) <|>
-  (braces $ withPos TObject (field `sepEndBy` comma)) <|>
-  valueType <|>
-  constrOrId
+  let union = do 
+        reservedOp "U";
+        parens $ withPos TUnion (type_'' `sepEndBy` comma)
+      object = do
+        p <- getPosition
+        fields <- braces $ field `sepEndBy` comma
+        fields' <- noDupFields fields
+        return (TObject p fields')
+      noDupFields fields
+        | length (L.nub $ map fst fields) == length fields = return fields
+        | otherwise = fail "duplicate fields in an object type specification"
+    in (parens type_) <|> union <|> object <|> valueType <|> constrOrId
 
 valueType :: CharParser st (Type SourcePos)
 valueType = do

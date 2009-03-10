@@ -55,7 +55,8 @@ function() :: (->) {
 {z: 5, 5: 6, 5: 9} @@ fails;
 
 //duplicates in types:
-{point :: {x::int,x::int} : {x:5}} @@ fails;
+// For the moment, this has turned into a parse error
+// {point :: {x::int,x::int} : {x:5}} @@ fails;
 
 function() :: (->) {
   var z :: {name :: int, name :: string, name :: double};

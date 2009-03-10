@@ -11,9 +11,9 @@ module TypedJavaScript.TypeChecker
 
 import Data.Generics
 import qualified Data.Maybe as Y
-import Data.List (foldl', nub)
 import qualified Data.List as L
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Map(Map, (!))
 import Control.Monad
 
@@ -39,15 +39,15 @@ corePos = initialPos "core"
 -- TODO: figure out what to do with global.
 globalObjectType = TObject corePos []
 
-arrayType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
-arrayType vars types indxtype = let pos = corePos in 
-  (TObject pos [(Id pos "@[]", indxtype),
-                (Id pos "length", (TId pos "int"))])
+arrayFields :: [(String,Type SourcePos)]
+arrayFields =
+  [ ("length", TId corePos "int") 
+  ]
 
 coreTypeEnv :: Env
 coreTypeEnv = M.fromList $ 
   (map (\s -> (s, (TId corePos s)))
-       ["string", "double", "int", "any", "bool"]) ++
+       ["string", "double", "int", "any", "bool","Array"]) ++
   [("@global", globalObjectType), ("unit", unitType)]
 
 coreVarEnv :: Env
@@ -401,32 +401,22 @@ typeOfExpr vars types expr = case expr of
                       " has no '" ++ (show id) ++ "' property")
               (\t -> return (t, error "dotref vp NYI"))
               (lookup id props)
-      (TApp _ (TId _ "Array") [t_elt]) -> do
-        return (t_elt,VPNone) -- TODO: is this correct?
+      (TApp _ (TId _ "Array") [t_elt]) -> case lookup (unId id) arrayFields of
+        Just t -> return (t,VPNone) -- TODO: is the VP correct?
+        Nothing -> fail $ "array does not have a field called " ++ show id
       _ -> fail $ "dotref requires an object type, got a " ++ (show exprtype)
   BracketRef a contexpr keyexpr   -> do
     (conttype, vp) <- typeOfExpr vars types contexpr
     case conttype of
       TObject _ props -> do
         --TODO: once map-like things are done, add support for that here
-        (keytype', vp) <- typeOfExpr vars types keyexpr
-        keytype <- numberContext vars types keytype'
-        if keytype /= (types ! "int") --TODO: change to 'subtype of int'
-          then fail $ "[] requires an int index, but " ++ (show keyexpr) ++ 
-                      " has type " ++ (show keytype)
-          else maybe (fail $ "object " ++ (show conttype) ++ 
-                             " is not an array.")
-                     (\t -> return (t,error "bracketref vp NYI"))
-                     (lookup (Id a "@[]") props)
+         fail "no support for object[property] yet; use arrays only"
       (TApp _ (TId _ "Array") [t_elt]) -> do
-        (keytype', vp) <- typeOfExpr vars types keyexpr
-        keytype <- numberContext vars types keytype'
-        -- TODO: this admits subtypes of int
-        unless (isSubType keytype (TId a "int")) $
-          fail $ "[] requires an int index, but " ++ (show keyexpr) ++ 
-                 " has type " ++ (show keytype)
-        return (t_elt,VPNone) -- TODO: is this correct?
-          
+        (keytype,vp) <- typeOfExpr vars types keyexpr
+        case keytype <: (TId a "int") of
+          True -> return (t_elt,VPNone) -- TODO: is this correct?
+          False -> fail $ "indexing an array with a " ++ show keytype ++
+                          " at " ++ show a
         
       _ -> fail $ "[] requires an object, got " ++ (show conttype)
   NewExpr a xcon xvars -> fail "newexpr NYI"
@@ -593,6 +583,12 @@ typeOfExpr vars types expr = case expr of
     -- descend into function and arguments
     (fn_t,fn_vp) <- typeOfExpr vars types fn
     (actuals_t,args_vp) <- liftM unzip $ mapM (typeOfExpr vars types) args
+    -- ensure that typeArgs do not have free variables
+    let freeIds = S.difference (S.unions (map freeTIds typeArgs))
+                               (S.fromList $ M.keys types)
+    unless (S.null freeIds) $
+      fail $ "type arguments at " ++ show p ++ " have free identifiers " ++
+             show (S.toList freeIds) ++ "; env is " ++ show (M.keys types)
     -- instantiate the type of the function.  applyType will fail if there is
     -- an argument-count mismatch.
     instFn_t <- applyType fn_t typeArgs
@@ -631,9 +627,13 @@ typeOfExpr vars types expr = case expr of
         -- forall a b c. forall x y z . int -> bool
         fail $ "funciton type still has uninstantiated type variables"
 
-  FuncExpr _ formals type_ (BlockStmt p' body) -> case deconstrFnType type_ of
+  FuncExpr p formals type_ (BlockStmt p' body) -> case deconstrFnType type_ of
     Nothing -> fail $ "declared type on a function is not a function type"
-    Just (vars_t,args_t,result_t,latentP) -> do
+    Just (typeArgs,args_t,result_t,latentP) -> do
+      let freeIds = S.difference (freeTIds type_) (S.fromList $ M.keys types)
+      unless (S.null freeIds) $
+        fail $ "function at " ++ show p ++ " has free identifiers " ++
+               show (S.toList freeIds) ++ " in its type"
       unless (length args_t == length formals) $
         fail $ "this function's type specifies " ++ (show $ length args_t) ++
                " arguments, but its definition has only " ++ 
@@ -642,11 +642,14 @@ typeOfExpr vars types expr = case expr of
       let args = argEnv (zip (map unId formals) args_t) Nothing
       vars <- processRawEnv (M.union args vars) types (M.keys args) 
                             (globalEnv body)
-      doesAlwaysReturn <- allPathsReturn vars types result_t (BlockStmt p' body)
+      let tenvExt = M.fromList $ map (\s -> (s,TId p s)) typeArgs
+      let types' = M.union tenvExt types
+      doesAlwaysReturn <- allPathsReturn vars types' result_t 
+                                         (BlockStmt p' body)
       unless (result_t == unitType || doesAlwaysReturn) $
         fail $ "All paths do not return, but function\'s return type is " ++
                show result_t
-      typeCheckStmt vars types (BlockStmt p' body)
+      typeCheckStmt vars types' (BlockStmt p' body)
       return (type_, error "vp for FuncExpr NYI")
   --just in case the parser fails somehow.
   FuncExpr _ _ _ _ -> fail "Function's body must be a BlockStmt" 

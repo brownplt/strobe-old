@@ -1,8 +1,4 @@
-{} :: {}; //TODO: fix testcase parser so you can have a comment on the first 
-          //      line.  No, you!
-//TODO: add support for new Array<int>, etc.
-
-function (arry) :: (Array<int> -> int) {
+function (arry) :: (Array<int> -> int) { //TODO: add support for new Array<int>, etc.
   return (5)[13];
 } @@ fails;
 function (arry) :: (Array<int> -> int) {
@@ -29,6 +25,14 @@ function (int2str, arry) :: ((int -> string), Array<int> -> Array<string>) {
   }
   return rezarray;
 } :: ((int -> string), Array<int> -> Array<string>);
+
+function (f,src) :: forall a b . (a -> b), Array<a> -> Array<b> {
+  var dest :: Array<b> = [ f(src[0]) ]; // TODO: support empty literal, null, ..
+  for (var i = 0; i < src.length; i++) {
+    dest[i] = f(src[i]);
+  };
+  return dest;
+} :: (forall a b . (a -> b), Array<a> -> Array<b>);
 
 //monomorphic filter:
 function (int2bool, arry) :: ((int -> bool), Array<int> -> Array<int>)  {
