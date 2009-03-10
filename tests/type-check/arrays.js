@@ -45,7 +45,9 @@ function (int2bool, arry) :: ((int -> bool), Array<int> -> Array<int>)  {
 function () :: (-> Array<int>) {
   var z :: Array<int> = [1];
   var y :: Array<double> = [2.0];
-  y = z;
+  // y[0].floor() works
+  y = z; // this test fails because of this assignment.
+ // y[0].floor() signals a method not found exception.
   return z;
 } @@ fails; //:: (-> Array<int>);
 

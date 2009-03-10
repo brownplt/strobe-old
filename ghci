@@ -1,6 +1,8 @@
 #!/bin/sh
 
-if [ `hostname -d` = "ilab.cs.brown.edu" ] || 
+if [ `hostname` = "wanderlust.local" ]; then
+  GHCI="/usr/bin/ghci"
+elif [ `hostname -d` = "ilab.cs.brown.edu" ] || 
    [ `hostname -d` = "cs.brown.edu" ]; then
   GHCI="/pro/plt/ghc/latest/bin/ghci"
 else
@@ -8,5 +10,5 @@ else
   exit 1
 fi
 
-$GHCI -ignore-dot-ghci -fglasgow-exts -isrc
+$GHCI -ignore-dot-ghci -fglasgow-exts -isrc -package WebBits -package parsec-2.1.0.1
 

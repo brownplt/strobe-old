@@ -120,6 +120,13 @@ isSubType vars types t1 (TNullable _ t2) =
   isSubType vars types t1 t2
 
 --the first of these cases works if both are unions; the second does not.
+{- 
+(x U y) <: (x U y)
+--------------------------
+x <: x U y and y <: x U y
+-----------------------------------------
+(x <: x or x <: y) and (y <: x or y <: y)
+-}
 isSubType vars types (TUnion _ ts) t = 
   all (\ti -> isSubType vars types ti t) ts
 isSubType vars types t (TUnion _ ts) =
@@ -131,6 +138,9 @@ isSubType v t (TApp _ c1 args1) (TApp _ c2 args2) =
   isSubType v t c2 c1 && 
   (and $ zipWith (isSubType v t) args1 args2) &&
   (length args1 == length args2)
+isSubType v t (TVal v1 t1) (TVal v2 t2) =
+  v1 `eqLit` v2 &&
+  isSubType v t t1 t2
 isSubType v t (TVal _ t1) t2 = isSubType v t t1 t2
 isSubType _ _ _ _ = False
 
@@ -153,14 +163,19 @@ bestSuperType vars types t1 t2
  | (t1 == t2) = Just t1
  | (isSubType vars types t1 t2) = Just t2
  | (isSubType vars types t2 t1) = Just t1
- | otherwise = Just $ reduceUnion vars types $ TUnion (typePos t1) [t1, t2] 
+ | otherwise = Just $ flattenUnion vars types $ TUnion (typePos t1) [t1, t2] 
+
+
+reduceUnion :: Type SourcePos -> Type SourcePos
+reduceUnion (TUnion p ts) = TUnion p (map unTVal ts)
+reduceUnion t = error $ "reduceUnion expected a TUnion, got " ++ show t
 
 --take a union of many types and reduce it to the simplest one possible.
 --Example: U(true, true, false, int, double, false) --> U(true, false, double)
 --Example: U(U(true, int), false) --> U(true, false, int)
 --So far, this just flattens the union
-reduceUnion :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
-reduceUnion vars types (TUnion pos ts) = 
+flattenUnion :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
+flattenUnion vars types (TUnion pos ts) = 
   case (foldl
          (\res t -> case t of
                       TUnion _ tocomb -> res ++ tocomb
@@ -169,7 +184,7 @@ reduceUnion vars types (TUnion pos ts) =
    [onet] -> onet
    noneormanyt -> TUnion pos noneormanyt
 
-reduceUnion vars types t = t
+flattenUnion vars types t = t
 
 -- recursively resolve the type down to TApp, or a TFunc or a TObject containing
 -- only resolved types.
@@ -204,7 +219,7 @@ resolveType vars types t = case t of
         else (arrayType vars types (apps !! 0))
     else t --otherwise we likely have a base-case "int", "string",
            --etc. TODO: make this throw 'unbound id' errors.
-  TUnion p ts -> reduceUnion vars types $ 
+  TUnion p ts -> flattenUnion vars types $ 
                              TUnion p $ map (resolveType vars types) ts
   _ -> t  
 -}
@@ -306,7 +321,7 @@ restrict :: Env -> Env ->
 restrict vars types s t
  | isSubType vars types s t = s
  | otherwise = case t of
-     TUnion pos ts -> reduceUnion vars types $ 
+     TUnion pos ts -> flattenUnion vars types $ 
                         TUnion pos (map (restrict vars types s) ts)
      _ -> t
 
@@ -315,10 +330,10 @@ remove :: Env -> Env ->
 remove vars types s t
  | isSubType vars types s t = TUnion (typePos s) []
  | otherwise = case t of
-     TUnion pos ts -> reduceUnion vars types $ 
+     TUnion pos ts -> flattenUnion vars types $ 
                         TUnion pos (map (remove vars types s) ts)
      --TODO: make sure remove is correct
-     _ -> reduceUnion vars types $ 
+     _ -> flattenUnion vars types $ 
             TUnion (typePos s) 
                    (filter (\hm -> not $ isSubType vars types hm t)
                            (case s of
@@ -347,7 +362,7 @@ combpred :: VisiblePred SourcePos -> VisiblePred SourcePos ->
             VisiblePred SourcePos -> VisiblePred SourcePos
 combpred (VPType t x1) VPTrue (VPType s x2) =
   if (x1 == x2) 
-    then VPType (TUnion (typePos t) [t, s]) x1 --reduceUnion here?
+    then VPType (TUnion (typePos t) [t, s]) x1 --flattenUnion here?
     else VPNone
 combpred VPTrue f1 f2 = f1
 combpred VPFalse f1 f2 = f2
