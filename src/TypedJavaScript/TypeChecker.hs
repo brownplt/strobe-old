@@ -68,12 +68,12 @@ coreVarEnv = M.fromList $ [("this", coreTypeEnv ! "@global")] ++
 
 -- in pJS, anything can be used in a number and bool context without 
 -- anything crashing.for now, we're making this a lot stricter:
-numberContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> 
+numberContext :: (Monad m) => (Type SourcePos) -> 
                               m (Type SourcePos)
-numberContext vars types t
-   | t == (types ! "int")    = return t
-   | t == (types ! "double") = return t
-   | otherwise               = fail $ "expected int or double, got " ++ (show t)
+numberContext t
+  | t <: (TId corePos "double") = return t
+  | otherwise = fail $ "expected a number - a subtype of double - got " ++ 
+                       show t
 
 -- bool is also much freer in pJS. 
 boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
@@ -223,12 +223,12 @@ allPathsReturn vars types rettype stmt = case stmt of
 -- |If typeOfExpr returns a refined type (i.e. a 'TVal'), omit the refinement
 -- and return the base type.
 inferLocally :: (Monad m) => Env -> Env -> (Expression SourcePos) ->
-                             m (Type SourcePos)
+                             m (Type SourcePos, VisiblePred SourcePos)
 inferLocally vars types expr = do
-  (exprtype, lp) <- typeOfExpr vars types expr
+  (exprtype, vp) <- typeOfExpr vars types expr
   case exprtype of
-    (TVal _ t) -> return t
-    otherwise -> return exprtype
+    (TVal _ t) -> return (t,vp)
+    otherwise -> return (exprtype,vp)
 
 -- given the current var and type environment, and a raw environment
 -- representing new variable declarations from, for example, a
@@ -248,7 +248,7 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
         "Invalid RawEnv contains var that has neither type nor expression"
       (Id _ varname, Nothing, Just expr) -> do
         --local type inference
-        exprtype <- inferLocally vars types expr
+        (exprtype,vp) <- inferLocally vars types expr
         processRawEnv (M.insert varname exprtype vars) 
                       types (varname:forbidden) rest
       -- If a variable is declared with a type but is uninitialized,
@@ -297,7 +297,7 @@ remove vars types s t
                              TUnion _ ts -> ts
                              _ -> [s]))
      
---TODO: in TS, 'false' is false, and everything else is true the same
+--TODO: in TS, 'false' is false, and everything else is true. the same
 --is not true in JS, so we have to think about how to handle gammaPlus
 --and gammaMinus with VPIds.
 
@@ -339,10 +339,14 @@ typeOfExpr vars types expr = case expr of
   --true and false in a bool context.
   --However, since for now we only allow booleans in a bool context, we can
   --ignore this! TODO: correct this later.
-  StringLit a _      -> return (types ! "string", (error "string vp NYI"))
-  RegexpLit a _ _ _  -> return (types ! "RegExp", (error "regex  vp NYI"))
-  NumLit a _         -> return (types ! "double", (error "numlit vp NYI"))
-  IntLit a _         -> return (types ! "int", (error "intlit vp NYI"))
+  StringLit a _      -> return (TVal expr (types ! "string"), 
+                                error "string vp NYI")
+  RegexpLit a _ _ _  -> return (types ! "RegExp", 
+                                error "regex  vp NYI")
+  NumLit a _         -> return (TVal expr (types ! "double"), 
+                                error "numlit vp NYI")
+  IntLit a _         -> return (TVal expr (types ! "int"), 
+                                error "intlit vp NYI")
   --TODO: potential discrepancy in TS paper. T-True has
   --G |- true : Boolean; true, whereas in TS impl, true ends up having
   --type "true", not "Boolean".
@@ -350,7 +354,7 @@ typeOfExpr vars types expr = case expr of
                              else return (TVal expr (types ! "bool"), VPFalse)
   NullLit a          -> fail "NullLit NYI"
   ArrayLit pos exprs   -> do
-    exprtypes' <- mapM (typeOfExpr vars types) exprs
+    exprtypes' <- mapM (inferLocally vars types) exprs
     --TODO: see if we have to do anything else for array literal visible preds
     let exprtypes = map fst exprtypes'
     if length exprs == 0
@@ -369,11 +373,11 @@ typeOfExpr vars types expr = case expr of
       --syntax. should we fail if we see them?
       procProps ((prop, giventype, expr):rest) = do
         --TODO: this might be refactorable into processRawEnv
-        (exprtype, vp) <- typeOfExpr vars types expr
+        (exprtype, vp) <- inferLocally vars types expr
         let giventype' = case giventype of
                            Nothing -> exprtype
                            Just t -> t
-        if not $ isSubType exprtype giventype' 
+        if not $ exprtype <: giventype' 
           then fail $ "expression " ++ (show expr) ++ 
                       " has type " ++ (show exprtype) ++ 
                       " which is not a subtype of declared type " ++ 
@@ -425,23 +429,23 @@ typeOfExpr vars types expr = case expr of
   --so their visible predicate is VPNone (the * in TS paper)
   PostfixExpr a op x -> do
     (xtype, vp) <- typeOfExpr vars types x
-    ntype <- numberContext vars types xtype
+    ntype <- numberContext xtype
     return (ntype, VPNone)
   
   PrefixExpr a op x -> do
     (xtype,vp) <- typeOfExpr vars types x
     case op of
-      PrefixInc    -> novp $ numberContext vars types xtype
-      PrefixDec    -> novp $ numberContext vars types xtype
+      PrefixInc    -> novp $ numberContext xtype
+      PrefixDec    -> novp $ numberContext xtype
       PrefixLNot   -> novp $ boolContext vars types xtype
-      PrefixBNot   -> do ntype <- numberContext vars types xtype
+      PrefixBNot   -> do ntype <- numberContext xtype
                          if ntype == types ! "int"
                            then novp $ return $ types ! "int"
                            else fail $ "~ operates on integers, got " ++ 
                                        show xtype ++ " converted to " ++ 
                                        show ntype
-      PrefixPlus   -> novp $ numberContext vars types xtype
-      PrefixMinus  -> novp $ numberContext vars types xtype
+      PrefixPlus   -> novp $ numberContext xtype
+      PrefixMinus  -> novp $ numberContext xtype
       -- Void has been removed.  We are just sharing operator syntax with
       -- JavaScript.  It makes compiling to JavaScript much easier.
       PrefixVoid   -> fail "void has been removed"
@@ -459,17 +463,17 @@ typeOfExpr vars types expr = case expr of
           if (ltype == (types ! "string") && rtype == (types ! "string"))
             then return $ (types ! "bool", VPNone)
             else do
-              numberContext vars types ltype
-              numberContext vars types rtype
+              numberContext ltype
+              numberContext rtype
               return (types ! "bool", VPNone)
         logical = do
           boolContext vars types ltype
           boolContext vars types rtype
           return (types ! "bool", error "vp for logical infix NYI (important!)")
         numop = \requireInts alwaysDouble -> do
-          ln <- numberContext vars types ltype
-          rn <- numberContext vars types rtype
-          if (ln == types ! "int" && rn == types ! "int") 
+          ln <- numberContext ltype
+          rn <- numberContext rtype
+          if (ln <: (types ! "int") && rn <: (types ! "int"))
             -- we are given all integers
             then if alwaysDouble 
               then return (types ! "double",VPNone) --e.g. division
@@ -526,7 +530,7 @@ typeOfExpr vars types expr = case expr of
         -- returns a number, numbers are added.  if it returns a
         -- string, then strings are concatenated.  for now, let's just
         -- do strings or numbers:
-        if ltype == (types ! "string") || rtype == (types ! "string") 
+        if ltype <: (types ! "string") || rtype <: (types ! "string") 
           then return $ (types ! "string", VPNone)
           else numop False False
   

@@ -3,7 +3,7 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
          ForInit(..),ForInInit(..),Type(..),VisiblePred(..),LatentPred(..),
-         showSp, propToString, unId,
+         showSp, propToString, unId, eqLit,
          exprPos, stmtPos, typePos) where
 
 -- used by data JavaScript:
@@ -56,6 +56,13 @@ data LatentPred a = LPType (Type a) | LPNone
 instance Eq (Id a) where
   Id _ s1 == Id _ s2 = s1 == s2
 
+eqLit :: Expression a -> Expression a -> Bool
+eqLit (StringLit _ s1) (StringLit _ s2) = s1 == s2
+eqLit (NumLit _ n1) (NumLit _ n2) = n1 == n2
+eqLit (IntLit _ n1) (IntLit _ n2) = n1 == n2
+eqLit (BoolLit _ b1) (BoolLit _ b2) = b1 == b2
+eqLit _ _ = False
+
 instance Eq (Type a) where
   TObject _ props1 == TObject _ props2 = 
     (hasall props1 props2) && (hasall props2 props1) where
@@ -73,6 +80,7 @@ instance Eq (Type a) where
     TFunc _ tt2 req2 var2 ret2 lp2 = tt1 == tt2 && req1 == req2 && 
                                           var1 == var2 && 
                                           ret1 == ret2 && lp1 == lp2
+  TVal x t == TVal x2 t2 = x `eqLit` x2 && t == t2
   t1 == t2                            = False
 
 --TODO: these might be unnecessary:

@@ -4,7 +4,6 @@ module TypedJavaScript.Types
   , argEnv
   , unitType
   , inferLit
-  , eqLit
   , unTVal
   , deconstrFnType
   , applyType
@@ -116,13 +115,6 @@ inferLit (IntLit p _) = return (TId p "integer")
 inferLit (BoolLit p _) = return (TId p "bool")
 inferLit expr =
   fail $ "Cannot use as a literal"
-
-eqLit :: Expression a -> Expression a -> Bool
-eqLit (StringLit _ s1) (StringLit _ s2) = s1 == s2
-eqLit (NumLit _ n1) (NumLit _ n2) = n1 == n2
-eqLit (IntLit _ n1) (IntLit _ n2) = n1 == n2
-eqLit (BoolLit _ b1) (BoolLit _ b2) = b1 == b2
-eqLit _ _ = False
 
 unTVal (TVal _ t) = t
 unTVal t = error $ "unTVal expected a TVal, received " ++ show t
