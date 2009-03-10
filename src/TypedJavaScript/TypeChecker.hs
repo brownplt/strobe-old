@@ -78,30 +78,30 @@ numberContext vars types t
 -- bool is also much freer in pJS. 
 boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
 boolContext vars types t
-    | isSubType vars types t (types ! "bool") = return t
+    | isSubType t (types ! "bool") = return t
     | otherwise = fail $ "expected sub-type of bool, got " ++ show t
 
+(<:) :: Type SourcePos -> Type SourcePos -> Bool
+x <: y = isSubType x y
 
--- is t1 a subtype of t2?
-isSubType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> Bool
-
+isSubType :: Type SourcePos -> Type SourcePos -> Bool
 --objects are invariant in their common field types
 --TODO: verify that the 'case' here is well-founded, and that I'm not
 --      doing something silly.
-isSubType vars types (TObject _ props1) (TObject _ props2) =
+isSubType (TObject _ props1) (TObject _ props2) =
   all (\(o2id@(Id _ o2propname), o2proptype) -> maybe
         False (\o1proptype -> case (o1proptype,o2proptype) of
                   --want to preserve this subtype among object props:
                   (TObject{},TObject{}) -> isSubType 
-                    vars types o1proptype o2proptype
+                    o1proptype o2proptype
                   --but don't want subtype for other things:
                   _ -> o1proptype == o2proptype)     
               (lookup o2id props1))
       props2
 
-isSubType vars types f2@(TFunc _ this2 req2 var2 ret2 lp2)  -- is F2 <= F1?
-                     f1@(TFunc _ this1 req1 var1 ret1 lp1) =
-  let ist = isSubType vars types       
+isSubType f2@(TFunc _ this2 req2 var2 ret2 lp2)  -- is F2 <= F1?
+          f1@(TFunc _ this1 req1 var1 ret1 lp1) =
+  let ist = isSubType       
    in ist ret2 ret1                       --covariance of return types
       && length req2 >= length req1       --at least as many req args
       && (var2==Nothing || var1/=Nothing) --f2 has varargs -> f1 has varargs
@@ -113,11 +113,8 @@ isSubType vars types f2@(TFunc _ this2 req2 var2 ret2 lp2)  -- is F2 <= F1?
               all1    = (map Just $ req1 ++ (maybe [] repeat var1)) ++ repeat Nothing
            in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
 
-isSubType vars types (TNullable _ t1) (TNullable _ t2) =
-  isSubType vars types t1 t2
-isSubType vars types t1 (TNullable _ t2) =
-  isSubType vars types t1 t2
-
+isSubType (TNullable _ t1) (TNullable _ t2) = t1 <: t2
+isSubType t1 (TNullable _ t2) = t1 <: t2
 --the first of these cases works if both are unions; the second does not.
 {- 
 (x U y) <: (x U y)
@@ -126,24 +123,20 @@ x <: x U y and y <: x U y
 -----------------------------------------
 (x <: x or x <: y) and (y <: x or y <: y)
 -}
-isSubType vars types (TUnion _ ts) t = 
-  all (\ti -> isSubType vars types ti t) ts
-isSubType vars types t (TUnion _ ts) =
-  any (isSubType vars types t) ts
-isSubType _ _ _ (TId _ "any") = True -- TODO: O RLY?
-isSubType _ _ (TId _ "int") (TId _ "double") = True
-isSubType _ _ (TId _ x) (TId _ y) = x == y
-isSubType v t (TApp _ (TId _ "Array") args1) (TApp _ (TId _ "Array") args2) =
+isSubType (TUnion _ ts) t = all (\ti -> ti <: t) ts
+isSubType t (TUnion _ ts) = any (t <:) ts
+isSubType _ (TId _ "any") = True -- TODO: O RLY?
+isSubType (TId _ "int") (TId _ "double") = True
+isSubType (TId _ x) (TId _ y) = x == y
+isSubType (TApp _ (TId _ "Array") args1) (TApp _ (TId _ "Array") args2) =
   args1 == args2
-isSubType v t (TApp _ c1 args1) (TApp _ c2 args2) =
-  isSubType v t c2 c1 && 
-  (and $ zipWith (isSubType v t) args1 args2) &&
+isSubType (TApp _ c1 args1) (TApp _ c2 args2) = 
+  c2 <: c1 &&
+  (and $ zipWith (<:) args1 args2) &&
   (length args1 == length args2)
-isSubType v t (TVal v1 t1) (TVal v2 t2) =
-  v1 `eqLit` v2 &&
-  isSubType v t t1 t2
-isSubType v t (TVal _ t1) t2 = isSubType v t t1 t2
-isSubType _ _ _ _ = False
+isSubType(TVal v1 t1) (TVal v2 t2) = v1 `eqLit` v2 && t1 <: t2
+isSubType (TVal _ t1) t2 = t1 <: t2
+isSubType _ _ = False
 
 --get the most specific supertype. best = most specific to save typing.
 --used for array literals and ternary expressions
@@ -162,8 +155,8 @@ bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
 --TODO: this no longer returns Nothing, so no need for it to return Maybe
 bestSuperType vars types t1 t2
  | (t1 == t2) = Just t1
- | (isSubType vars types t1 t2) = Just t2
- | (isSubType vars types t2 t1) = Just t1
+ | (isSubType t1 t2) = Just t2
+ | (isSubType t2 t1) = Just t1
  | otherwise = Just $ flattenUnion vars types $ TUnion (typePos t1) [t1, t2] 
 
 
@@ -214,13 +207,13 @@ allPathsReturn vars types rettype stmt = case stmt of
   ThrowStmt{} -> return True
   ReturnStmt _ (Just expr) -> do
     (exprtype, lp) <- typeOfExpr vars types expr
-    if isSubType vars types exprtype rettype
+    if isSubType exprtype rettype
       then return True
       else fail $ (show exprtype) ++ " is not a subtype of the expected " ++
                   "return type, " ++ (show rettype)
   -- return; means we are returning unit.  If the return type is nullable,
   -- we have to return null;.
-  ReturnStmt _ Nothing -> case isSubType vars types unitType rettype of
+  ReturnStmt _ Nothing -> case isSubType unitType rettype of
     True -> return True
     False -> fail $ "expected return value of type " ++ show rettype
   -- any other statement does not return from the function
@@ -270,7 +263,7 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
         (exprtype,lp) <- typeOfExpr vars types expr
         let vartype' = vartype 
         seq vartype' $ 
-          if not $ isSubType vars types exprtype vartype'
+          if not $ isSubType exprtype vartype'
             then fail $ "expression " ++ (show expr) ++ 
                         " has type " ++ (show exprtype) ++ 
                         " which is not a subtype of declared type " ++ 
@@ -282,7 +275,7 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
 restrict :: Env -> Env ->
             (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
 restrict vars types s t
- | isSubType vars types s t = s
+ | isSubType s t = s
  | otherwise = case t of
      TUnion pos ts -> flattenUnion vars types $ 
                         TUnion pos (map (restrict vars types s) ts)
@@ -291,14 +284,14 @@ restrict vars types s t
 remove :: Env -> Env -> 
           (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
 remove vars types s t
- | isSubType vars types s t = TUnion (typePos s) []
+ | isSubType s t = TUnion (typePos s) []
  | otherwise = case t of
      TUnion pos ts -> flattenUnion vars types $ 
                         TUnion pos (map (remove vars types s) ts)
      --TODO: make sure remove is correct
      _ -> flattenUnion vars types $ 
             TUnion (typePos s) 
-                   (filter (\hm -> not $ isSubType vars types hm t)
+                   (filter (\hm -> not $ isSubType hm t)
                            (case s of
                              TUnion _ ts -> ts
                              _ -> [s]))
@@ -379,7 +372,7 @@ typeOfExpr vars types expr = case expr of
         let giventype' = case giventype of
                            Nothing -> exprtype
                            Just t -> t
-        if not $ isSubType vars types exprtype giventype' 
+        if not $ isSubType exprtype giventype' 
           then fail $ "expression " ++ (show expr) ++ 
                       " has type " ++ (show exprtype) ++ 
                       " which is not a subtype of declared type " ++ 
@@ -428,7 +421,7 @@ typeOfExpr vars types expr = case expr of
         (keytype', vp) <- typeOfExpr vars types keyexpr
         keytype <- numberContext vars types keytype'
         -- TODO: this admits subtypes of int
-        unless (isSubType vars types keytype (TId a "int")) $
+        unless (isSubType keytype (TId a "int")) $
           fail $ "[] requires an int index, but " ++ (show keyexpr) ++ 
                  " has type " ++ (show keytype)
         return (t_elt,VPNone) -- TODO: is this correct?
@@ -557,7 +550,7 @@ typeOfExpr vars types expr = case expr of
           (ltype, lvp) <- typeOfExpr vars types lhs
           (rtype, rvp) <- typeOfExpr vars types rhs
           case op of
-            OpAssign -> if isSubType vars types rtype ltype 
+            OpAssign -> if isSubType rtype ltype 
               then return (ltype, VPNone)
               else fail $ "in assignment, rhs " ++ (show rtype) ++ 
                           " is not a subtype of lhs " ++ (show ltype)
@@ -608,7 +601,7 @@ typeOfExpr vars types expr = case expr of
         let (suppliedArgTypes,missingArgTypes) =
               L.splitAt (length posArgTypes') posArgTypes
         let checkSubType (formal,actual) = 
-              case isSubType vars types actual formal of 
+              case isSubType actual formal of 
                 True -> return True
                 False -> fail $ "expected " ++ show formal ++ "; received " ++ 
                                 show actual ++ " at " ++ show a
@@ -619,7 +612,7 @@ typeOfExpr vars types expr = case expr of
         mapM_ checkMissingArg missingArgTypes
         let checkVarArg actual = case varArgType of
               Nothing -> fail "extra arguments supplied"
-              Just formal -> case isSubType vars types actual formal of
+              Just formal -> case isSubType actual formal of
                 True -> return True
                 False ->
                   fail $ "expected subtype of " ++ show formal ++ 

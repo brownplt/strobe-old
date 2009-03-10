@@ -35,7 +35,7 @@ assertType pos expr expectedType = do
       assertBool ((showSp pos) ++ ": type mismatch, " ++ 
                   (show exprType) ++ " is not a subtype of " ++ 
                   (show expectedType)) 
-                 (isSubType coreVarEnv coreTypeEnv exprType expectedType)
+                 (isSubType exprType expectedType)
 
 assertTypeError :: SourcePos -> Expression SourcePos -> Assertion
 assertTypeError pos expr = do

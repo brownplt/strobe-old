@@ -56,7 +56,6 @@ data LatentPred a = LPType (Type a) | LPNone
 instance Eq (Id a) where
   Id _ s1 == Id _ s2 = s1 == s2
 
---TODO: maybe refactor A == B to mean A <: B and B <: A.
 instance Eq (Type a) where
   TObject _ props1 == TObject _ props2 = 
     (hasall props1 props2) && (hasall props2 props1) where
