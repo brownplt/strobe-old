@@ -26,18 +26,20 @@ unId (Id _ s) = s
 data Id a = Id a String deriving (Ord,Data,Typeable)
 
 --TODO: add TExtend syntax ( <- operator), and a syntax for constructors
-data Type a = TObject a [(Id a, Type a)] -- | TExpr a (Expression a)
-              | TFunc a (Maybe (Type a)) {- type of this -} 
-                        [Type a] {- required args -} 
-                        [Type a] {- optional args -}
-                        (Maybe (Type a)) {- optional var arg -}
-                        (Type a) {- ret type -}
-                        (LatentPred a) {- latent predicate -} 
-              | TId a String -- an Id defined through a 'type' statement
-              | TNullable a (Type a)
-              | TApp a (Type a) [Type a]
-              | TUnion a [Type a]
-    deriving (Data,Typeable,Ord)
+data Type a 
+  = TObject a [(Id a, Type a)]
+  | TFunc a (Maybe (Type a)) {- type of this -} 
+            [Type a] {- required args -} 
+            [Type a] {- optional args -}
+            (Maybe (Type a)) {- optional var arg -}
+            (Type a) {- ret type -}
+            (LatentPred a) {- latent predicate -} 
+  | TId a String -- an Id defined through a 'type' statement
+  | TNullable a (Type a)
+  | TApp a (Type a) [Type a]
+  | TUnion a [Type a]
+  | TForall [String] (Type a)
+  deriving (Data,Typeable,Ord)
 
 --visible pred is always paired with a type, so can get its pos from there
 --latent pred is always part of a function, so can get its pos from there
@@ -124,7 +126,7 @@ data Expression a
   | AssignExpr a AssignOp (Expression a) (Expression a)
   | ParenExpr a (Expression a)
   | ListExpr a [Expression a] -- expressions separated by ',' 
-  | CallExpr a (Expression a) [Expression a]
+  | CallExpr a (Expression a) [Type a] [Expression a]
   | FuncExpr a [Id a] {- arg names -} 
                (Type a)
                (Statement a)    {- body -}

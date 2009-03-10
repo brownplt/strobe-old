@@ -45,21 +45,24 @@ identifier =
   liftM2 Id getPosition Lexer.identifier
 
 
-{-
- The syntax for types is:
+{- The syntax for types is:
 
  type ::= identifier
         | type?
         | type [,*] -> type
         | type [,+] ... -> type
         | constr<type [,*]>
+        | forall identifier+ . type
         | ( type )
 
 Disambiguation:
 
- type ::= type' [,*] -> type
-        | type' [,+] ... -> type
-        | type'
+ type ::= forall identifier+ . type_fn
+        | type_fn
+
+ type_fn ::= type' [,*] -> type
+           | type' [,+] ... -> type
+           | type'
 
  type' ::= type''?
          | type''
@@ -73,6 +76,17 @@ Disambiguation:
 
 type_ :: CharParser st (Type SourcePos)
 type_ = do
+  let forall = do
+        p <- getPosition
+        reserved "forall"
+        ids <- many1 Lexer.identifier
+        reservedOp "."
+        t <- type_fn
+        return (TForall ids t)
+  forall <|> type_fn
+
+type_fn :: CharParser st (Type SourcePos)
+type_fn = do
   p <- getPosition
   ts <- type_' `sepBy` comma
   let vararity = do
@@ -602,7 +616,14 @@ dotRef e = (reservedOp "." >> withPos cstr identifier) <?> "property.ref"
     where cstr pos key = DotRef pos e key
 
 funcApp e = (parens $ withPos cstr (parseExpression `sepBy` comma)) <?> "(function application)"
-    where cstr pos args = CallExpr pos e args
+    where cstr pos args = CallExpr pos e [] args
+
+parameterizedFuncApp e = do
+  reservedOp "@" 
+  p <- getPosition
+  types <- brackets $ type_ `sepBy` comma
+  args <- parens $ parseExpression `sepBy` comma
+  return (CallExpr p e types args)
 
 bracketRef e = (brackets $ withPos cstr parseExpression) <?> "[property-ref]"
     where cstr pos key = BracketRef pos e key
@@ -634,7 +655,7 @@ parseNewExpr =
   parseSimpleExpr'
 
 parseSimpleExpr (Just e) = (do
-    e' <- dotRef e <|> funcApp e <|> bracketRef e
+    e' <- dotRef e <|> funcApp e <|> parameterizedFuncApp e <|> bracketRef e
     parseSimpleExpr $ Just e') <|> (return e)
 parseSimpleExpr Nothing = do
   e <- parseNewExpr <?> "expression (3)"

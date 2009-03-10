@@ -20,13 +20,13 @@ javascriptDef =
                 {- Adapted from syntax/regexps.ss in Dave's code. -}
                 identifierStart
                 (alphaNum <|> oneOf "$_") -- identifier rest
-                (oneOf "{}<>()~.,?:|&^=!+-*/%!") -- operator start
-                (oneOf "=<>|&+") -- operator rest
+                (oneOf "{}<>()~.,?:|&^=!+-*/%!@") -- operator start
+                (oneOf "=<>|&+@") -- operator rest
                 ["break", "case", "catch", "const", "continue", "debugger", 
                  "default", "delete", "do", "else", "enum", "false", "finally",
                  "for", "function", "if", "instanceof", "in", "let", "new", 
                  "null", "return", "switch", "this", "throw", "true", "try", 
-                 "typeof", "var", "void", "while", "with"]
+                 "typeof", "var", "void", "while", "with","forall"]
                 ["|=", "^=", "&=", "<<=", ">>=", ">>>=", "+=", "-=", "*=", "/=", 
                  "%=", "=", ";", ",", "?", ":", "||", "&&", "|", "^", "&", 
                  "===", "==", "=", "!==", "!=", "<<", "<=", "<", ">>>", ">>", 

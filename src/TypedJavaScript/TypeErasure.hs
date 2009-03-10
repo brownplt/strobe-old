@@ -43,7 +43,7 @@ expr (CondExpr p e1 e2 e3) = JS.CondExpr p (expr e1) (expr e2) (expr e3)
 expr (AssignExpr p op e1 e2) = JS.AssignExpr p op (expr e1) (expr e2)
 expr (ParenExpr p e) = JS.ParenExpr p (expr e)
 expr (ListExpr p es) = JS.ListExpr p (map expr es)
-expr (CallExpr p e es) = JS.CallExpr p (expr e) (map expr es)
+expr (CallExpr p e _ es) = JS.CallExpr p (expr e) (map expr es)
 expr (FuncExpr p ids _ s) = JS.FuncExpr p (map id ids) (stmt s)
 
 caseClause (CaseClause p e ss) = JS.CaseClause p (expr e) (map stmt ss)

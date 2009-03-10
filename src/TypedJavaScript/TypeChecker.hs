@@ -597,7 +597,8 @@ typeOfExpr vars types expr = case expr of
     typelist <- mapM (typeOfExpr vars types) exprs
     return $ last typelist
 
-  CallExpr a funcexpr argexprs -> do
+  -- Monomorphic function application
+  CallExpr a funcexpr [] argexprs -> do
     (functype,fvp) <- typeOfExpr vars types funcexpr
     argTypes_VP <- mapM (typeOfExpr vars types) argexprs
     let argTypes = map fst argTypes_VP    

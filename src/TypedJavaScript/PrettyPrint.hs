@@ -44,13 +44,15 @@ instance PrettyPrintable (Type a) where
       ppThis = case this of
         Nothing -> empty
         Just t -> pp t <> (text "|")
-  -- pp (TExpr _ x) = text "<" <> (pp x) <> text ">"
   pp (TObject _ fields) = braces $ (hsep $ punctuate comma $ map (\(id,t) -> (pp id <+> text "::" <+> pp t)) fields)
   pp (TUnion _ types) = text "U" <> (parens $ hsep $ punctuate comma (map pp types))
   pp (TId _ id) = text id
   pp (TNullable _ t) = pp t <> text "?"
   pp (TApp _ constr args) = 
     pp constr <> text "<" <> (hsep $ punctuate comma $ map pp args) <> text ">"
+  pp (TForall ids t) =
+    text "forall" <+> (hsep $ punctuate comma $ map text ids) <+> text "." <+>
+    pp t
 
 instance PrettyPrintable (Id a) where
   pp (Id _ str) = text str
@@ -177,6 +179,7 @@ showPrefix PrefixLNot = "!"
 showPrefix PrefixBNot = "~"
 showPrefix PrefixPlus = "+"
 showPrefix PrefixMinus = "-"
+showPrefix PrefixVoid = "void"
 showPrefix PrefixTypeof = "typeof"
 showPrefix PrefixDelete = "delete"
 
@@ -273,8 +276,10 @@ instance PrettyPrintable (Expression a) where
   pp (ParenExpr _ expr) =
     parens (pp expr)
   pp (ListExpr _ exprs) = commaSep exprs
-  pp (CallExpr _ f args) =
+  pp (CallExpr _ f [] args) =
     pp f <> (parens.commaSep) args
+  pp (CallExpr _ f types args) = 
+    pp f <> text "@" <> (brackets $ commaSep types) <> (parens $ commaSep args)
   pp (FuncExpr _ args t body) =
     text "function" <+> (parens.commaSep) args <+> text "::" <+> pp t $$ inBlock body
 
