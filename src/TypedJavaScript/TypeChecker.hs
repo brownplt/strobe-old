@@ -142,35 +142,34 @@ isSubType _ _ = False
 --get the most specific supertype. best = most specific to save typing.
 --used for array literals and ternary expressions
 --TODO: this no longer returns Nothing                            
-bestSuperType :: Env -> Env -> (Type SourcePos) -> (Type SourcePos) -> 
+bestSuperType :: (Type SourcePos) -> (Type SourcePos) -> 
                  Maybe (Type SourcePos)
 
 -- best super type of two objects is an object that has as
 -- many properties as are in both:
-bestSuperType vars types (TObject pos1 props1) (TObject _ props2) = do
+bestSuperType (TObject pos1 props1) (TObject _ props2) = do
   --take everything that is in both objects. worst-case: {}.
   Just $ TObject (initialPos "bestSuperType") $ 
                  Y.mapMaybe (\(prop1id, t1) -> liftM ((,) prop1id) 
-                              (lookup prop1id props2 >>= bestSuperType vars types t1)) 
+                              (lookup prop1id props2 >>= bestSuperType t1)) 
                             props1 
 --TODO: this no longer returns Nothing, so no need for it to return Maybe
-bestSuperType vars types t1 t2
+bestSuperType t1 t2
  | (t1 == t2) = Just t1
- | (isSubType t1 t2) = Just t2
- | (isSubType t2 t1) = Just t1
- | otherwise = Just $ flattenUnion vars types $ TUnion (typePos t1) [t1, t2] 
+ | (t1 <: t2) = Just t2
+ | (t2 <: t1) = Just t1
+ | otherwise = Just $ flattenUnion $ TUnion (typePos t1) [t1, t2] 
 
-
-reduceUnion :: Type SourcePos -> Type SourcePos
+{-reduceUnion :: Type SourcePos -> Type SourcePos
 reduceUnion (TUnion p ts) = TUnion p (map unTVal ts)
-reduceUnion t = error $ "reduceUnion expected a TUnion, got " ++ show t
+reduceUnion t = error $ "reduceUnion expected a TUnion, got " ++ show t-}
 
 --take a union of many types and reduce it to the simplest one possible.
 --Example: U(true, true, false, int, double, false) --> U(true, false, double)
 --Example: U(U(true, int), false) --> U(true, false, int)
 --So far, this just flattens the union
-flattenUnion :: Env -> Env -> (Type SourcePos) -> (Type SourcePos)
-flattenUnion vars types (TUnion pos ts) = 
+flattenUnion :: (Type SourcePos) -> (Type SourcePos)
+flattenUnion (TUnion pos ts) = 
   case (foldl
          (\res t -> case t of
                       TUnion _ tocomb -> res ++ tocomb
@@ -179,7 +178,7 @@ flattenUnion vars types (TUnion pos ts) =
    [onet] -> onet
    noneormanyt -> TUnion pos noneormanyt
 
-flattenUnion vars types t = t
+flattenUnion  t = t
 
 -- returns whether or not all possible paths return, and whether those
 -- return statements return subtypes of the supplied type 
@@ -273,24 +272,30 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
                                types (varname:forbidden) rest
 
 -- Helpers for occurrence typing, from TypedScheme paper
-restrict :: Env -> Env ->
-            (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
-restrict vars types s t
- | isSubType s t = s
+restrict :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
+restrict s t
+ | s <: t = s
  | otherwise = case t of
-     TUnion pos ts -> flattenUnion vars types $ 
-                        TUnion pos (map (restrict vars types s) ts)
-     _ -> t
+     TUnion pos ts -> flattenUnion $ 
+                        TUnion pos (map (restrict s) ts)
+     --TODO: make sure restrict is correct; this is different than
+     --the typed scheme paper
+     _ -> flattenUnion $ 
+            TUnion (typePos s) 
+                   (filter (\hm -> isSubType hm t)
+                           (case s of
+                             TUnion _ ts -> ts
+                             _ -> [s]))
 
-remove :: Env -> Env -> 
-          (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
-remove vars types s t
- | isSubType s t = TUnion (typePos s) []
+remove :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
+remove s t
+ | s <: t = TUnion (typePos s) []
  | otherwise = case t of
-     TUnion pos ts -> flattenUnion vars types $ 
-                        TUnion pos (map (remove vars types s) ts)
-     --TODO: make sure remove is correct
-     _ -> flattenUnion vars types $ 
+     TUnion pos ts -> flattenUnion $ 
+                        TUnion pos (map (remove s) ts)
+     --TODO: make sure remove is correct; this is different than
+     --the typed scheme paper
+     _ -> flattenUnion $ 
             TUnion (typePos s) 
                    (filter (\hm -> not $ isSubType hm t)
                            (case s of
@@ -301,19 +306,19 @@ remove vars types s t
 --is not true in JS, so we have to think about how to handle gammaPlus
 --and gammaMinus with VPIds.
 
-gammaPlus :: Env -> Env -> (VisiblePred SourcePos) -> Env
-gammaPlus vars types (VPType t x) = 
-  M.insert x (restrict vars types (vars ! x) t) vars
+gammaPlus :: Env -> (VisiblePred SourcePos) -> Env
+gammaPlus g (VPType t x) = 
+  M.insert x (restrict (g ! x) t) g
 --gammaPlus vars types (VPId x) = M.insert x (remove (G ! x), falseType)
-gammaPlus vars types (VPId x) = error "Gamma + VPId NYI" 
-gammaPlus vars types _ = vars
+gammaPlus g (VPId x) = error "Gamma + VPId NYI" 
+gammaPlus g _ = g
 
-gammaMinus :: Env -> Env -> VisiblePred SourcePos -> Env
-gammaMinus vars types (VPType t x) = 
-  M.insert x (remove vars types (vars ! x) t) vars
+gammaMinus :: Env -> VisiblePred SourcePos -> Env
+gammaMinus g (VPType t x) = 
+  M.insert x (remove (g ! x) t) g
 --gammaMinus vars types (VPId x) = M.insert x falseType
-gammaMinus vars types (VPId x) = error "Gamma - VPId NYI" 
-gammaMinus vars types _ = vars
+gammaMinus g (VPId x) = error "Gamma - VPId NYI" 
+gammaMinus g _ = g
 
 combpred :: VisiblePred SourcePos -> VisiblePred SourcePos -> 
             VisiblePred SourcePos -> VisiblePred SourcePos
@@ -363,7 +368,7 @@ typeOfExpr vars types expr = case expr of
              st <- foldM (\bestsofar newt -> maybe 
                            (fail $ "Array literal has no common supertype")
                            return
-                           (bestSuperType vars types bestsofar newt))
+                           (bestSuperType bestsofar newt))
                          e1 erest
              return (TApp pos (TId pos "Array") [st],(error "arraylit vp NYI"))
   ObjectLit pos props  -> let
@@ -571,11 +576,11 @@ typeOfExpr vars types expr = case expr of
     (ctype,cvp) <- typeOfExpr vars types c 
     boolContext vars types ctype --boolContext will fail if something
                                  --goes wrong with 'c'
-    (ttype,tvp) <- typeOfExpr (gammaPlus vars types cvp) types t
-    (etype,evp) <- typeOfExpr (gammaMinus vars types cvp) types e
+    (ttype,tvp) <- typeOfExpr (gammaPlus vars cvp) types t
+    (etype,evp) <- typeOfExpr (gammaMinus vars cvp) types e
     maybe (fail $ "then and else of a ternary have no super type")
           (\t -> return (t, combpred cvp tvp evp))
-          (bestSuperType vars types ttype etype)
+          (bestSuperType ttype etype)
     
   ParenExpr a x -> typeOfExpr vars types x
   ListExpr a exprs -> do
