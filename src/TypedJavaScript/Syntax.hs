@@ -43,10 +43,12 @@ data Type a
 
 --visible pred is always paired with a type, so can get its pos from there
 --latent pred is always part of a function, so can get its pos from there
-data VisiblePred a = VPId (String)
-                     | VPType (Type a) (String)
+data VisiblePred a = VPId String
+                     | VPType (Type a) String
                      | VPTrue | VPFalse
                      | VPNone
+                     --TODO: Justify VPTypeof
+                     | VPTypeof String
     deriving (Data,Typeable,Ord)
 
 data LatentPred a = LPType (Type a) | LPNone
@@ -90,6 +92,7 @@ instance Eq (VisiblePred a) where
   VPTrue       == VPTrue        = True
   VPFalse      == VPFalse       = True
   VPNone       == VPNone        = True
+  VPTypeof s   == VPTypeof s2   = s == s2
   v1           == v2            = False
 
 instance Eq (LatentPred a) where

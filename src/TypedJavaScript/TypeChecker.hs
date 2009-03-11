@@ -193,7 +193,9 @@ allPathsReturn vars types rettype stmt = case stmt of
   IfStmt _ _ t e -> do
     results <- mapM (allPathsReturn vars types rettype) [t, e]
     return $ any id results
-  IfSingleStmt _ _ t -> return False
+  IfSingleStmt _ _ t -> do
+    _ <- allPathsReturn vars types rettype t
+    return False
   SwitchStmt _ _ clauses -> do
     -- TODO: Switch: True if there is a default clause where all paths
     -- return, False otherwise
@@ -207,7 +209,7 @@ allPathsReturn vars types rettype stmt = case stmt of
   ThrowStmt{} -> return True
   ReturnStmt _ (Just expr) -> do
     (exprtype, lp) <- typeOfExpr vars types expr
-    if isSubType exprtype rettype
+    if exprtype <: rettype
       then return True
       else fail $ (show exprtype) ++ " is not a subtype of the expected " ++
                   "return type, " ++ (show rettype)
@@ -216,7 +218,8 @@ allPathsReturn vars types rettype stmt = case stmt of
   ReturnStmt _ Nothing -> case isSubType unitType rettype of
     True -> return True
     False -> fail $ "expected return value of type " ++ show rettype
-  -- any other statement does not return from the function
+  -- any other statement does not return from the function, or contain return
+  -- statements.
   _ -> return False
 
 -- |If typeOfExpr returns a refined type (i.e. a 'TVal'), omit the refinement
@@ -344,14 +347,14 @@ typeOfExpr vars types expr = case expr of
   --true and false in a bool context.
   --However, since for now we only allow booleans in a bool context, we can
   --ignore this! TODO: correct this later.
-  StringLit a _      -> return (TVal expr (types ! "string"), 
-                                error "string vp NYI")
+  StringLit a s      -> return (TVal expr (types ! "string"), 
+                                if length s == 0 then VPFalse else VPTrue)
   RegexpLit a _ _ _  -> return (types ! "RegExp", 
-                                error "regex  vp NYI")
-  NumLit a _         -> return (TVal expr (types ! "double"), 
-                                error "numlit vp NYI")
-  IntLit a _         -> return (TVal expr (types ! "int"), 
-                                error "intlit vp NYI")
+                                VPTrue)
+  NumLit a n         -> return (TVal expr (types ! "double"), 
+                                if n==0 then VPFalse else VPTrue)
+  IntLit a i         -> return (TVal expr (types ! "int"), 
+                                if i==0 then VPFalse else VPTrue)
   --TODO: potential discrepancy in TS paper. T-True has
   --G |- true : Boolean; true, whereas in TS impl, true ends up having
   --type "true", not "Boolean".
@@ -370,7 +373,7 @@ typeOfExpr vars types expr = case expr of
                            return
                            (bestSuperType bestsofar newt))
                          e1 erest
-             return (TApp pos (TId pos "Array") [st],(error "arraylit vp NYI"))
+             return (TApp pos (TId pos "Array") [st],VPTrue)
   ObjectLit pos props  -> let
       procProps [] = return []
       --TODO: object literals technically _could_ have numbers in
@@ -395,7 +398,7 @@ typeOfExpr vars types expr = case expr of
                           (propToString prop)
               else return (thisprop:restprops)
    in do propArray <- procProps props
-         return (TObject pos propArray, error "objectlit vp NYI")
+         return (TObject pos propArray, VPTrue)
 
   ThisRef a          -> return $ (vars ! "this", VPId "this")
   VarRef a (Id _ s)  -> maybe (fail ("unbound ID: " ++ s)) 
@@ -456,7 +459,9 @@ typeOfExpr vars types expr = case expr of
       PrefixVoid   -> fail "void has been removed"
       PrefixDelete -> novp $ return $ types ! "bool" --TODO: remove delete?
       --typeof DOES differentiate, somehow. will deal with it later.
-      PrefixTypeof -> return (types ! "string", error "typeof vp NYI (imprtnt!")
+      PrefixTypeof -> case vp of
+        VPId i -> return (types ! "string", VPTypeof i)
+        _      -> return (types ! "string", VPNone)
      where
       novp m = m >>= \t -> return (t, VPNone)
 
@@ -485,9 +490,20 @@ typeOfExpr vars types expr = case expr of
               else return (types ! "int",VPNone)    --e.g. +, -, *
             else if requireInts
               then fail $ "lhs and rhs must be ints, got " ++ 
-                          show ln ++ ", " ++ show rn 
+                         show ln ++ ", " ++ show rn 
                           --e.g. >>, &, |
               else return (types ! "double",VPNone) --e.g. /
+        equalityvp a@_ b@(_,VPTypeof _) = equalityvp b a
+        equalityvp (_,(VPTypeof i)) (TVal (StringLit _ s) (TId p "string"),_) = 
+          case s of
+            "number" -> VPType (TId p "double") i
+            "undefined" -> VPType (TId p "undefined") i
+            "boolean" -> VPType (TId p "boolean") i
+            "string" -> VPType (TId p "string") i
+            "function" -> error "vp for typeof x == 'function' nyi"
+            "object" -> error "vp for typeof x == 'object' nyi"
+            _ -> VPNone
+        equalityvp _ _ = VPNone
               
     case op of
       OpLT  -> relation
@@ -508,11 +524,11 @@ typeOfExpr vars types expr = case expr of
 
       -- true == "1" will evaluate to true in tJS...
       -- these might have important visible predicates, too:
-      OpEq        -> return (types ! "bool", error "opeq vp NYI")
       OpNEq       -> return (types ! "bool", error "opneq vp NYI")
-      OpStrictEq  -> return (types ! "bool", error "opseq vp NYI")
       OpStrictNEq -> return (types ! "bool", error "opsneq vp NYI")
-      
+      OpEq        -> return (types ! "bool", equalityvp (ltype,lvp) (rtype,rvp))
+      OpStrictEq  -> return (types ! "bool", equalityvp (ltype,lvp) (rtype,rvp))
+
       OpLAnd -> logical 
       OpLOr  -> logical
 
@@ -680,13 +696,15 @@ typeCheckStmt vars types stmt = case stmt of
      --fail "If with VP NYI!"
      (ctype,cvp) <- typeOfExpr vars types c
      boolContext vars types ctype
-     results <- mapM (typeCheckStmt vars types) [t, e]
-     return $ all id results
+     result1 <- typeCheckStmt (gammaPlus vars cvp) types t
+     result2 <- typeCheckStmt (gammaMinus vars cvp) types e
+     return $ result1 && result2
+     
   IfSingleStmt pos c t -> do
      --fail "If with VP NYI!"
      (ctype,cvp) <- typeOfExpr vars types c
      boolContext vars types ctype
-     result <- typeCheckStmt vars types t
+     result <- typeCheckStmt (gammaPlus vars cvp) types t
      return result
 
   {-SwitchStmt pos expr clauses -> do
