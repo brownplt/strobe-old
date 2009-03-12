@@ -15,4 +15,13 @@ function() :: (->) {
   z = false;
 } :: (->);
 
+//empty union?
+function(x) :: (U() -> string) {
+  var z = 3;
+  if (x) {
+    return x;
+  }
+  return x;
+} @@ fails;
+
 

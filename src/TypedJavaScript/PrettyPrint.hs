@@ -53,6 +53,9 @@ instance PrettyPrintable (Type a) where
   pp (TForall ids t) =
     text "forall" <+> (hsep $ punctuate comma $ map text ids) <+> text "." <+>
     pp t
+  pp (TIndex objt keyt keyname) = 
+    text "@TIndex: " <> pp objt <> text " with " <> pp keyt <> text 
+         " called " <> text keyname <> text "@"
 
 instance PrettyPrintable (Id a) where
   pp (Id _ str) = text str

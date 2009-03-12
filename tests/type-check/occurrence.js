@@ -26,6 +26,15 @@ function (x) :: (U(string, bool) -> string) {
   }
   return "was not a string";
 } :: (U(string, bool) -> string);
+function (x) :: (U(string, bool) -> string) {
+  if (isString(x)) {
+    //TODO: change var processing so that occurrence typing has an effect
+    //on it!
+    var z = x;
+    return z;
+  }
+  return "was not a string";
+} :: (U(string, bool) -> string);
 
 function (x) :: (U(int, bool) -> bool) {
   if (isBool(x)) { //typeof x == "boolean") {
@@ -47,6 +56,13 @@ function (x) :: (U(int, bool) -> bool) {
   }
   return true;
 } :: (U(int, bool) -> bool);
+
+function (x) :: (any -> bool) {
+  if (typeof x == "boolean") { //typeof x == "boolean") {
+    if (x) { return false; }
+  }
+  return true;
+} :: (any -> bool);
 
 
 

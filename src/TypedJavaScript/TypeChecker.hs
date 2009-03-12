@@ -123,7 +123,9 @@ x <: x U y and y <: x U y
 -----------------------------------------
 (x <: x or x <: y) and (y <: x or y <: y)
 -}
-isSubType (TUnion _ ts) t = all (\ti -> ti <: t) ts
+isSubType (TUnion _ ts) t = case ts of
+  [] -> False
+  _ -> all (\ti -> ti <: t) ts
 isSubType t (TUnion _ ts) = any (t <:) ts
 isSubType _ (TId _ "any") = True -- TODO: O RLY?
 isSubType (TId _ "int") (TId _ "double") = True
@@ -137,6 +139,21 @@ isSubType (TApp _ c1 args1) (TApp _ c2 args2) =
 isSubType(TVal v1 t1) (TVal v2 t2) = v1 `eqLit` v2 && t1 <: t2
 isSubType (TVal _ t1) t2 = t1 <: t2
 isSubType (TForall ids1 t1) (TForall ids2 t2) = ids1 == ids2 && t1 == t2
+
+isSubType (TIndex (TObject _ props1) (TVal (StringLit p s1) _) kn1)
+          (TIndex (TObject _ props2) (TVal (StringLit _ s2) _) kn2) = 
+  s1 == s2 && kn1 == kn2 && (do
+    p1 <- lookup (Id p s1) props1
+    p2 <- lookup (Id p s2) props2
+    if p1 <: p2
+      then return True
+      else Nothing) /= Nothing
+isSubType (TIndex o1@(TObject _ props1) kt1@(TUnion _ s1s) kn1)
+          (TIndex o2@(TObject _ props2) kt2@(TUnion _ s2s) kn2) = 
+  kt1 == kt2 && kn1 == kn2 && 
+    all (\s1 -> isSubType (TIndex o1 s1 kn1) (TIndex o2 s1 kn2))
+        s1s
+
 isSubType _ _ = False
 
 --get the most specific supertype. best = most specific to save typing.
@@ -283,12 +300,15 @@ restrict s t
                         TUnion pos (map (restrict s) ts)
      --TODO: make sure restrict is correct; this is different than
      --the typed scheme paper
-     _ -> flattenUnion $ 
-            TUnion (typePos s) 
-                   (filter (\hm -> isSubType hm t)
-                           (case s of
-                             TUnion _ ts -> ts
-                             _ -> [s]))
+     _ -> let rez = flattenUnion $
+                      TUnion (typePos s) 
+                             (filter (\hm -> isSubType hm t)
+                                     (case s of
+                                        TUnion _ ts -> ts
+                                        _ -> [s]))
+           in case rez of 
+                TUnion _ [] -> t
+                _ -> rez
 
 remove :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
 remove s t
@@ -421,8 +441,22 @@ typeOfExpr vars types expr = case expr of
     (conttype, vp) <- typeOfExpr vars types contexpr
     case conttype of
       TObject _ props -> do
-        --TODO: once map-like things are done, add support for that here
-         fail "no support for object[property] yet; use arrays only"
+        (keytype,keyvp) <- typeOfExpr vars types keyexpr
+        let lookitup s = case lookup s props of
+              Nothing -> fail $ "object does not have property " ++ show s
+              Just x -> return x
+            checkkeytype kt = case kt of
+              TId _ "string" -> fail "cannot index obj with generic string"
+              TVal (StringLit _ s) (TId _ "string") -> do
+                ptype <- lookitup (Id a s)
+                return ptype
+              TUnion _ ts -> do
+                lawl <- mapM checkkeytype ts
+                return $ lawl !! 0
+        res <- checkkeytype keytype
+        case keyvp of
+          VPId keyname -> return (TIndex conttype keytype keyname, VPNone)
+          _ -> fail "can only index objects with iterator variables"
       (TApp _ (TId _ "Array") [t_elt]) -> do
         (keytype,vp) <- typeOfExpr vars types keyexpr
         case keytype <: (TId a "int") of
@@ -493,12 +527,12 @@ typeOfExpr vars types expr = case expr of
                          show ln ++ ", " ++ show rn 
                           --e.g. >>, &, |
               else return (types ! "double",VPNone) --e.g. /
-        equalityvp a@_ b@(_,VPTypeof _) = equalityvp b a
+        equalityvp a b@(_,VPTypeof _) = equalityvp b a
         equalityvp (_,(VPTypeof i)) (TVal (StringLit _ s) (TId p "string"),_) = 
           case s of
             "number" -> VPType (TId p "double") i
             "undefined" -> VPType (TId p "undefined") i
-            "boolean" -> VPType (TId p "boolean") i
+            "boolean" -> VPType (TId p "bool") i
             "string" -> VPType (TId p "string") i
             "function" -> error "vp for typeof x == 'function' nyi"
             "object" -> error "vp for typeof x == 'object' nyi"
@@ -735,22 +769,21 @@ typeCheckStmt vars types stmt = case stmt of
   ContinueStmt _ _ -> return True
   LabelledStmt _ _ stmt -> typeCheckStmt vars types stmt
   
-  --TODO: now that we have arrays and objects, we should be able to do
-  --for in loops.
-  ForInStmt p invar' inexpr body -> let
-      gv (ForInVar (Id _ varname)) = varname
-      gv (ForInNoVar (Id _ varname)) = varname
-      invar = gv invar'
-   in do (intype, invp) <- typeOfExpr vars types inexpr
-         case intype of 
-           TObject _ props -> if lookup (Id p "@[]") props /= Nothing
-             then fail "for in array nyi"
-             else let invart = TUnion p (map (\(Id _ s,_) -> TVal (StringLit p s) 
-                                                         (types ! "string")) props)
-                   in typeCheckStmt (M.insert invar invart vars) types body
-           _ -> fail "Can only 'for in' with an object type"
-  ForInStmt _ (ForInNoVar (Id _ varname)) inexpr body -> 
-    fail "for..in loops NYI"
+  ForInStmt p (ForInNoVar _) _ _ -> fail "for in without a var NYI"
+  ForInStmt p invar' inexpr body -> do
+    (intype, invp) <- typeOfExpr vars types inexpr
+    case intype of 
+      TObject _ props -> if lookup (Id p "@[]") props /= Nothing
+        then fail "for in array nyi"
+        else let
+            gv (ForInVar (Id _ varname)) = varname
+            gv (ForInNoVar (Id _ varname)) = varname
+            invar = gv invar'
+            invart = TUnion p $ map (\(Id _ s,_) -> TVal (StringLit p s)
+                                                         (types ! "string"))
+                                    props        
+         in typeCheckStmt (M.insert invar invart vars) types body
+      _ -> fail $ "Can only 'for in' with an object type, given " ++ show intype
     
   ForStmt a init test incr body -> do
     --var decls in the init are already processed by now

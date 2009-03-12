@@ -56,7 +56,8 @@ globalEnv globalStatements =
     collectVarDecl (VarDeclExpr _ id Nothing e)  = [(id,Nothing, (Just e))]
 
     collectForInInit :: ForInInit SourcePos -> RawEnv
-    collectForInInit (ForInVar id)  = [(id,error "this type shouldnt be seen", Nothing)]
+    collectForInInit (ForInVar id)  = [] 
+     --[(id,error "this type shouldnt be seen", Nothing)]
     -- In vanilla JavaScript, for-in without a var may introduce a global.
     -- We require variables to be declared.  So, without the var, we assume
     -- that the id is already in the environment.  While type-checking, verify

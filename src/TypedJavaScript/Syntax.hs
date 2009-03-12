@@ -39,7 +39,7 @@ data Type a
   | TUnion a [Type a]
   | TVal (Expression a) (Type a) -- expr should be a literal
   | TForall [String] (Type a)
-  | TIndex (Type a) (Type a) --obj[x] --> TIndex <obj> <x>
+  | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
   deriving (Data,Typeable,Ord)
 
 --visible pred is always paired with a type, so can get its pos from there
@@ -220,6 +220,7 @@ stmtPos :: (Statement SourcePos) -> SourcePos
 stmtPos x = maybe (error "Statement has no SourcePos")
                   id (gfindtype x)
 typePos :: (Type SourcePos) -> SourcePos
+typePos (TVal xpr t) = typePos t
 typePos x = maybe (error "Type has no SourcePos")
                   id (gfindtype x)
 
