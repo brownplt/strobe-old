@@ -39,6 +39,7 @@ data Type a
   | TUnion a [Type a]
   | TVal (Expression a) (Type a) -- expr should be a literal
   | TForall [String] (Type a)
+  | TIndex (Type a) (Type a) --obj[x] --> TIndex <obj> <x>
   deriving (Data,Typeable,Ord)
 
 --visible pred is always paired with a type, so can get its pos from there
@@ -166,7 +167,7 @@ data ForInInit a
  -- |These terms introduce a name to the enclosing function's environment.
  -- Without a type declaration, we can't return a 'RawEnv' without some
  -- type inference.  Save type inference for later.
- = ForInVar (Id a) (Type a)
+ = ForInVar (Id a) 
  | ForInNoVar (Id a) 
  deriving (Data,Typeable,Eq,Ord)
 

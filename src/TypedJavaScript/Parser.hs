@@ -285,8 +285,7 @@ parseForInStmt:: StatementParser st
 parseForInStmt =
   let parseInit = (do reserved "var"
                       id <- identifier
-                      t <- parseType
-                      return (ForInVar id t)) <|>
+                      return (ForInVar id)) <|>
                   (do id <- identifier
                       return (ForInNoVar id))
     in do pos <- getPosition

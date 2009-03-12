@@ -737,8 +737,18 @@ typeCheckStmt vars types stmt = case stmt of
   
   --TODO: now that we have arrays and objects, we should be able to do
   --for in loops.
-  ForInStmt _ (ForInVar (Id _ varname) vartype) inexpr body -> 
-    fail "for..in loops NYI"
+  ForInStmt p invar' inexpr body -> let
+      gv (ForInVar (Id _ varname)) = varname
+      gv (ForInNoVar (Id _ varname)) = varname
+      invar = gv invar'
+   in do (intype, invp) <- typeOfExpr vars types inexpr
+         case intype of 
+           TObject _ props -> if lookup (Id p "@[]") props /= Nothing
+             then fail "for in array nyi"
+             else let invart = TUnion p (map (\(Id _ s,_) -> TVal (StringLit p s) 
+                                                         (types ! "string")) props)
+                   in typeCheckStmt (M.insert invar invart vars) types body
+           _ -> fail "Can only 'for in' with an object type"
   ForInStmt _ (ForInNoVar (Id _ varname)) inexpr body -> 
     fail "for..in loops NYI"
     
