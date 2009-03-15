@@ -145,7 +145,7 @@ constrOrId = do
   p <- getPosition
   id <- identifier >>= \(Id _ id) -> return id
   let constr = do
-        args <- (angles $ type_ `sepBy` comma) <?> "type application"
+        args <- (angles $ type_' `sepBy` comma) <?> "type application"
         return (TApp p (TId p id) args)
   constr <|> (return (TId p id))
 
