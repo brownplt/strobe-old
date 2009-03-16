@@ -44,11 +44,6 @@ function () :: (->) {
   }
 } @@ fails;
 
-//great, we don't have recursive function declarations:
-function() :: (->) {
-  function lawl(x) :: (int -> int) { return lawl(3); }
-} :: (->);
-
 //toJSON:
 function() :: (->) {
 function toJSON_placeholder(object) :: any -> string? { return "x"; }

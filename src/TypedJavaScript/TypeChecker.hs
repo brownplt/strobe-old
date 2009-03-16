@@ -31,7 +31,7 @@ typeCheck :: [Statement SourcePos] -- ^statements to type-check
 typeCheck stmts = do
   let rawEnv = globalEnv stmts
   env <- processRawEnv coreVarEnv coreTypeEnv [] rawEnv
-  mapM_ (typeCheckStmt env coreTypeEnv) stmts
+  typeCheckStmt env coreTypeEnv (BlockStmt corePos stmts)
   return (M.difference env coreVarEnv)
 
 corePos = initialPos "core"
@@ -68,12 +68,10 @@ coreVarEnv = M.fromList $ [("this", coreTypeEnv ! "@global")] ++
 
 -- in pJS, anything can be used in a number and bool context without 
 -- anything crashing.for now, we're making this a lot stricter:
-numberContext :: (Monad m) => (Type SourcePos) -> 
-                              m (Type SourcePos)
+numberContext :: (Monad m) => (Type SourcePos) -> m (Type SourcePos)
 numberContext t
   | t <: (TId corePos "double") = return t
-  | otherwise = fail $ "expected a number - a subtype of double - got " ++ 
-                       show t
+  | otherwise = fail $ "expected a number (T <: double),  got " ++ show t
 
 -- bool is also much freer in pJS. 
 boolContext :: (Monad m) => Env -> Env -> (Type SourcePos) -> m (Type SourcePos)
@@ -119,9 +117,11 @@ isSubType t1 (TNullable _ t2) = t1 <: t2
 {- 
 (x U y) <: (x U y)
 --------------------------
-x <: x U y and y <: x U y
+first: x <: x U y and y <: x U y
 -----------------------------------------
-(x <: x or x <: y) and (y <: x or y <: y)
+second: 
+(x U y) <: x or (x U y) <: y
+(x <: x and x <: y) or (x <: y and y <: y)
 -}
 isSubType (TUnion _ ts) t = case ts of
   [] -> False
@@ -197,44 +197,33 @@ flattenUnion (TUnion pos ts) =
 
 flattenUnion  t = t
 
--- returns whether or not all possible paths return, and whether those
--- return statements return subtypes of the supplied type 
+-- returns whether or not all possible paths return
 -- motivation: when checking functions with return values, at least
 -- one of the statements must have all paths returning.
 allPathsReturn :: (Monad m) => Env -> Env -> 
-                  (Type SourcePos) -> (Statement SourcePos) -> m Bool
-allPathsReturn vars types rettype stmt = case stmt of
+                  (Statement SourcePos) -> m Bool
+allPathsReturn vars types stmt = case stmt of
   BlockStmt _ stmts -> do
-    results <- mapM (allPathsReturn vars types rettype) stmts
-    return $ any id results
+    results <- mapM (allPathsReturn vars types) stmts
+    return $ any id results 
+  --TODO: could do some smarter occurrence-typing-like thing here:
   IfStmt _ _ t e -> do
-    results <- mapM (allPathsReturn vars types rettype) [t, e]
-    return $ any id results
-  IfSingleStmt _ _ t -> do
-    _ <- allPathsReturn vars types rettype t
-    return False
+    r1 <- allPathsReturn vars types t
+    r2 <- allPathsReturn vars types e
+    return $ r1 && r2
+  IfSingleStmt _ _ t -> return False 
   SwitchStmt _ _ clauses -> do
     -- TODO: Switch: True if there is a default clause where all paths
     -- return, False otherwise
     fail "allPathsReturn, SwitchStmt, NYI" 
-  WhileStmt _ _ body -> allPathsReturn vars types rettype body
-  DoWhileStmt _ body _ -> allPathsReturn vars types rettype body
-  ForInStmt _ _ _ body -> allPathsReturn vars types rettype body
-  ForStmt _ _ _ _ body -> allPathsReturn vars types rettype body
+  WhileStmt _ _ body -> allPathsReturn vars types body
+  DoWhileStmt _ body _ -> allPathsReturn vars types body
+  ForInStmt _ _ _ body -> allPathsReturn vars types body
+  ForStmt _ _ _ _ body -> allPathsReturn vars types body
   -- Try: true if all catches and/or the finally have a return
   TryStmt _ body catches mfinally -> fail "allPathsReturn, TryStmt, NYI" 
   ThrowStmt{} -> return True
-  ReturnStmt _ (Just expr) -> do
-    (exprtype, lp) <- typeOfExpr vars types expr
-    if exprtype <: rettype
-      then return True
-      else fail $ (show exprtype) ++ " is not a subtype of the expected " ++
-                  "return type, " ++ (show rettype)
-  -- return; means we are returning unit.  If the return type is nullable,
-  -- we have to return null;.
-  ReturnStmt _ Nothing -> case isSubType unitType rettype of
-    True -> return True
-    False -> fail $ "expected return value of type " ++ show rettype
+  ReturnStmt _ _ -> return True
   -- any other statement does not return from the function, or contain return
   -- statements.
   _ -> return False
@@ -257,9 +246,9 @@ inferLocally vars types expr = do
 -- the third argument is a list of IDs that this rawenv is forbidden
 -- to override this starts off with just the function arguments, and
 -- each added variable is added to the list
-processRawEnv :: (Monad m) => Env -> Env -> [String] -> RawEnv -> m Env
-processRawEnv vars types _ [] = return vars
-processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) = 
+processRawEnv'' :: (Monad m) => Env -> Env -> [String] -> RawEnv -> m Env
+processRawEnv'' vars types _ [] = return vars
+processRawEnv'' vars types forbidden (entry@(Id _ varname,_,_):rest) = 
   if elem varname forbidden
     then fail $ "Can't re-define " ++ varname
     else case entry of
@@ -268,15 +257,15 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
       (Id _ varname, Nothing, Just expr) -> do
         --local type inference
         (exprtype,vp) <- inferLocally vars types expr
-        processRawEnv (M.insert varname exprtype vars) 
+        processRawEnv'' (M.insert varname exprtype vars) 
                       types (varname:forbidden) rest
       -- If a variable is declared with a type but is uninitialized,
       -- it must be TNullable (since it is initialized to undefined).
       (Id _ varname, Just vartype, Nothing) -> do
         let vartype' = vartype 
         case vartype' of
-          TNullable _ _ -> processRawEnv (M.insert varname vartype' vars) types
-                                         (varname:forbidden) rest
+          TNullable _ _ -> processRawEnv'' (M.insert varname vartype' vars) 
+                                           types (varname:forbidden) rest
           otherwise -> fail $ "unintialized variables must have nullable " ++
                               "types (suffix '?')"
       (Id _ varname, Just vartype, Just expr) -> do
@@ -288,8 +277,27 @@ processRawEnv vars types forbidden (entry@(Id _ varname,_,_):rest) =
                         " has type " ++ (show exprtype) ++ 
                         " which is not a subtype of declared type " ++ 
                         (show vartype')
-            else processRawEnv (M.insert varname vartype' vars) 
+            else processRawEnv'' (M.insert varname vartype' vars) 
                                types (varname:forbidden) rest
+
+--add all explicitly typed declarations that are functions to the
+--environment first, and only then actually process the environment.
+processRawEnv' :: (Monad m) => Env -> Env -> [String] -> 
+                  RawEnv -> RawEnv ->m Env
+processRawEnv' vars types forbidden 
+              (entry@(Id _ varname,t,_):rest) procced = case t of
+  Just x -> case x of 
+    TFunc{} -> processRawEnv' (M.insert varname x vars) types forbidden rest
+                              (procced ++ [entry])
+    _ -> processRawEnv' vars types forbidden rest (procced ++ [entry])
+  _ -> processRawEnv' vars types forbidden rest (procced ++ [entry])
+processRawEnv' vars types forbidden [] procced =
+  processRawEnv'' vars types forbidden procced
+
+--helper to hide the new function type of processRawEnv  
+processRawEnv :: (Monad m) => Env -> Env -> [String] -> RawEnv -> m Env
+processRawEnv vars types forbidden toproc = 
+  processRawEnv' vars types forbidden toproc []
 
 -- Helpers for occurrence typing, from TypedScheme paper
 restrict :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
@@ -434,7 +442,7 @@ typeOfExpr vars types expr = case expr of
               (\t -> return (t, error "dotref vp NYI"))
               (lookup id props)
       (TApp _ (TId _ "Array") [t_elt]) -> case lookup (unId id) arrayFields of
-        Just t -> return (t,VPNone) -- TODO: is the VP correct?
+        Just t -> return (t, error "array dotref vp NYI") 
         Nothing -> fail $ "array does not have a field called " ++ show id
       _ -> fail $ "dotref requires an object type, got a " ++ (show exprtype)
   BracketRef a contexpr keyexpr   -> do
@@ -703,12 +711,11 @@ typeOfExpr vars types expr = case expr of
                             (globalEnv body)
       let tenvExt = M.fromList $ map (\s -> (s,TId p s)) typeArgs
       let types' = M.union tenvExt types
-      doesAlwaysReturn <- allPathsReturn vars types' result_t 
-                                         (BlockStmt p' body)
+      doesAlwaysReturn <- allPathsReturn vars types' (BlockStmt p' body)
       unless (result_t == unitType || doesAlwaysReturn) $
         fail $ "All paths do not return, but function\'s return type is " ++
                show result_t
-      typeCheckStmt vars types' (BlockStmt p' body)
+      typeCheckStmt (M.insert "return" result_t vars) types' (BlockStmt p' body)
       return (type_, error "vp for FuncExpr NYI")
   --just in case the parser fails somehow.
   FuncExpr _ _ _ _ -> fail "Function's body must be a BlockStmt" 
@@ -716,30 +723,49 @@ typeOfExpr vars types expr = case expr of
 -- type check everything except return statements, handled in
 -- typeOfExpr _ _ FuncExpr{}, and var declarations, handled in
 -- whatever calls typeCheckStmt; both cases use Environment.hs .
--- return True, or fail
-typeCheckStmt :: (Monad m) => Env -> Env -> (Statement SourcePos) -> m Bool
+-- each statement might modify the environment - for example, if you have
+-- an occurrence type in which you always return from the true branch,
+-- so this returns a tuple of the new vars and types to use to type-check
+-- all future statements in this block
+typeCheckStmt :: (Monad m) => Env -> Env -> (Statement SourcePos) -> 
+                 m (Env, Env)
 typeCheckStmt vars types stmt = case stmt of 
-  BlockStmt pos stmts -> do
-    results <- mapM (typeCheckStmt vars types) stmts
-    return $ all id results
-  EmptyStmt pos -> return True
+  BlockStmt pos stmts -> let
+      tc v t [] = return (v, t)
+      tc v t (first:rest) = do
+        (v', t') <- typeCheckStmt v t first
+        tc v' t' rest
+    in tc vars types stmts
+
+  EmptyStmt pos -> return (vars, types)
   ExprStmt  pos expr -> do
     typeOfExpr vars types expr
-    return True
+    return (vars, types)
+
   IfStmt pos c t e -> do 
-     --fail "If with VP NYI!"
      (ctype,cvp) <- typeOfExpr vars types c
      boolContext vars types ctype
      result1 <- typeCheckStmt (gammaPlus vars cvp) types t
      result2 <- typeCheckStmt (gammaMinus vars cvp) types e
-     return $ result1 && result2
+     --TODO: we might want to use result1 and result2 somehow
+     apt <- allPathsReturn vars types t
+     ape <- allPathsReturn vars types e
+     case (apt, ape) of
+       --TODO: not sure about the (True, True) case:
+       (True, True)   -> return (gammaMinus (gammaPlus vars cvp) cvp, types)
+       (True, False)  -> return (gammaMinus vars cvp, types)
+       (False, True)  -> return (gammaPlus vars cvp, types)
+       (False, False) -> return (vars, types)
      
   IfSingleStmt pos c t -> do
-     --fail "If with VP NYI!"
      (ctype,cvp) <- typeOfExpr vars types c
      boolContext vars types ctype
      result <- typeCheckStmt (gammaPlus vars cvp) types t
-     return result
+     --TODO: we might want to use result itself somehow
+     apt <- allPathsReturn vars types t
+     if apt
+       then return (gammaMinus vars cvp, types)
+       else return (vars, types)
 
   {-SwitchStmt pos expr clauses -> do
      typeOfExpr vars types expr 
@@ -765,8 +791,8 @@ typeCheckStmt vars types stmt = case stmt of
      boolContext vars types exprtype
      return res
    
-  BreakStmt _ _ -> return True
-  ContinueStmt _ _ -> return True
+  BreakStmt _ _ -> return (vars, types)
+  ContinueStmt _ _ -> return (vars, types)
   LabelledStmt _ _ stmt -> typeCheckStmt vars types stmt
   
   ForInStmt p (ForInNoVar _) _ _ -> fail "for in without a var NYI"
@@ -801,16 +827,32 @@ typeCheckStmt vars types stmt = case stmt of
     (incrtype,ivp) <- maybe (typeOfExpr vars types (BoolLit a True))
                             (typeOfExpr vars types) incr
     typeCheckStmt vars types body
-    
-  ReturnStmt{} -> return True --handled elsewhere  
-  VarDeclStmt{} -> return True -- handled elsewhere
+
+  ReturnStmt p retexpr' -> case M.lookup "return" vars of
+    Nothing -> fail $ "return stmt found in a non-function"
+    Just rettype -> case retexpr' of
+  -- return; means we are returning unit.  If the return type is nullable,
+  -- we have to return undefined. TODO: that's not true; return; means
+  -- we're returning undefined. fix!
+      Nothing -> if unitType <: rettype
+        then return (vars, types)
+        else fail $ "returning nothing when expected rettype is " ++ 
+                    show rettype
+      Just retexpr -> do
+        (rt,rvp) <- typeOfExpr vars types retexpr
+        if rt <: rettype
+          then return (vars, types)
+          else fail $ "returning type " ++ show rt ++ " which is not a " ++
+                      "sub-type of the expected return type, " ++ show rettype
+
+  VarDeclStmt{} -> return (vars, types) -- handled elsewhere
   
   --TDGTJ p100: "expression may evaluate to a value of any type"
   --TODO: require catch clauses to declare the expected type. maybe restrict
   --      throw somehow so you can't just have anything in the catch clause...
   ThrowStmt pos expr -> do
     exprtype <- typeOfExpr vars types expr
-    return True
+    return (vars, types)
   
 
 {- Statements left over:

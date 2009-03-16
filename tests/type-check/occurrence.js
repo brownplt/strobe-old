@@ -49,20 +49,77 @@ function (x) :: (U(int, bool) -> bool) {
   return (typeof x == "number" ? (x<<3)==8 : !x);
 } :: (U(int, bool) -> bool);
 
-
 function (x) :: (U(int, bool) -> bool) {
-  if (typeof x == "boolean") { //typeof x == "boolean") {
+  if (typeof x == "boolean") {
     if (x) { return false; }
   }
   return true;
 } :: (U(int, bool) -> bool);
 
 function (x) :: (any -> bool) {
-  if (typeof x == "boolean") { //typeof x == "boolean") {
+  if (typeof x == "boolean") {
     if (x) { return false; }
   }
   return true;
 } :: (any -> bool);
+
+//what if we return on the if statement branch?
+function (x) :: (U(int, bool) -> string) {
+  if (typeof x == "boolean") {
+    return "x was a boolean";
+  }
+  //now, x should be an integer
+  var xshift :: int = 5;
+  xshift = x >> 3;
+  return "x was an int, here it is: " + x;
+} :: (U(int, bool) -> string);
+
+//what if we return on the if statement else branch?
+function (x) :: (U(int, bool) -> string) {
+  var result :: string = "tmp";
+  if (typeof x == "number") {
+    result = "x is a number.";
+  }
+  else
+  {
+    result = "x is a boolean";
+    return result;
+  }
+
+  //x should be an int here
+  var b :: int = 0;
+  b = x << 3;
+  return result + ", and x is an int here, and it's value * 8 = " + b;
+} :: (U(int, bool) -> string);
+
+//these should work even with var decls:
+function (x) :: (U(int, bool) -> string) {
+  if (typeof x == "boolean") {
+    return "x was a boolean";
+  }
+  //now, x should be an integer
+  var xshift :: int = x >> 3;
+  return "x was an int, here it is: " + x;
+} :: (U(int, bool) -> bool);
+
+function (x) :: (U(int, bool) -> string) {
+  var result :: string = "tmp";
+  if (typeof x == "number") {
+    result = "x is a number.";
+  }
+  else
+  {
+    result = "x is a boolean";
+    return result;
+  }
+
+  //x should be an int here
+  var b :: int = x << 3;
+  return result + ", and x is an int here, and it's value * 8 = " + b;
+} :: (U(int, bool) -> bool);
+
+
+
 
 
 
