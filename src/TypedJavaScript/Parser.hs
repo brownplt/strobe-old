@@ -143,7 +143,7 @@ valueType = do
 constrOrId :: CharParser st (Type SourcePos)
 constrOrId = do
   p <- getPosition
-  id <- identifier >>= \(Id _ id) -> return id
+  id <- (identifier >>= \(Id _ id) -> return id)
   let constr = do
         args <- (angles $ type_' `sepBy` comma) <?> "type application"
         return (TApp p (TId p id) args)

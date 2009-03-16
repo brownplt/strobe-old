@@ -34,6 +34,66 @@ function (x) :: (U(int, bool) -> bool) {
   return true;
 } :: (U(int, bool) -> bool);
 
+//!= instead of ==:
+function (x) :: (U(int, bool) -> bool) {
+  if (typeof x == "boolean") {
+    if (x) { return false; }
+  }
+  return true;
+} :: (U(int, bool) -> bool);
+
+function (x) :: (U(int, bool) -> bool) {
+  if (typeof x != "boolean") {
+    var f :: int = 0;
+    f = x >> 3;
+    return true;
+  }
+  else
+  {
+    if (x) { return false; }
+  }
+  return true;
+} :: (U(int, bool) -> bool);
+function (x) :: (U(int, bool) -> bool) {
+  if (typeof x != "boolean") {
+    var f :: int = 0;
+    f = x >> 3;
+    return true;
+  }
+  else
+  {
+    if (x) { return false; }
+    var b :: 'false = false; //'
+    b = x; //x should be false here
+    return true;
+  }
+} :: (U(int, bool) -> bool);
+
+function (x) :: (U(int, bool) -> bool) {
+  if ((typeof x) != "boolean") {
+    var f :: int = 0;
+    f = x >> 3;
+    return true;
+  }
+  if (x) { return false; }
+  return true;
+} :: (U(int, bool) -> bool);
+function (x) :: (U(int, bool) -> bool) {
+  if (!((typeof x) == "boolean")) {
+    var f :: int = 0;
+    f = x >> 3;
+    return true;
+  }
+  if (x) { return false; }
+  return true;
+} :: (U(int, bool) -> bool);
+
+//x shouldn't turn into "false" just because of occurrence typing:
+function (x) :: int -> bool {
+  if (!x)
+    return x;
+  return false;
+} @@ fails;
 
 //make sure we can filter out not only equal types:
 function (x) :: (U(int, bool) -> bool) {

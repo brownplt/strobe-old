@@ -126,7 +126,7 @@ isSubType (TApp _ (TId _ "Array") args1) (TApp _ (TId _ "Array") args2) =
   args1 == args2
 isSubType (TApp _ c1 args1) (TApp _ c2 args2) = 
   c2 <: c1 &&
-  (and $ zipWith (<:) args1 args2) &&
+  (and $ zipWith (==) args1 args2) && --TODO: invariance better than subtyping?
   (length args1 == length args2)
 isSubType(TVal v1 t1) (TVal v2 t2) = v1 `eqLit` v2 && t1 <: t2
 isSubType (TVal _ t1) t2 = t1 <: t2
@@ -333,7 +333,10 @@ remove s t
 gammaPlus :: Env -> (VisiblePred SourcePos) -> Env
 gammaPlus g (VPType t x) = 
   M.insert x (restrict (g ! x) t) g
-gammaPlus g (VPId x) = M.insert x (remove (g ! x) (TId corePos "false")) g
+--remove all parts of x that are false:
+gammaPlus g (VPId x) = M.insert x (remove (g ! x) 
+                                          (TVal (BoolLit corePos False)
+                                                (TId corePos "bool"))) g
 --gammaPlus g (VPId x) = error "Gamma + VPId NYI" 
 gammaPlus g (VPNot vp) = gammaMinus g vp
 gammaPlus g _ = g
@@ -342,7 +345,18 @@ gammaMinus :: Env -> VisiblePred SourcePos -> Env
 gammaMinus g (VPType t x) = 
   M.insert x (remove (g ! x) t) g
 --gammaMinus g (VPId x) = M.insert x falseType g
-gammaMinus g (VPId x) = error "Gamma - VPId NYI" 
+--gammaMinus g (VPId x) = error "Gamma - VPId NYI" 
+--restrict x to those parts of x that are false
+--TODO: make sure this makes sense, as it's different than TS.
+--      in particular, this might react badly with the changes
+--      i made to 'restrict', since the following code:
+--        x = 5;
+--        if (x) {} else { x; }
+--      the else branch will have 'x' being typed as 'false, which does
+--      not really make sense!
+gammaMinus g (VPId x) = M.insert x (restrict (g ! x) 
+                                             (TVal (BoolLit corePos False)
+                                                   (TId corePos "bool"))) g
 gammaMinus g (VPNot vp) = gammaPlus g vp
 gammaMinus g _ = g
 
@@ -482,7 +496,9 @@ typeOfExpr vars types expr = case expr of
     case op of
       PrefixInc    -> novp $ numberContext xtype
       PrefixDec    -> novp $ numberContext xtype
-      PrefixLNot   -> novp $ boolContext vars types xtype
+      PrefixLNot   -> do
+        t <- boolContext vars types xtype
+        return (t, VPNot vp)
       PrefixBNot   -> do ntype <- numberContext xtype
                          if ntype == types ! "int"
                            then novp $ return $ types ! "int"
@@ -500,7 +516,9 @@ typeOfExpr vars types expr = case expr of
         VPId i -> return (types ! "string", VPTypeof i)
         _      -> return (types ! "string", VPNone)
      where
-      novp m = m >>= \t -> return (t, VPNone)
+      novp m = do
+        t <- m
+        return (t, VPNone)
 
   InfixExpr a op l r -> do
     --here we will do exciting things with || and &&, eventually
