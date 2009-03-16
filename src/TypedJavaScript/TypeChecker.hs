@@ -47,23 +47,17 @@ arrayFields =
 coreTypeEnv :: Env
 coreTypeEnv = M.fromList $ 
   (map (\s -> (s, (TId corePos s)))
-       ["string", "double", "int", "any", "bool","Array"]) ++
-  [("@global", globalObjectType), ("unit", unitType)]
+       ["string", "double", "int", "any", "bool", "Array"]) ++
+  [("@global", globalObjectType), ("undefined", undefType)]
 
 coreVarEnv :: Env
-coreVarEnv = M.fromList $ [("this", coreTypeEnv ! "@global")] ++
-  --TODO: remove isInt et. al. as built-ins once they're no longer necessary
-  [("isInt", makePred "int"),
-   ("isDouble", makePred "double"),
-   ("isString", makePred "string"),
-   ("isBool", makePred "bool")]
+coreVarEnv = M.fromList $ [("this", coreTypeEnv ! "@global"),
+                           ("undefined", coreTypeEnv ! "undefined")] ++
+  --there's no way to distinguish 'int', so leave isInt in for now:
+  [("isInt", makePred "int")] 
  where
-   makePred s = (TFunc corePos Nothing 
-                    [coreTypeEnv ! "any"] Nothing
-                    (coreTypeEnv ! "bool")
-                    (LPType (coreTypeEnv ! s)))
-
-
+  makePred s = (TFunc corePos Nothing [coreTypeEnv ! "any"] Nothing
+                      (coreTypeEnv ! "bool") (LPType (coreTypeEnv ! s)))
 -- TODO: deal with TApp, add syntax for defining them , etc.
 
 -- in pJS, anything can be used in a number and bool context without 
@@ -111,8 +105,6 @@ isSubType f2@(TFunc _ this2 req2 var2 ret2 lp2)  -- is F2 <= F1?
               all1    = (map Just $ req1 ++ (maybe [] repeat var1)) ++ repeat Nothing
            in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
 
-isSubType (TNullable _ t1) (TNullable _ t2) = t1 <: t2
-isSubType t1 (TNullable _ t2) = t1 <: t2
 --the first of these cases works if both are unions; the second does not.
 {- 
 (x U y) <: (x U y)
@@ -260,14 +252,15 @@ processRawEnv'' vars types forbidden (entry@(Id _ varname,_,_):rest) =
         processRawEnv'' (M.insert varname exprtype vars) 
                       types (varname:forbidden) rest
       -- If a variable is declared with a type but is uninitialized,
-      -- it must be TNullable (since it is initialized to undefined).
+      -- it must be nullable, ie have 'undefined' in its union, ie 
+      -- have undefined be a sub-type of it
       (Id _ varname, Just vartype, Nothing) -> do
         let vartype' = vartype 
-        case vartype' of
-          TNullable _ _ -> processRawEnv'' (M.insert varname vartype' vars) 
-                                           types (varname:forbidden) rest
-          otherwise -> fail $ "unintialized variables must have nullable " ++
-                              "types (suffix '?')"
+        case undefType <: vartype' of
+          True  -> processRawEnv'' (M.insert varname vartype' vars) 
+                                  types (varname:forbidden) rest
+          False -> fail $ "unintialized variables must have nullable " ++
+                          "types (suffix '?')"
       (Id _ varname, Just vartype, Just expr) -> do
         (exprtype,lp) <- typeOfExpr vars types expr
         let vartype' = vartype 
@@ -340,15 +333,17 @@ remove s t
 gammaPlus :: Env -> (VisiblePred SourcePos) -> Env
 gammaPlus g (VPType t x) = 
   M.insert x (restrict (g ! x) t) g
---gammaPlus vars types (VPId x) = M.insert x (remove (G ! x), falseType)
-gammaPlus g (VPId x) = error "Gamma + VPId NYI" 
+gammaPlus g (VPId x) = M.insert x (remove (g ! x) (TId corePos "false")) g
+--gammaPlus g (VPId x) = error "Gamma + VPId NYI" 
+gammaPlus g (VPNot vp) = gammaMinus g vp
 gammaPlus g _ = g
 
 gammaMinus :: Env -> VisiblePred SourcePos -> Env
 gammaMinus g (VPType t x) = 
   M.insert x (remove (g ! x) t) g
---gammaMinus vars types (VPId x) = M.insert x falseType
+--gammaMinus g (VPId x) = M.insert x falseType g
 gammaMinus g (VPId x) = error "Gamma - VPId NYI" 
+gammaMinus g (VPNot vp) = gammaPlus g vp
 gammaMinus g _ = g
 
 combpred :: VisiblePred SourcePos -> VisiblePred SourcePos -> 
@@ -539,7 +534,7 @@ typeOfExpr vars types expr = case expr of
         equalityvp (_,(VPTypeof i)) (TVal (StringLit _ s) (TId p "string"),_) = 
           case s of
             "number" -> VPType (TId p "double") i
-            "undefined" -> VPType (TId p "undefined") i
+            "undefined" -> VPType undefType i
             "boolean" -> VPType (TId p "bool") i
             "string" -> VPType (TId p "string") i
             "function" -> error "vp for typeof x == 'function' nyi"
@@ -566,8 +561,10 @@ typeOfExpr vars types expr = case expr of
 
       -- true == "1" will evaluate to true in tJS...
       -- these might have important visible predicates, too:
-      OpNEq       -> return (types ! "bool", error "opneq vp NYI")
-      OpStrictNEq -> return (types ! "bool", error "opsneq vp NYI")
+      OpNEq       -> return (types ! "bool", 
+                             VPNot (equalityvp (ltype,lvp) (rtype,rvp)))
+      OpStrictNEq -> return (types ! "bool", 
+                             VPNot (equalityvp (ltype,lvp) (rtype,rvp)))
       OpEq        -> return (types ! "bool", equalityvp (ltype,lvp) (rtype,rvp))
       OpStrictEq  -> return (types ! "bool", equalityvp (ltype,lvp) (rtype,rvp))
 
@@ -673,9 +670,9 @@ typeOfExpr vars types expr = case expr of
               False -> fail $ "expected " ++ show formal ++ "; received " ++ 
                               show actual ++ " at " ++ show p
         mapM_ checkArg (zip actuals_t supplied_t)
-        let checkMissingArg actual = case actual of
-              TNullable _ _ -> return True
-              otherwise -> fail $ "non-null argument not supplied"
+        let checkMissingArg actual = case undefType <: actual of
+              True  -> return True
+              False -> fail $ "non-null argument not supplied"
         mapM_ checkMissingArg missing_t
 
         --if we have a 1-arg func that has a latent pred, applied to a
@@ -712,7 +709,7 @@ typeOfExpr vars types expr = case expr of
       let tenvExt = M.fromList $ map (\s -> (s,TId p s)) typeArgs
       let types' = M.union tenvExt types
       doesAlwaysReturn <- allPathsReturn vars types' (BlockStmt p' body)
-      unless (result_t == unitType || doesAlwaysReturn) $
+      unless (result_t <: undefType || doesAlwaysReturn) $
         fail $ "All paths do not return, but function\'s return type is " ++
                show result_t
       typeCheckStmt (M.insert "return" result_t vars) types' (BlockStmt p' body)
@@ -831,10 +828,9 @@ typeCheckStmt vars types stmt = case stmt of
   ReturnStmt p retexpr' -> case M.lookup "return" vars of
     Nothing -> fail $ "return stmt found in a non-function"
     Just rettype -> case retexpr' of
-  -- return; means we are returning unit.  If the return type is nullable,
-  -- we have to return undefined. TODO: that's not true; return; means
-  -- we're returning undefined. fix!
-      Nothing -> if unitType <: rettype
+  -- return; means we are returning undefined. If the return type is nullable,
+  -- that is just fine.
+      Nothing -> if undefType <: rettype
         then return (vars, types)
         else fail $ "returning nothing when expected rettype is " ++ 
                     show rettype

@@ -34,7 +34,6 @@ data Type a
             (Type a) {- ret type -}
             (LatentPred a) {- latent predicate -} 
   | TId a String -- an Id defined through a 'type' statement
-  | TNullable a (Type a)
   | TApp a (Type a) [Type a]
   | TUnion a [Type a]
   | TVal (Expression a) (Type a) -- expr should be a literal
@@ -48,8 +47,9 @@ data VisiblePred a = VPId String
                      | VPType (Type a) String
                      | VPTrue | VPFalse
                      | VPNone
-                     --TODO: Justify VPTypeof
+                     --TODO: Justify VPTypeof, VPNot
                      | VPTypeof String
+                     | VPNot (VisiblePred a)
     deriving (Data,Typeable,Ord)
 
 data LatentPred a = LPType (Type a) | LPNone
@@ -94,6 +94,7 @@ instance Eq (VisiblePred a) where
   VPFalse      == VPFalse       = True
   VPNone       == VPNone        = True
   VPTypeof s   == VPTypeof s2   = s == s2
+  VPNot v      == VPNot v2      = v == v2
   v1           == v2            = False
 
 instance Eq (LatentPred a) where

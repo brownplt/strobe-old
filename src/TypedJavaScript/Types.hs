@@ -2,7 +2,7 @@ module TypedJavaScript.Types
   ( Env
   , emptyEnv
   , argEnv
-  , unitType
+  , undefType
   , inferLit
   , unTVal
   , deconstrFnType
@@ -29,8 +29,8 @@ type Env = Map String (Type SourcePos)
 emptyEnv :: Env
 emptyEnv = M.empty
 
-unitType :: Type SourcePos
-unitType = (TId p "unit")
+undefType :: Type SourcePos
+undefType = (TId p "undefined")
 
 -- |Builds the local enviroment of a function.
 argEnv :: [(String,Type SourcePos)] -- ^positional arguments
@@ -66,8 +66,6 @@ substType var sub (TUnion p ts) =
   TUnion p (map (substType var sub) ts)
 substType var sub (TVal e t) = 
   TVal e t -- should not need to subst
-substType var sub (TNullable p t) =
-  TNullable p (substType var sub t)
 substType var sub (TId p var')
   | var == var' = sub
   | otherwise =  TId p var'
@@ -78,7 +76,8 @@ substType var sub (TFunc p Nothing args vararg ret latentP) =
         latentP
 substType var sub (TObject p fields) =
   TObject p (map (\(v,t) -> (v,substType var sub t)) fields)
-substType _ _ (TFunc _ (Just _) _ _ _ _) = error "cannot substitute into functions with this-types"
+substType _ _ (TFunc _ (Just _) _ _ _ _) = 
+  error "cannot substitute into functions with this-types"
 
 applyType :: Monad m => Type a -> [Type a] -> m (Type a)
 applyType (TForall formals body) actuals = do

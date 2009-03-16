@@ -5,7 +5,7 @@ function (x) :: (U(int, bool) -> bool) {
 
 //make sure we can filter out not only equal types:
 function (x) :: (U(int, bool) -> bool) {
-  return (isDouble(x) ? (x<<3)==8 : !x);
+  return (typeof x == "number" ? (x<<3)==8 : !x);
 } :: (U(int, bool) -> bool);
 
 function (x) :: (U(int, bool, string) -> bool) {
@@ -19,25 +19,16 @@ function (x) :: U(string, bool) -> string {
 } @@ fails;
 
 function (x) :: (U(string, bool) -> string) {
-  if (isString(x)) {
+  if (typeof x == "string") {
     //TODO: change return stmt checking so that occurrence typing has an effect
     //on it! (i.e. move it into typeCheckStmts)
     return x;
   }
   return "was not a string";
 } :: (U(string, bool) -> string);
-function (x) :: (U(string, bool) -> string) {
-  if (isString(x)) {
-    //TODO: change var processing so that occurrence typing has an effect
-    //on it!
-    var z = x;
-    return z;
-  }
-  return "was not a string";
-} :: (U(string, bool) -> string);
 
 function (x) :: (U(int, bool) -> bool) {
-  if (isBool(x)) { //typeof x == "boolean") {
+  if (typeof x == "boolean") {
     if (x) { return false; }
   }
   return true;
@@ -93,6 +84,16 @@ function (x) :: (U(int, bool) -> string) {
 } :: (U(int, bool) -> string);
 
 //these should work even with var decls:
+function (x) :: (U(string, bool) -> string) {
+  if (typeof x == "string") {
+    //TODO: change var processing so that occurrence typing has an effect
+    //on it!
+    var z = x;
+    return z;
+  }
+  return "was not a string";
+} :: (U(string, bool) -> string);
+
 function (x) :: (U(int, bool) -> string) {
   if (typeof x == "boolean") {
     return "x was a boolean";

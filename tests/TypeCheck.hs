@@ -30,7 +30,7 @@ assertType pos expr expectedType = do
   actualType <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
   case actualType of
     Left (err::(E.SomeException)) -> assertFailure (
-      (showSp pos) ++ ": user error: " ++ (show err))
+      (showSp pos) ++ ": " ++ (show err))
     Right (exprType, evp) -> do
       assertBool ((showSp pos) ++ ": type mismatch, " ++ 
                   (show exprType) ++ " is not a subtype of " ++ 
