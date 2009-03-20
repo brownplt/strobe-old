@@ -731,7 +731,7 @@ typeOfExpr vars types expr = case expr of
         fail $ "All paths do not return, but function\'s return type is " ++
                show result_t
       typeCheckStmt (M.insert "return" result_t vars) types' (BlockStmt p' body)
-      return (type_, error "vp for FuncExpr NYI")
+      return (type_, VPTrue)
   --just in case the parser fails somehow.
   FuncExpr _ _ _ _ -> fail "Function's body must be a BlockStmt" 
 

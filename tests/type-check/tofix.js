@@ -15,7 +15,7 @@ function () :: (->) {
   var b :: Array<>?;
 } @@ fails;
 
-//functions are processed before other things>:
+//functions are processed before other things:
 function () :: (->) {
   var z = myadder(3, 2);
   function myadder(a, b) :: int, int -> int {
