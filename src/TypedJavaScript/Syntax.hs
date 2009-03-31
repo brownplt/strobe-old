@@ -4,7 +4,7 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
          ForInit(..),ForInInit(..),Type(..),VisiblePred(..),LatentPred(..),
          showSp, propToString, unId, eqLit,
-         exprPos, stmtPos, typePos) where
+         exprPos, stmtPos, typePos, TypeConstraint (..)) where
 
 import TypedJavaScript.Prelude
 import qualified Data.Foldable as F
@@ -22,6 +22,10 @@ unId (Id _ s) = s
 
 data Id a = Id a String deriving (Ord,Data,Typeable)
 
+data TypeConstraint
+  = TCSubtype (Type SourcePos) (Type SourcePos)
+  deriving (Data,Typeable,Eq,Ord)
+
 --TODO: add TExtend syntax ( <- operator), and a syntax for constructors
 data Type a 
   = TObject a [(Id a, Type a)]
@@ -34,7 +38,7 @@ data Type a
   | TApp a (Type a) [Type a]
   | TUnion a [Type a]
   | TVal (Expression a) (Type a) -- expr should be a literal
-  | TForall [String] (Type a)
+  | TForall [String] [TypeConstraint] (Type a)
   | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
   deriving (Data,Typeable,Ord)
 

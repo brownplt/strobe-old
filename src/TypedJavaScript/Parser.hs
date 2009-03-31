@@ -45,6 +45,19 @@ type MaybeTypeParser state = CharParser state MaybeParsedType
 identifier =
   liftM2 Id getPosition Lexer.identifier
 
+{- typeConstraint ::= identifier <: type
+                    | ( type ) <: type
+
+   The obvious production, type <: type, conflicts with const<type [,*]> and is
+   not LL-parsable.
+ -}
+typeConstraint :: CharParser st TypeConstraint
+typeConstraint = do
+  p <- getPosition
+  t1 <- (Lexer.identifier >>= \x -> return (TId p x)) <|> (parens type_)
+  reservedOp "<:"
+  t2 <- type_
+  return (TCSubtype t1 t2)
 
 {- The syntax for types is:
 
@@ -55,11 +68,13 @@ identifier =
         | type [,+] ... -> type
         | constr<type [,*]>
         | forall identifier+ . type
+        | forall identifier+ : typeConstraint+ . type
         | ( type )
 
 Disambiguation:
 
  type ::= forall identifier+ . type_fn
+        | forall identifier+ : typeConstraint+ . type
         | type_fn
 
  type_fn ::= type' [,*] -> type
@@ -79,13 +94,16 @@ Disambiguation:
 
 type_ :: CharParser st (Type SourcePos)
 type_ = do
+        
   let forall = do
         p <- getPosition
         reserved "forall"
         ids <- many1 Lexer.identifier
+        constraints <- (reservedOp ":" >> many1 typeConstraint) <|> 
+                       (return [])
         reservedOp "."
         t <- type_fn
-        return (TForall ids t)
+        return (TForall ids constraints t)
   forall <|> type_fn
 
 type_fn :: CharParser st (Type SourcePos)

@@ -33,6 +33,10 @@ inParens expr                 = parens (pp expr)
 commaSep:: (PrettyPrintable a) => [a] -> Doc
 commaSep = hsep.(punctuate comma).(map pp)
 
+
+instance PrettyPrintable TypeConstraint where
+  pp (TCSubtype t1 t2) = pp t1 <+> text "<:" <+> pp t2
+
 instance PrettyPrintable (Type a) where
   pp (TFunc _ this args vararg ret lp) = 
     parens $ ppThis <+> (commaSep args) <> ppVararg <+> text "->" <+> 
@@ -49,9 +53,9 @@ instance PrettyPrintable (Type a) where
   pp (TApp _ constr args) = 
     pp constr <> text "<" <> (hsep $ punctuate comma $ map pp args) <> text ">"
   pp (TVal e t) = text "'" <> pp e -- <> text " (" <> pp t <> text ")"
-  pp (TForall ids t) =
-    text "forall" <+> (hsep $ punctuate comma $ map text ids) <+> text "." <+>
-    pp t
+  pp (TForall ids constraints t) =
+    text "forall" <+> (hsep $ punctuate comma $ map text ids) <+> text ":" <+>
+    (hsep $ punctuate comma $ map pp constraints) <+> text "." <+> pp t
   pp (TIndex objt keyt keyname) = 
     text "@TIndex: " <> pp objt <> text " with " <> pp keyt <> text 
          " called " <> text keyname <> text "@"

@@ -124,7 +124,8 @@ isSubType (TApp _ c1 args1) (TApp _ c2 args2) =
   (length args1 == length args2)
 isSubType(TVal v1 t1) (TVal v2 t2) = v1 `eqLit` v2 && t1 <: t2
 isSubType (TVal _ t1) t2 = t1 <: t2
-isSubType (TForall ids1 t1) (TForall ids2 t2) = ids1 == ids2 && t1 == t2
+isSubType (TForall ids1 tcs1 t1) (TForall ids2 tcs2 t2) = 
+  ids1 == ids2 && tcs1 == tcs2 && t1 == t2
 
 isSubType (TIndex (TObject _ props1) (TVal (StringLit p s1) _) kn1)
           (TIndex (TObject _ props2) (TVal (StringLit _ s2) _) kn2) = 
@@ -671,7 +672,7 @@ typeOfExpr vars types expr = case expr of
     -- ensure that we have a function
     case deconstrFnType instFn_t of
       Nothing -> fail $ "applied expression is not a function at " ++ show p
-      Just ([],formals_t,result_t,latentPred) -> do
+      Just ([],[],formals_t,result_t,latentPred) -> do
         let (supplied_t,missing_t) = splitAt (length actuals_t) formals_t
         unless (length formals_t >= length actuals_t) $ do
           fail $ "function expects " ++ show (length formals_t) ++
@@ -698,14 +699,15 @@ typeOfExpr vars types expr = case expr of
                    (LPType ltype) = latentPred
                 in return (result_t, VPType ltype id)
           else return (result_t, VPNone)
-      Just (typeArgs,_,_,_) ->
+      Just (typeArgs,_,_,_,_) ->
         -- This should not happen:
         -- forall a b c. forall x y z . int -> bool
         fail $ "funciton type still has uninstantiated type variables"
 
   FuncExpr p formals type_ (BlockStmt p' body) -> case deconstrFnType type_ of
     Nothing -> fail $ "declared type on a function is not a function type"
-    Just (typeArgs,args_t,result_t,latentP) -> do
+    -- TODO: Body must be checked with these constraints in place
+    Just (typeArgs,constraints,args_t,result_t,latentP) -> do
       let freeIds = S.difference (freeTIds type_) (S.fromList $ M.keys types)
       unless (S.null freeIds) $
         fail $ "function at " ++ show p ++ " has free identifiers " ++

@@ -26,4 +26,25 @@ function()  :: (->) {
   silly@[nonexistantType]();
 } @@ fails;
 
+function (o) :: {x :: int} -> int {
+  return o.x;
+} :: ({x :: int} -> int);
+
+function() :: (->) {
+
+  var sel = function(o) :: { x :: int } -> int {
+    return o.x + 1;
+  };
+
+  var r1 = sel({ x: 454 });
+
+  // Limited subtyping is possible without constrainted polymorphism
+  var r2 = sel({ x: 25234, y: 1231 });
+
+} :: (->);
+
+function(obj) :: forall a : a <: { x :: int } . a -> int {
+  return obj.x;
+} :: forall a : a <: { x :: int } . a -> int;
+
 // Test cases of map, filter, etc. are in arrays.js

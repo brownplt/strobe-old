@@ -21,7 +21,7 @@ javascriptDef =
                 identifierStart
                 (alphaNum <|> oneOf "$_") -- identifier rest
                 (oneOf "{}<>()~.,?:|&^=!+-*/%!@") -- operator start
-                (oneOf "=<>|&+@") -- operator rest
+                (oneOf "=<>|&+@:") -- operator rest
                 ["break", "case", "catch", "const", "continue", "debugger", 
                  "default", "delete", "do", "else", "enum", "false", "finally",
                  "for", "function", "if", "instanceof", "in", "let", "new", 
@@ -31,7 +31,7 @@ javascriptDef =
                  "%=", "=", ";", ",", "?", ":", "||", "&&", "|", "^", "&", 
                  "===", "==", "=", "!==", "!=", "<<", "<=", "<", ">>>", ">>", 
                  ">=", ">", "++", "--", "+", "-", "*", "/", "%", "!", "~", ".", 
-                 "[", "]", "{", "}", "(", ")","</","instanceof"]
+                 "[", "]", "{", "}", "(", ")","</","instanceof","<:"]
                  True -- case-sensitive
             
 lex = T.makeTokenParser javascriptDef

@@ -46,17 +46,20 @@ argEnv posArgs varArg = addVarArg $ foldl' addPosArg emptyEnv posArgs where
 -- |Deconstructs the declared type of a function, returning a list of quantified
 -- variables, the types of each argument, and a return type.  As we enrich the
 -- type-checker to handle more of a function type, include them here.
-deconstrFnType :: Type a -> Maybe ([String],[Type a],Type a,LatentPred a)
-deconstrFnType (TFunc _ _ args _ result latentP) = Just ([],args,result,latentP)
-deconstrFnType (TForall ids (TFunc _ _ args _ result latentP)) = 
-  Just (ids,args,result,latentP)
+deconstrFnType :: Type SourcePos 
+               -> Maybe ([String],[TypeConstraint],[Type SourcePos],Type SourcePos,LatentPred SourcePos)
+deconstrFnType (TFunc _ _ args _ result latentP) = 
+  Just ([],[],args,result,latentP)
+deconstrFnType (TForall ids constraints (TFunc _ _ args _ result latentP)) = 
+  Just (ids,constraints,args,result,latentP)
 deconstrFnType _ = Nothing
 
+
 -- |This is _not_ capture-free.
-substType :: String -> Type a -> Type a -> Type a
-substType var sub (TForall formals body) 
-  | var `elem` formals = TForall formals body
-  | otherwise = TForall formals (substType var sub body)
+substType :: String -> Type SourcePos -> Type SourcePos -> Type SourcePos
+substType var sub (TForall formals constraints body)  -- TODO: Subst into?
+  | var `elem` formals = TForall formals constraints body
+  | otherwise = TForall formals constraints (substType var sub body)
 substType var sub (TApp p constr args) = 
   TApp p constr (map (substType var sub) args)
 substType var sub (TUnion p ts) = 
@@ -76,8 +79,8 @@ substType var sub (TObject p fields) =
 substType _ _ (TFunc _ (Just _) _ _ _ _) = 
   error "cannot substitute into functions with this-types"
 
-applyType :: Monad m => Type a -> [Type a] -> m (Type a)
-applyType (TForall formals body) actuals = do
+applyType :: Monad m => Type SourcePos -> [Type SourcePos] -> m (Type SourcePos) -- TODO: ensure constraints
+applyType (TForall formals constraints body) actuals = do
   unless (length formals == length actuals) $ do
     fail $ "quantified type has " ++ show (length formals) ++ " variables " ++
            "but " ++ show (length actuals) ++ " were supplied"
@@ -91,20 +94,20 @@ freeTIds :: Type SourcePos -> S.Set String
 freeTIds type_ = 
   everythingBut S.union (mkQ True isNotForall) (mkQ S.empty findTId) type_ where
     isNotForall :: Type SourcePos -> Bool
-    isNotForall (TForall _ _) = False
+    isNotForall (TForall _ _ _) = False
     isNotForall _ = True
  
     findTId :: Type SourcePos -> S.Set String
     findTId (TId _ v) = S.singleton v
-    findTId (TForall vars t) = S.difference (freeTIds t) (S.fromList vars)
+    findTId (TForall vars _ t) = S.difference (freeTIds t) (S.fromList vars)
     findTId _ = S.empty
   
 
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
 -- expressions in types
 inferLit :: Monad m 
-         => Expression a
-         -> m (Type a)
+         => Expression SourcePos
+         -> m (Type SourcePos)
 inferLit (StringLit p _) = return (TId p "string")
 inferLit (NumLit p _) = return (TId p "double")
 inferLit (IntLit p _) = return (TId p "integer")
