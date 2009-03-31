@@ -58,7 +58,7 @@ forInit NoInit = JS.NoInit
 forInit (VarInit ds) = JS.VarInit (map varDecl ds)
 forInit (ExprInit e) = JS.ExprInit (expr e)
 
-forInInit (ForInVar x _) = JS.ForInVar (id x)
+forInInit (ForInVar x) = JS.ForInVar (id x)
 forInInit (ForInNoVar x) = JS.ForInNoVar (id x)
 
 
