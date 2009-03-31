@@ -64,8 +64,8 @@ typeConstraint = do
  type ::= identifier
         | 'literal
         | type?
-        | type [,*] -> type
-        | type [,+] ... -> type
+        | type [,*] -> type?
+        | type [,+] ... -> type?
         | constr<type [,*]>
         | forall identifier+ . type
         | forall identifier+ : typeConstraint+ . type
@@ -77,8 +77,8 @@ Disambiguation:
         | forall identifier+ : typeConstraint+ . type
         | type_fn
 
- type_fn ::= type' [,*] -> type
-           | type' [,+] ... -> type
+ type_fn ::= type' [,*] -> type?
+           | type' [,+] ... -> type?
            | type'
 
  type' ::= type''?
