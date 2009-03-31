@@ -22,5 +22,4 @@ main = do
   str <- getContents
   let stmts = parseString str
   env <- typeCheck stmts
-  stmts' <- encapsulateTypedModule (eraseTypesStmts stmts) env
-  putStrLn (render $ JS.pp stmts') 
+  putStrLn "Typecheck OK"

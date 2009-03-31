@@ -241,6 +241,11 @@ processRawEnv'' vars types forbidden (entry@(Id _ varname,_,_):rest) =
     else case entry of
       (Id _ _, Nothing, Nothing) -> fail $ 
         "Invalid RawEnv contains var that has neither type nor expression"
+      (Id _ varname, 
+       Just t@(TApp _ (TId _ "Array") [elem_t]),
+       Just (ArrayLit _ [])) ->
+        processRawEnv'' (M.insert varname t vars) types (varname:forbidden)
+                        rest
       (Id _ varname, Nothing, Just expr) -> do
         --local type inference
         (exprtype,vp) <- inferLocally vars types expr
@@ -268,8 +273,12 @@ processRawEnv'' vars types forbidden (entry@(Id _ varname,_,_):rest) =
             else processRawEnv'' (M.insert varname vartype' vars) 
                                types (varname:forbidden) rest
 
---add all explicitly typed declarations that are functions to the
---environment first, and only then actually process the environment.
+-- |First add all locally defined functions to the environment.  This lets us
+-- handle mutually recursive functions correctly.
+-- 
+-- Functions always have explicit type signatures.  Even if identifier naming a
+-- function does not have a type signature, the function definition itself
+-- has one.
 processRawEnv' :: (Monad m) => Env -> Env -> [String] -> 
                   RawEnv -> RawEnv ->m Env
 processRawEnv' vars types forbidden 
