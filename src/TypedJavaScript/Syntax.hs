@@ -6,10 +6,7 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          showSp, propToString, unId, eqLit,
          exprPos, stmtPos, typePos) where
 
--- used by data JavaScript:
-import Text.ParserCombinators.Parsec(SourcePos,sourceName,sourceLine) 
-
-import Data.Generics(Data,Typeable,gfindtype)
+import TypedJavaScript.Prelude
 import qualified Data.Foldable as F
 import WebBits.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..), 
   PostfixOp (..))

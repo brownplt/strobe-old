@@ -4,8 +4,6 @@
 -- Determine the environment of a JavaScript function.
 module TypedJavaScript.Environment
   (
-  -- * Generics for 'SourcePos'
-  -- $sourcepos
   -- * Environment
     RawEnv
   , globalEnv
@@ -14,9 +12,6 @@ module TypedJavaScript.Environment
   ) where
 
 import TypedJavaScript.Prelude
-import Data.List (foldl')
-
-import Text.ParserCombinators.Parsec(SourcePos)
 import TypedJavaScript.Syntax
 import TypedJavaScript.PrettyPrint
 

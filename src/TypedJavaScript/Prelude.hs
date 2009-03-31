@@ -2,14 +2,30 @@ module TypedJavaScript.Prelude
   ( module Data.Generics
   , module Control.Monad
   , module Data.List
+  , module Data.Maybe
   , everythingBut
+  , SourcePos
+  , initialPos
+  , sourceName
+  , sourceLine
+  , sourceColumn
+  , (!)
+  , Map
+  , Set
+  , Foldable
+  , Traversable
   ) where
 
 
 import Data.List
-import Data.List
 import Data.Generics
+import Data.Maybe
 import Control.Monad
+import Text.ParserCombinators.Parsec.Pos
+import Data.Map (Map,(!))
+import Data.Set (Set)
+import Data.Foldable (Foldable)
+import Data.Traversable (Traversable)
  
 -- |Similar to 'everything'.  'everythingBut' descends into 'term' only if
 -- the generic predicate is 'True'.  If the predicate is 'False',

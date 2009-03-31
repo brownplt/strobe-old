@@ -5,7 +5,7 @@ module TypedJavaScript.TypeErasure
   ) where
 
 import Prelude hiding (id)
-import Control.Monad (liftM)
+import TypedJavaScript.Prelude
 
 import qualified WebBits.JavaScript as JS
 import TypedJavaScript.Syntax

@@ -11,12 +11,9 @@ module TypedJavaScript.Test
   , RhinoService, feedRhino, startRhinoService, stopRhino
   ) where
 
-import qualified Data.List as L
-import Data.List (isSuffixOf)
-import Data.Maybe (catMaybes)
+import TypedJavaScript.Prelude
+
 import qualified Data.Foldable as Foldable
-import Data.Foldable (Foldable)
-import Control.Monad
 import qualified Data.Map as M
 
 import System.Process
@@ -26,13 +23,11 @@ import System.IO
 import System.Exit
 import qualified Data.ByteString.Char8 as B
 import System.IO.Unsafe (unsafePerformIO)
-import Data.Generics
 import Test.HUnit
 
 import Text.Regex.Posix
 import Text.PrettyPrint.HughesPJ (render, vcat)
-import Text.ParserCombinators.Parsec (ParseError,sourceName,sourceLine,
-  sourceColumn,errorPos,SourcePos)
+import Text.ParserCombinators.Parsec (ParseError,errorPos)
 import TypedJavaScript.PrettyPrint (pp)
 import TypedJavaScript.Syntax
 import TypedJavaScript.Parser (parseScriptFromString,parseJavaScriptFromFile,

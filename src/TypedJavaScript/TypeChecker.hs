@@ -9,16 +9,10 @@ module TypedJavaScript.TypeChecker
   , coreVarEnv
   ) where
 
-import Data.Generics
-import qualified Data.Maybe as Y
-import qualified Data.List as L
+import TypedJavaScript.Prelude
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Map(Map, (!))
-import Control.Monad
 
-import Text.ParserCombinators.Parsec(SourcePos)
-import Text.ParserCombinators.Parsec.Pos
 import TypedJavaScript.Syntax
 import TypedJavaScript.Environment
 import TypedJavaScript.Types
@@ -159,9 +153,9 @@ bestSuperType :: (Type SourcePos) -> (Type SourcePos) ->
 bestSuperType (TObject pos1 props1) (TObject _ props2) = do
   --take everything that is in both objects. worst-case: {}.
   Just $ TObject (initialPos "bestSuperType") $ 
-                 Y.mapMaybe (\(prop1id, t1) -> liftM ((,) prop1id) 
-                              (lookup prop1id props2 >>= bestSuperType t1)) 
-                            props1 
+                 mapMaybe (\(prop1id, t1) -> liftM ((,) prop1id) 
+                            (lookup prop1id props2 >>= bestSuperType t1)) 
+                          props1 
 --TODO: this no longer returns Nothing, so no need for it to return Maybe
 bestSuperType t1 t2
  | (t1 == t2) = Just t1
@@ -678,7 +672,7 @@ typeOfExpr vars types expr = case expr of
     case deconstrFnType instFn_t of
       Nothing -> fail $ "applied expression is not a function at " ++ show p
       Just ([],formals_t,result_t,latentPred) -> do
-        let (supplied_t,missing_t) = L.splitAt (length actuals_t) formals_t
+        let (supplied_t,missing_t) = splitAt (length actuals_t) formals_t
         unless (length formals_t >= length actuals_t) $ do
           fail $ "function expects " ++ show (length formals_t) ++
                  " arguments, but " ++ show (length actuals_t) ++ 

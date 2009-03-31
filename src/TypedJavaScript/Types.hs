@@ -11,13 +11,10 @@ module TypedJavaScript.Types
   ) where
 
 import TypedJavaScript.Prelude
-import Text.ParserCombinators.Parsec.Pos (initialPos,SourcePos)
 import TypedJavaScript.PrettyPrint()
 import TypedJavaScript.Syntax
 import qualified Data.Set as S
-import Data.Map (Map)
 import qualified Data.Map as M
-import qualified Data.List as L
 
 import TypedJavaScript.Syntax (Type (..))
 
@@ -36,7 +33,7 @@ undefType = (TId p "undefined")
 argEnv :: [(String,Type SourcePos)] -- ^positional arguments
        -> Maybe (String,Type SourcePos) -- ^vararity argument
        -> Env
-argEnv posArgs varArg = addVarArg $ L.foldl' addPosArg emptyEnv posArgs where
+argEnv posArgs varArg = addVarArg $ foldl' addPosArg emptyEnv posArgs where
   addPosArg env (x,t) = M.insertWith'
     (error $ "repeated identifier " ++ x ++ " in an argument list")
     x t env
