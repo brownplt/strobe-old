@@ -7,7 +7,7 @@ module TypedJavaScript.TypeErasure
 import Prelude hiding (id)
 import TypedJavaScript.Prelude
 
-import qualified WebBits.JavaScript as JS
+import qualified BrownPLT.JavaScript as JS
 import TypedJavaScript.Syntax
 
 eraseTypesExpr :: Expression a -> JS.Expression a

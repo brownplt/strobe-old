@@ -3,7 +3,7 @@ module Main where
 import qualified Data.Map as M
 import Text.PrettyPrint.HughesPJ (render, vcat)
 
-import qualified WebBits.JavaScript as JS
+import qualified BrownPLT.JavaScript as JS
 
 import TypedJavaScript.Syntax
 import TypedJavaScript.Parser

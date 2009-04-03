@@ -1,4 +1,6 @@
-module TypedJavaScript.EnvTree where
+module TypedJavaScript.EnvTree 
+  ( buildEnvTree
+  ) where
 
 import Prelude hiding (catch)
 import TypedJavaScript.Prelude
