@@ -3,6 +3,7 @@ module TypedJavaScript.Prelude
   , module Control.Monad
   , module Data.List
   , module Data.Maybe
+  , module Data.Tree
   , everythingBut
   , SourcePos
   , initialPos
@@ -17,6 +18,7 @@ module TypedJavaScript.Prelude
   ) where
 
 
+import Data.Tree
 import Data.List
 import Data.Generics
 import Data.Maybe
@@ -26,6 +28,8 @@ import Data.Map (Map,(!))
 import Data.Set (Set)
 import Data.Foldable (Foldable)
 import Data.Traversable (Traversable)
+import Text.PrettyPrint.HughesPJ
+
  
 -- |Similar to 'everything'.  'everythingBut' descends into 'term' only if
 -- the generic predicate is 'True'.  If the predicate is 'False',

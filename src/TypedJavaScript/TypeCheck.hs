@@ -10,14 +10,16 @@ import TypedJavaScript.Syntax (Type (..))
 import TypedJavaScript.Environment
 import TypedJavaScript.Types
 import TypedJavaScript.Graph
-import BrownPLT.JavaScript.Analysis (jsToCore)
+import BrownPLT.JavaScript.Analysis (jsToCore, simplify)
 import BrownPLT.JavaScript.Analysis.Intraprocedural (Graph,
   allIntraproceduralGraphs)
 import BrownPLT.JavaScript.Analysis.ANF
 import TypedJavaScript.ErasedEnvTree
 
-import Data.Tree
 import TypedJavaScript.TypeErasure
+
+
+import qualified Data.GraphViz as GV
 
 data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,
@@ -85,8 +87,7 @@ stmtForBody :: Env -- ^environment of the enclosing function for a nested
 stmtForBody enclosingEnv rettype node = do
   localEnv <- lookupLocalEnv node
   s <- nodeToStmt node
-  -- TODO: combine enclosing and local appropriately, if necessary
-  succs <- stmt localEnv rettype node s
+  succs <- stmt (M.union localEnv enclosingEnv) rettype node s
   mapM_ updateLocalEnv succs
     
 stmtSuccs :: G.Node -> TypeCheck [G.Node]
@@ -101,9 +102,12 @@ stmt :: Env -- ^the environment in which to type-check this statement
      -> TypeCheck [(G.Node, Env)]
 stmt env rettype node s = do
   succs <- stmtSuccs node
+  let noop = return (zip succs (repeat env))
   case s of
-    SeqStmt{} -> return $ zip succs (repeat env)
-    EmptyStmt _ -> return $ zip succs (repeat env)
+    EnterStmt _ -> noop
+    ExitStmt _ -> noop
+    SeqStmt{} -> noop
+    EmptyStmt _ -> noop
     AssignStmt _ v e -> do
       te <- expr env e
       case M.lookup v env of
@@ -111,10 +115,10 @@ stmt env rettype node s = do
         Just Nothing -> do
           let env' = M.insert v (Just te) env
           return $ zip succs (repeat env')
-        Just (Just t) -> do
-          if t==te 
-            then return $ zip succs (repeat env)
-            else fail $ "types not invariant: " ++ show t ++ " " ++ show te
+        Just (Just t) | t == te -> noop
+                      | otherwise ->
+          fail $ "types not invariant: " ++ show t ++ " " ++ show te
+    otherwise -> fail $ "Cannot handle " ++ show s
 
 expr :: Env -- ^the environment in which to type-check this expression
      -> Expr (Int,SourcePos)
@@ -172,8 +176,8 @@ typeCheck prog = do
   -- conversion to ANF does not change the function-nesting structure of the
   -- original program.  For now, we assume that the conversion to ANF preserves
   -- the type structure of the program.
-  let (anf, intraprocs) = 
-        allIntraproceduralGraphs (jsToCore $ eraseTypes prog)
+  let (topDecls, anfProg) = jsToCore (simplify (eraseTypes prog))
+  let (anf, intraprocs) = allIntraproceduralGraphs (topDecls, anfProg)
   -- Since all type annotations are erased in the previous step, map locations
   -- to type annotations, so they may be recovered later.  The locations are
   -- that of identifiers that had type annotations, functions that had type

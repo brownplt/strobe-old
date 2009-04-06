@@ -34,7 +34,7 @@ typeOfExpr expr' = do
                                          expr']
   env <- typeCheck [stmt]
   case M.lookup "result" env of
-    Nothing -> fail "catastrophic failure: result unbound"
+    Nothing -> fail $ "catastrophic failure: result unbound in " ++ show env
     Just Nothing -> fail "catastrophic result not found"
     
     Just (Just t) -> return t

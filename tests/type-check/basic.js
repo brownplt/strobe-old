@@ -1,3 +1,5 @@
+45 :: double;
+
 (true ? 4 : 5) :: double;
 (true ? "hi there" : "bob jones") :: string;
 (true ? "HELLO" : 6) :: U(int, string);
