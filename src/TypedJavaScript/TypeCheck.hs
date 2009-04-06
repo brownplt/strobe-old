@@ -5,17 +5,17 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Strict
-
 import TypedJavaScript.Syntax (Type (..))
 import TypedJavaScript.Environment
 import TypedJavaScript.Types
-
+import TypedJavaScript.Graph
 import BrownPLT.JavaScript.Analysis.Intraprocedural (Graph,
   allIntraproceduralGraphs)
 import BrownPLT.JavaScript.Analysis.ANF
 
 data TypeCheckState = TypeCheckState {
-  stateGraph :: Graph
+  stateGraph :: Graph,
+  stateEnvs :: Map Int Env
 }
 
 type TypeCheck a = StateT TypeCheckState IO a
@@ -30,6 +30,19 @@ nodeToStmt node = do
     Nothing -> fail $ "nodeToStmt: not a node " ++ show node
 
 
+lookupLocalEnv :: G.Node -> TypeCheckEnv Env
+lookupLocalEnv node = do
+  state <- get
+  case M.lookup node (stateEnvs state) of
+    Nothing -> emptyEnv
+    Just env -> env
+
+updateLocalEnv :: (G.Node, Env) -> TypeCheck ()
+updateLocalEnv (node, incomingEnv)= do
+  state <- get
+  let result = M.insertWith unionEnv node incomingEnv (stateEnvs state)
+  put $ state { stateEnvs = result } 
+
 -- |Type-check the body of a function, or the sequence of statements in the
 -- top-level.
 body :: Env
@@ -43,7 +56,7 @@ body env enterNode = do
 
   -- Assume no cycles.  We must traverse the nodes of this function in
   -- topological order.  Since topological-sort is a generic graph algorithm,
-  -- we should build it separately.
+  -- we build it separately.
   -- 
   -- For each node N, let S = nodeToStmt S.  Apply stmt ENV N S.  ENV is the
   -- environment in which the statement is evaluated.  It is the union of the
@@ -69,9 +82,21 @@ body env enterNode = do
 
   (nodes,removedEdges) <- topologicalOrder gr node
 
-  
-  
-  
+  mapM_ (stmtForBody env) nodes
+
+  -- TODO: account for removedEdges
+
+stmtForBody :: Env -- ^environment of the enclosing function for a nested
+                   -- function, or the globals for a top-level statement or
+                   -- function
+            -> G.Node
+            -> Typecheck ()
+stmtForBody enclosingEnv node = do
+  localEnv <- lookupLocalEnv node
+  stmt <- nodeToStmt node
+  -- TODO: combine enclosing and local appropriately, if necessary
+  succs <- stmt localEnv node stmt
+  mapM_ updateLocalEnv succs
 
 stmt :: Env -- ^the environment in which to type-check this statement
      -> G.Node -- ^the node representing this statement in the graph

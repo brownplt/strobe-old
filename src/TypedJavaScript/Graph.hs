@@ -61,6 +61,13 @@ cyclicTopo ((node:nodes), solution, restricted, removed, gr) = result where
 -- of S in topological order, [x0, x1, ..., xn]. For i < j, xi < xj.
 -- The ordering relation is specified by a directed graph along with a
 -- distinguished bottom element x0, such that x0 < xi, i > 0.
+--
+-- Assumes: 'root' is the only node with no incoming edges
+-- Guarantees:
+--   1. The nodes are in topological order in the graph where the edges are
+--      are removed.
+--   2. Removing the edges preserves the property that 'root' is the only
+--      node with no incoming edges.
 topologicalOrder :: DynGraph gr
                  => gr a b -- ^graph
                  -> Node -- ^root vertex
