@@ -1,31 +1,30 @@
-module TypedJavaScript.EnvTree 
-  ( buildEnvTree
+module TypedJavaScript.ErasedEnvTree
+  ( buildErasedEnvTree
+  , ErasedEnv
   ) where
 
 import Prelude hiding (catch)
+import Data.Tree
 import TypedJavaScript.Prelude
 import TypedJavaScript.Syntax
 import qualified Data.Map as M
 
-data EnvTree = EnvTree {
-  envTreeEnv      :: Env,
-  envTreeSubtrees :: [EnvTree]
-}
+type ErasedEnvTree = Tree ErasedEnv
 
-type Env = Map SourcePos [Type SourcePos]
+type ErasedEnv = Map SourcePos [Type SourcePos]
 
-empty :: EnvTree
-empty = EnvTree (M.empty) []
+empty :: ErasedEnvTree
+empty = Node M.empty []
 
-unions :: [EnvTree] -> EnvTree
-unions et = EnvTree (M.unions $ map envTreeEnv et)
-                    (concatMap envTreeSubtrees et)
+unions :: [ErasedEnvTree] -> ErasedEnvTree
+unions et = Node (M.unions $ map rootLabel et)
+                    (concatMap subForest et)
 
-buildEnvTree :: [Statement SourcePos] -> EnvTree
-buildEnvTree stmts = envTree where
-  envtrees = map stmt stmts
-  envTree = EnvTree (M.unions $ map envTreeEnv envtrees)
-                    (concatMap envTreeSubtrees envtrees)
+buildErasedEnvTree :: [Statement SourcePos] -> ErasedEnvTree
+buildErasedEnvTree stmts = complete M.empty $ unions (map stmt stmts) where
+  complete enclosingEnv (Node env subtrees) =
+    let completeEnv = M.union env enclosingEnv -- left-biased, shadows correctly
+      in Node completeEnv (map (complete completeEnv) subtrees)
 
 proploc :: Prop SourcePos -> SourcePos
 proploc (PropId pos _) = pos
@@ -33,14 +32,14 @@ proploc (PropString pos _) = pos
 proploc (PropNum pos _) = pos
 
 prop :: [(Prop SourcePos, Maybe (Type SourcePos), Expression SourcePos)]
-     -> EnvTree
+     -> ErasedEnvTree
 prop [] = empty
 prop ((prp, mtype, e):ps) = case mtype of
   Nothing -> unions [expr e, prop ps]
-  Just type_ -> unions [EnvTree (M.singleton (proploc prp) [type_]) [], 
+  Just type_ -> unions [Node (M.singleton (proploc prp) [type_]) [], 
                        expr e, prop ps]
 
-expr :: Expression SourcePos -> EnvTree
+expr :: Expression SourcePos -> ErasedEnvTree
 expr e = case e of
   StringLit{} -> empty
   RegexpLit{} -> empty
@@ -62,17 +61,18 @@ expr e = case e of
   AssignExpr _ _ e1 e2 -> unions [expr e1, expr e2]
   ParenExpr _ e -> expr e
   ListExpr _ es -> unions $ map expr es
-  CallExpr pos e ts es -> unions [EnvTree (M.singleton pos ts) [],
+  CallExpr pos e ts es -> unions [Node (M.singleton pos ts) [],
                                   unions $ map expr (e:es)]
-  FuncExpr pos _ t s -> EnvTree (M.singleton pos [t]) [stmt s]
+  FuncExpr pos _ t s -> Node (M.singleton pos [t]) [stmt s]
 
-vardecl :: VarDecl SourcePos -> EnvTree
-vardecl (VarDecl _ (Id pos _) type_) = EnvTree (M.singleton pos [type_]) []
+vardecl :: VarDecl SourcePos -> ErasedEnvTree
+vardecl (VarDecl _ (Id pos _) type_) = 
+  Node (M.singleton pos [type_]) []
 vardecl (VarDeclExpr _ (Id pos _) mtype e) = case mtype of
   Nothing -> expr e
-  Just type_ -> unions [EnvTree (M.singleton pos [type_]) [], expr e]
+  Just type_ -> unions [Node (M.singleton pos [type_]) [], expr e]
 
-catch :: CatchClause SourcePos -> EnvTree
+catch :: CatchClause SourcePos -> ErasedEnvTree
 catch (CatchClause _ _ s) = stmt s
 
 caseclause (CaseClause _ e ss) = unions [expr e, unions $ map stmt ss]
@@ -82,12 +82,12 @@ forinit NoInit = empty
 forinit (VarInit vs) = unions $ map vardecl vs
 forinit (ExprInit e) = expr e
 
-forininit :: ForInInit SourcePos -> EnvTree
+forininit :: ForInInit SourcePos -> ErasedEnvTree
 forininit _ = empty
 
-stmt :: Statement SourcePos -> EnvTree
+stmt :: Statement SourcePos -> ErasedEnvTree
 stmt s = case s of
-  BlockStmt _ ss -> buildEnvTree ss
+  BlockStmt _ ss -> unions (map stmt ss)
   EmptyStmt _ -> empty
   ExprStmt _ e -> expr e
   IfStmt _ e s1 s2 -> unions [expr e, stmt s1, stmt s2]
@@ -106,4 +106,4 @@ stmt s = case s of
   ThrowStmt _ e -> expr e
   ReturnStmt _ e -> maybe empty expr e
   VarDeclStmt _ vars -> unions $ map vardecl vars
-  TypeStmt{} -> error "NOT DONE YET"  
+  TypeStmt{} -> error "TODO: not implemented"  

@@ -5,20 +5,33 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Strict
+import qualified TypedJavaScript.Syntax as TJS
 import TypedJavaScript.Syntax (Type (..))
 import TypedJavaScript.Environment
 import TypedJavaScript.Types
 import TypedJavaScript.Graph
+import BrownPLT.JavaScript.Analysis (jsToCore)
 import BrownPLT.JavaScript.Analysis.Intraprocedural (Graph,
   allIntraproceduralGraphs)
 import BrownPLT.JavaScript.Analysis.ANF
+import TypedJavaScript.ErasedEnvTree
 
 data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,
   stateEnvs :: Map Int Env
 }
 
+
 type TypeCheck a = StateT TypeCheckState IO a
+
+
+typeCheckProgram :: [TJS.Stmt SourcePos] -> IO ()
+typeCheckProgram prog = do
+  let (anfProg, intraprocGraphs) = allIntraproceduralGraphs (jsToCore prog)
+  let envs = buildErasedEnvTree prog
+  
+  
+
 
 nodeToStmt :: G.Node -> TypeCheck (Stmt (Int,SourcePos))
 nodeToStmt node = do
@@ -30,18 +43,19 @@ nodeToStmt node = do
     Nothing -> fail $ "nodeToStmt: not a node " ++ show node
 
 
-lookupLocalEnv :: G.Node -> TypeCheckEnv Env
+lookupLocalEnv :: G.Node -> TypeCheck Env
 lookupLocalEnv node = do
   state <- get
   case M.lookup node (stateEnvs state) of
-    Nothing -> emptyEnv
-    Just env -> env
+    Nothing -> return emptyEnv
+    Just env -> return env
 
 updateLocalEnv :: (G.Node, Env) -> TypeCheck ()
 updateLocalEnv (node, incomingEnv)= do
   state <- get
   let result = M.insertWith unionEnv node incomingEnv (stateEnvs state)
   put $ state { stateEnvs = result } 
+
 
 -- |Type-check the body of a function, or the sequence of statements in the
 -- top-level.
@@ -50,7 +64,7 @@ body :: Env
      -> TypeCheck ()
 body env enterNode = do
   state <- get
-  let gr = stateGraph gr
+  let gr = stateGraph state
   unless (null $ G.pre gr enterNode) $ -- ENTER has no predecessors
     fail $ "Unexpected edges into  " ++ show (G.lab gr enterNode)
 
@@ -80,7 +94,7 @@ body env enterNode = do
   -- environment in any way regardless of breaks, continues, etc.  If we find
   -- this too restrictive, we can write a more sophisticated system.
 
-  (nodes,removedEdges) <- topologicalOrder gr node
+  let (nodes,removedEdges) = topologicalOrder gr enterNode
 
   mapM_ (stmtForBody env) nodes
 
@@ -90,23 +104,25 @@ stmtForBody :: Env -- ^environment of the enclosing function for a nested
                    -- function, or the globals for a top-level statement or
                    -- function
             -> G.Node
-            -> Typecheck ()
+            -> TypeCheck ()
 stmtForBody enclosingEnv node = do
   localEnv <- lookupLocalEnv node
-  stmt <- nodeToStmt node
+  s <- nodeToStmt node
   -- TODO: combine enclosing and local appropriately, if necessary
-  succs <- stmt localEnv node stmt
+  succs <- stmt localEnv node s
   mapM_ updateLocalEnv succs
 
 stmt :: Env -- ^the environment in which to type-check this statement
      -> G.Node -- ^the node representing this statement in the graph
      -> Stmt (Int,SourcePos)  -- ^the statement itself
      -> TypeCheck [(G.Node,Env)] -- ^maps successors to environments
+stmt env node stmt = return []
 
 expr :: Env -- ^the environment in which to type-check this expression
+     -> Expr (Int,SourcePos)
      -> Type SourcePos -- ^the type of this expression
+expr env expr = undefined
 
 -- |When a node has multiple parents, this function combines their environments.
 unionEnv :: Env -> Env -> Env
-
-
+unionEnv = undefined
