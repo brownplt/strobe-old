@@ -16,38 +16,52 @@ module TypeCheck where
 import Text.ParserCombinators.Parsec
 import Test.HUnit
 import qualified Control.Exception as E
-
-import TypedJavaScript.Syntax (Type,Expression,showSp)
+import qualified Data.Map as M
+import TypedJavaScript.Syntax
 import TypedJavaScript.Lexer (semi,reservedOp,reserved)
 import TypedJavaScript.Parser (parseType,parseExpression)
-import TypedJavaScript.TypeChecker (typeOfExpr,coreTypeEnv,coreVarEnv,
-  isSubType)
+import TypedJavaScript.TypeCheck (typeCheck)
 import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
 
+import Text.ParserCombinators.Parsec.Pos (initialPos, SourcePos)
+
+typeOfExpr :: Expression SourcePos -> IO (Type SourcePos)
+typeOfExpr expr' = do 
+  let p = initialPos "testcase"
+  let stmt = VarDeclStmt p [VarDeclExpr p (Id p "result")
+                                         Nothing
+                                         expr']
+  env <- typeCheck [stmt]
+  case M.lookup "result" env of
+    Nothing -> fail "catastrophic failure: result unbound"
+    Just Nothing -> fail "catastrophic result not found"
+    
+    Just (Just t) -> return t
+
 assertType :: SourcePos -> Expression SourcePos -> Type SourcePos -> Assertion
 assertType pos expr expectedType = do
-  actualType <- E.try (typeOfExpr coreVarEnv coreTypeEnv [] expr)
+  actualType <- E.try (typeOfExpr expr)
   case actualType of
     Left (err::(E.SomeException)) -> assertFailure (
       (showSp pos) ++ ": " ++ (show err))
-    Right (exprType, evp) -> do
+    Right (exprType) -> do
       assertBool ((showSp pos) ++ ": type mismatch, " ++ 
                   (show exprType) ++ " is not a subtype of " ++ 
                   (show expectedType)) 
-                 (isSubType [] exprType expectedType)
+                 (exprType == expectedType)
 
 assertTypeError :: SourcePos -> Expression SourcePos -> Assertion
 assertTypeError pos expr = do
-  result <- E.try (typeOfExpr coreVarEnv coreTypeEnv [] expr)
+  result <- E.try (typeOfExpr expr)
   case result of
     Left (err::(E.SomeException)) -> return () -- error expected
-    Right (exprType,evp) -> assertFailure (
+    Right (exprType) -> assertFailure (
       (showSp pos) ++ ": expected fail, got: " ++ (show $ pp exprType))
 
 assertTypeSuccess :: SourcePos -> Expression SourcePos -> Assertion
 assertTypeSuccess pos expr = do
-  result <- E.try (typeOfExpr coreVarEnv coreTypeEnv [] expr)
+  result <- E.try (typeOfExpr expr)
   case result of
     Left (err::(E.SomeException)) -> assertFailure ((showSp pos) ++ ": expected success, got: " ++ (show $ err)) 
     Right exprType -> return () -- success expected

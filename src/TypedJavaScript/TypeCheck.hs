@@ -16,6 +16,9 @@ import BrownPLT.JavaScript.Analysis.Intraprocedural (Graph,
 import BrownPLT.JavaScript.Analysis.ANF
 import TypedJavaScript.ErasedEnvTree
 
+import Data.Tree
+import TypedJavaScript.TypeErasure
+
 data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,
   stateEnvs :: Map Int Env
@@ -25,19 +28,11 @@ data TypeCheckState = TypeCheckState {
 type TypeCheck a = StateT TypeCheckState IO a
 
 
-typeCheckProgram :: [TJS.Stmt SourcePos] -> IO ()
-typeCheckProgram prog = do
-  let (anfProg, intraprocGraphs) = allIntraproceduralGraphs (jsToCore prog)
-  let envs = buildErasedEnvTree prog
-  
-  
-
-
 nodeToStmt :: G.Node -> TypeCheck (Stmt (Int,SourcePos))
 nodeToStmt node = do
   state <- get
-  -- Nodes are just integers, so looking up the node label can fail with an
-  -- arbitrary integer.
+  -- Nodes are just intstateEnvs = M.emptyegers, so looking up the
+  -- node label can fail with an arbitrary integer.
   case G.lab (stateGraph state) node of
     Just stmt -> return stmt
     Nothing -> fail $ "nodeToStmt: not a node " ++ show node
@@ -56,73 +51,139 @@ updateLocalEnv (node, incomingEnv)= do
   let result = M.insertWith unionEnv node incomingEnv (stateEnvs state)
   put $ state { stateEnvs = result } 
 
+enterNodeOf :: Graph -> G.Node
+enterNodeOf gr = fst (G.nodeRange gr)
 
--- |Type-check the body of a function, or the sequence of statements in the
--- top-level.
+exitNodeOf :: Graph -> G.Node
+exitNodeOf gr = snd (G.nodeRange gr)
+
 body :: Env
+     -> ErasedEnv
+     -> Type SourcePos
      -> G.Node
-     -> TypeCheck ()
-body env enterNode = do
+     -> TypeCheck Env
+body env ee rettype enterNode = do
   state <- get
   let gr = stateGraph state
   unless (null $ G.pre gr enterNode) $ -- ENTER has no predecessors
     fail $ "Unexpected edges into  " ++ show (G.lab gr enterNode)
 
-  -- Assume no cycles.  We must traverse the nodes of this function in
-  -- topological order.  Since topological-sort is a generic graph algorithm,
-  -- we build it separately.
-  -- 
-  -- For each node N, let S = nodeToStmt S.  Apply stmt ENV N S.  ENV is the
-  -- environment in which the statement is evaluated.  It is the union of the
-  -- environments returned by parents(S).  Topological order ensures that
-  -- we have all environments for parents(S).
-  -- 
-  -- However, we must store these environments in an auxilliary data structure
-  -- (e.g., Map Node Env) that maps each statement to its environment.  If a
-  -- new environment appears, replace the existing environment with the union of
-  -- the current and previous environment (see Data.Map.unionWith).
-  --
-  -- Consider cycles.  Break cycles at the "bottom" of loops.  More precisely,
-  -- note that there are no edges out of enterNode, so all edges incidect on
-  -- enterNode are directed outward.  In an acyclic graph, enterNode is the
-  -- only node where all edges are directed outward.  Break cycles so that
-  -- enterNode remains the only node where all edges are directed outward.
-  --
-  -- Keep track of the edges that are removed.  As a first approximation, we can
-  -- simple ensure that the environment at the source and destination of each
-  -- removed edge is identical: an iteration of the loop does not effect the
-  -- environment in any way regardless of breaks, continues, etc.  If we find
-  -- this too restrictive, we can write a more sophisticated system.
-
   let (nodes,removedEdges) = topologicalOrder gr enterNode
 
-  mapM_ (stmtForBody env) nodes
+  mapM_ (stmtForBody env rettype) nodes
 
+  finalLocalEnv <- lookupLocalEnv (exitNodeOf gr)
+  return finalLocalEnv
   -- TODO: account for removedEdges
 
 stmtForBody :: Env -- ^environment of the enclosing function for a nested
                    -- function, or the globals for a top-level statement or
                    -- function
+            -> Type SourcePos
             -> G.Node
             -> TypeCheck ()
-stmtForBody enclosingEnv node = do
+stmtForBody enclosingEnv rettype node = do
   localEnv <- lookupLocalEnv node
   s <- nodeToStmt node
   -- TODO: combine enclosing and local appropriately, if necessary
-  succs <- stmt localEnv node s
+  succs <- stmt localEnv rettype node s
   mapM_ updateLocalEnv succs
+    
+stmtSuccs :: G.Node -> TypeCheck [G.Node]
+stmtSuccs stmtNode = do
+  state <- get
+  return (G.suc (stateGraph state) stmtNode)
 
 stmt :: Env -- ^the environment in which to type-check this statement
+     -> Type SourcePos
      -> G.Node -- ^the node representing this statement in the graph
-     -> Stmt (Int,SourcePos)  -- ^the statement itself
-     -> TypeCheck [(G.Node,Env)] -- ^maps successors to environments
-stmt env node stmt = return []
+     -> Stmt (Int, SourcePos)
+     -> TypeCheck [(G.Node, Env)]
+stmt env rettype node s = do
+  succs <- stmtSuccs node
+  case s of
+    SeqStmt{} -> return $ zip succs (repeat env)
+    EmptyStmt _ -> return $ zip succs (repeat env)
+    AssignStmt _ v e -> do
+      te <- expr env e
+      case M.lookup v env of
+        Nothing -> fail $ "undeclared id: " ++ show v
+        Just Nothing -> do
+          let env' = M.insert v (Just te) env
+          return $ zip succs (repeat env')
+        Just (Just t) -> do
+          if t==te 
+            then return $ zip succs (repeat env)
+            else fail $ "types not invariant: " ++ show t ++ " " ++ show te
 
 expr :: Env -- ^the environment in which to type-check this expression
      -> Expr (Int,SourcePos)
-     -> Type SourcePos -- ^the type of this expression
-expr env expr = undefined
+     -> TypeCheck (Type SourcePos) -- ^the type of this expression
+expr env e = case e of 
+  VarRef _ id -> case M.lookup id env of
+    Nothing -> fail $ "unbound id: " ++ show id
+    Just Nothing -> fail $ "type might be undefined or something, go away"
+    Just (Just t) -> return t
+  DotRef{} -> fail "NYI"
+  BracketRef{} -> fail "NYI"
+  OpExpr _ f args -> fail "NYI"
+  Lit (StringLit (_,a) _) -> return $ TId a "string"
+  Lit (NumLit (_,a) _) -> return $ TId a "double"
+  Lit (IntLit (_,a) _) -> return $ TId a "int"
 
 -- |When a node has multiple parents, this function combines their environments.
 unionEnv :: Env -> Env -> Env
 unionEnv = undefined
+
+uneraseEnv :: Env -> ErasedEnv -> Lit (Int, SourcePos) -> (Env, Type SourcePos)
+uneraseEnv env ee (FuncLit (_, pos) args locals _) = (env', rettype) where
+  functype = head $ ee ! pos
+  Just (_, cs, types, rettype, lp) = deconstrFnType functype
+  argtypes = zip (map fst args) (map Just types)
+  localtypes = map (\(name,(_, pos)) -> (name, liftM head (M.lookup pos ee))) 
+                   locals
+  env' = M.union (M.fromList (argtypes++localtypes)) env 
+uneraseEnv env ee _ = error "coding fail - uneraseEnv given a function-not"
+
+typeCheckProgram :: Env
+                  -> (Tree ErasedEnv, 
+                      Tree (Int, Lit (Int,SourcePos), Graph))
+                  -> TypeCheck Env
+typeCheckProgram env (Node ee subEes, Node (_, lit, gr) subGraphs) = do
+  state <- get
+  put $ state { stateGraph = gr, stateEnvs = M.empty }
+  -- When type-checking the body, we assume the declared types for functions.
+  let (env', rettype) = uneraseEnv env ee lit
+  topLevelEnv <- body env' ee rettype (enterNodeOf gr)
+  -- When we descent into nested functions, we ensure that functions satisfy
+  -- their declared types.
+  -- This handles mutually-recursive functions correctly.  
+  unless (length subEes == length subGraphs) $
+    fail "erased env and functions have different structures"
+  mapM_ (typeCheckProgram env') (zip subEes subGraphs)
+  return topLevelEnv
+
+-- |Type-check a Typed JavaScript program.  
+typeCheck :: [TJS.Statement SourcePos] -> IO Env
+typeCheck prog = do
+  -- Build intraprocedural graphs for all functions and the top-level.
+  -- These graphs are returned in a tree that mirrors the nesting structure
+  -- of the program.  The graphs are for untyped JavaScript in ANF.  This
+  -- conversion to ANF does not change the function-nesting structure of the
+  -- original program.  For now, we assume that the conversion to ANF preserves
+  -- the type structure of the program.
+  let (anf, intraprocs) = 
+        allIntraproceduralGraphs (jsToCore $ eraseTypes prog)
+  -- Since all type annotations are erased in the previous step, map locations
+  -- to type annotations, so they may be recovered later.  The locations are
+  -- that of identifiers that had type annotations, functions that had type
+  -- annotations, object fields that had type annotations.
+  --
+  -- These "erased environments" are returned in a tree with the same shape as
+  -- 'intraprocs' above.
+  let envs = buildErasedEnvTree prog
+  let globalEnv = M.empty -- TODO: Create file specifying global environment
+  (env, state) <- runStateT (typeCheckProgram globalEnv (envs, intraprocs)) 
+                            (TypeCheckState G.empty M.empty)
+  return env
+

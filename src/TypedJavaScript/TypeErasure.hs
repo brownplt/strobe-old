@@ -2,6 +2,7 @@
 module TypedJavaScript.TypeErasure
   ( eraseTypesExpr
   , eraseTypesStmts
+  , eraseTypes
   ) where
 
 import Prelude hiding (id)
@@ -85,3 +86,6 @@ stmt (ThrowStmt p e) = JS.ThrowStmt p (expr e)
 stmt (ReturnStmt p e) = JS.ReturnStmt p (liftM expr e)
 stmt (VarDeclStmt p ds) = JS.VarDeclStmt p (map varDecl ds)
 stmt (TypeStmt{}) = error "type-erasure undefined for type statements"
+
+eraseTypes :: [Statement a] -> [JS.Statement a]
+eraseTypes = map stmt

@@ -1,7 +1,7 @@
 module TypedJavaScript.Types 
   ( Env
   , emptyEnv
-  , argEnv
+ -- , argEnv
   , undefType
   , inferLit
   , unTVal
@@ -21,7 +21,7 @@ import TypedJavaScript.Syntax (Type (..))
 p = initialPos "TypedJavaScript.Types"
 
 --maps names to their type... should visible predicates be here?
-type Env = Map String (Type SourcePos)
+type Env = Map String (Maybe (Type SourcePos))
 
 emptyEnv :: Env
 emptyEnv = M.empty
@@ -29,6 +29,7 @@ emptyEnv = M.empty
 undefType :: Type SourcePos
 undefType = (TId p "undefined")
 
+{-
 -- |Builds the local enviroment of a function.
 argEnv :: [(String,Type SourcePos)] -- ^positional arguments
        -> Maybe (String,Type SourcePos) -- ^vararity argument
@@ -42,7 +43,7 @@ argEnv posArgs varArg = addVarArg $ foldl' addPosArg emptyEnv posArgs where
     Just (x,t) -> M.insertWith'
       (error $ "repeated identifier " ++ x ++ " in an argument list")
       x t env
-
+-}
 -- |Deconstructs the declared type of a function, returning a list of quantified
 -- variables, the types of each argument, and a return type.  As we enrich the
 -- type-checker to handle more of a function type, include them here.
