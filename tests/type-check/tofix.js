@@ -42,7 +42,7 @@ function(x) :: U(int, string) -> string {
   if (typeof y == "number")
     y = "bookr";
   return y;
-} :: U(int, string) -> string;
+} :: U(int, string) -> string; 
 
 
 //recursive function declarations:
