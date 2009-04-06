@@ -27,7 +27,7 @@ import TypedJavaScript.PrettyPrint
 
 assertType :: SourcePos -> Expression SourcePos -> Type SourcePos -> Assertion
 assertType pos expr expectedType = do
-  actualType <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
+  actualType <- E.try (typeOfExpr coreVarEnv coreTypeEnv [] expr)
   case actualType of
     Left (err::(E.SomeException)) -> assertFailure (
       (showSp pos) ++ ": " ++ (show err))
@@ -35,11 +35,11 @@ assertType pos expr expectedType = do
       assertBool ((showSp pos) ++ ": type mismatch, " ++ 
                   (show exprType) ++ " is not a subtype of " ++ 
                   (show expectedType)) 
-                 (isSubType exprType expectedType)
+                 (isSubType [] exprType expectedType)
 
 assertTypeError :: SourcePos -> Expression SourcePos -> Assertion
 assertTypeError pos expr = do
-  result <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
+  result <- E.try (typeOfExpr coreVarEnv coreTypeEnv [] expr)
   case result of
     Left (err::(E.SomeException)) -> return () -- error expected
     Right (exprType,evp) -> assertFailure (
@@ -47,7 +47,7 @@ assertTypeError pos expr = do
 
 assertTypeSuccess :: SourcePos -> Expression SourcePos -> Assertion
 assertTypeSuccess pos expr = do
-  result <- E.try (typeOfExpr coreVarEnv coreTypeEnv expr)
+  result <- E.try (typeOfExpr coreVarEnv coreTypeEnv [] expr)
   case result of
     Left (err::(E.SomeException)) -> assertFailure ((showSp pos) ++ ": expected success, got: " ++ (show $ err)) 
     Right exprType -> return () -- success expected
