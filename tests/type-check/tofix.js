@@ -37,6 +37,14 @@ function () :: (->) {
   }
 } @@ fails;
 
+function(x) :: U(int, string) -> string {
+  var y = x;
+  if (typeof y == "number")
+    y = "bookr";
+  return y;
+} :: U(int, string) -> string;
+
+
 //recursive function declarations:
 function() :: (->) {
   function lawl(x) :: (int -> int) { return lawl(3); }
