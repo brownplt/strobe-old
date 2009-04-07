@@ -6,7 +6,7 @@ import qualified Data.Set as S
 import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Strict
 import qualified TypedJavaScript.Syntax as TJS
-import TypedJavaScript.Syntax (Type (..))
+import TypedJavaScript.Syntax (Type (..), VP (..))
 import TypedJavaScript.Environment
 import TypedJavaScript.Types
 import TypedJavaScript.Graph
@@ -151,7 +151,7 @@ stmt env ee rettype node s = do
     SeqStmt{} -> noop
     EmptyStmt _ -> noop
     AssignStmt (_,p) v e -> do
-      te <- expr env ee e
+      (te,v_vp) <- expr env ee e
       case M.lookup v env of
         Nothing -> 
           fail $ printf "at %s: identifier %s is unbound" (show p) v
@@ -224,7 +224,7 @@ stmt env ee rettype node s = do
       | undefType <: rettype -> noop
       | otherwise -> subtypeError p rettype undefType
     ReturnStmt (_,p) (Just e) -> do
-      te <- expr env ee e
+      (te, vp) <- expr env ee e
       if te <: rettype
         then noop
         else subtypeError p rettype te
@@ -236,36 +236,42 @@ stmt env ee rettype node s = do
 expr :: Env -- ^the environment in which to type-check this expression
      -> ErasedEnv
      -> Expr (Int,SourcePos)
-     -> TypeCheck (Type SourcePos) -- ^the type of this expression
+     -> TypeCheck (Type SourcePos, VP) 
 expr env ee e = case e of 
-  VarRef _ id -> case M.lookup id env of
-    Nothing -> fail $ "unbound id: " ++ show id
-    Just Nothing -> fail $ "type might be undefined or something, go away"
-    Just (Just t) -> return t
+  VarRef (_,p) id -> do
+    t <- forceEnvLookup p env id
+    return (t,VPId id)
   DotRef{} -> fail "NYI"
   BracketRef{} -> fail "NYI"
   OpExpr (_,p) f args_e -> do
     args <- mapM (expr env ee) args_e
-    operator p f args
-  Lit (StringLit (_,a) _) -> return $ TId a "string"
+    t <- operator p f (map fst args)
+    return (t, VPNone)
+  Lit (StringLit (_,a) s) -> 
+    return (TId a "string", if length s == 0 then VPFalse else VPTrue)
   Lit (RegexpLit _ _ _ _) -> fail "regexp NYI"
-  Lit (NumLit (_,a) _) -> return $ TId a "double"
-  Lit (IntLit (_,a) _) -> return $ TId a "int"
-  Lit (BoolLit (_,p) _) -> return $ TId p "bool"
+  Lit (NumLit (_,p) n) ->
+    return (TId p "double", if n == 0 then VPFalse else VPTrue)
+  Lit (IntLit (_,a) n) -> 
+    return (TId a "int", if n == 0 then VPFalse else VPTrue)
+  Lit (BoolLit (_,p) v) ->
+    return (TId p "bool", if v then VPTrue else VPFalse)
   Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
   Lit (ArrayLit (_,p) es) -> do
     -- TODO: Allow subtyping
-    ts <- mapM (expr env ee) es
+    r <- mapM (expr env ee) es
+    let ts = map fst r
     if (length (nub ts) == 1) 
-      then return (TApp p (TId p "Array") [head ts])
+      then return (TApp p (TId p "Array") [head ts], VPTrue)
       else fail "array subtyping NYI"
   Lit (ObjectLit _ props) -> fail "object lits NYI"
   Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
     Nothing -> catastrophe p "function type is not in the erased environment"
-    Just [t] -> return t
+    Just [t] -> return (t, VPTrue)
     Just _ -> catastrophe p "many types for function in the erased environment"
   
-operator :: SourcePos -> FOp -> [Type SourcePos] -> TypeCheck (Type SourcePos)
+operator :: SourcePos -> FOp 
+         -> [Type SourcePos] -> TypeCheck (Type SourcePos)
 operator loc op args = do
   -- The ANF transform gaurantees that the number of arguments is correct for
   -- the specified operator.

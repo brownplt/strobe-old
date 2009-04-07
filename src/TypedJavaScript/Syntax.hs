@@ -2,7 +2,7 @@
 module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
-         ForInit(..),ForInInit(..),Type(..),VisiblePred(..),LatentPred(..),
+         ForInit(..),ForInInit(..),Type(..), VP(..),LatentPred(..),
          showSp, propToString, unId, eqLit,
          exprPos, stmtPos, typePos, TypeConstraint (..)) where
 
@@ -44,14 +44,15 @@ data Type a
 
 --visible pred is always paired with a type, so can get its pos from there
 --latent pred is always part of a function, so can get its pos from there
-data VisiblePred a = VPId String
-                     | VPType (Type a) String
-                     | VPTrue | VPFalse
-                     | VPNone
-                     --TODO: Justify VPTypeof, VPNot
-                     | VPTypeof String
-                     | VPNot (VisiblePred a)
-    deriving (Data,Typeable,Ord)
+data VP = VPId String
+        | VPType (Type SourcePos) String
+        | VPTrue 
+        | VPFalse
+        | VPNone
+        --TODO: Justify VPTypeof, VPNot
+        | VPTypeof String
+        | VPNot VP
+    deriving (Data, Typeable, Ord, Eq)
 
 data LatentPred a = LPType (Type a) | LPNone
     deriving (Data,Typeable,Ord)
@@ -86,17 +87,6 @@ instance Eq (Type a) where
                                           ret1 == ret2 && lp1 == lp2
   TVal x t == TVal x2 t2 = x `eqLit` x2 && t == t2
   t1 == t2                            = False
-
---TODO: these might be unnecessary:
-instance Eq (VisiblePred a) where
-  VPId i1      == VPId i2       = i1 == i2
-  VPType t1 i1 == VPType t2 i2  = t1 == t2 && i1 == i2
-  VPTrue       == VPTrue        = True
-  VPFalse      == VPFalse       = True
-  VPNone       == VPNone        = True
-  VPTypeof s   == VPTypeof s2   = s == s2
-  VPNot v      == VPNot v2      = v == v2
-  v1           == v2            = False
 
 instance Eq (LatentPred a) where
   LPType t1    == LPType t2     = t1 == t2
