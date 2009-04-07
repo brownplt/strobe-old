@@ -102,6 +102,7 @@ stmt :: Env -- ^the environment in which to type-check this statement
      -> TypeCheck [(G.Node, Env)]
 stmt env rettype node s = do
   succs <- stmtSuccs node
+  -- statements that do not affect the incoming environment are "no-ops"
   let noop = return (zip succs (repeat env))
   case s of
     EnterStmt _ -> noop
@@ -118,7 +119,33 @@ stmt env rettype node s = do
         Just (Just t) | t == te -> noop
                       | otherwise ->
           fail $ "types not invariant: " ++ show t ++ " " ++ show te
-    otherwise -> fail $ "Cannot handle " ++ show s
+    DirectPropAssignStmt _ obj method e -> undefined
+    IndirectPropAssignStmt _ obj method e -> fail "obj[method] NYI"
+    DeleteStmt _ r del -> fail "delete NYI"
+    NewStmt{} -> fail "NewStmt will be removed from ANF"
+    CallStmt _ result fn args -> undefined
+    IfStmt _ e s1 s2 -> undefined -- the callee of stmt must ensure that all children are
+                        -- accounted for
+    WhileStmt _ e s -> do
+      expr env e -- this permits non-boolean tests
+      noop -- Will change for occurrence types
+    ForInStmt _ id e s -> fail "ForIn NYI"
+    TryStmt _ s id catches finally  -> fail "TryStmt NYI"
+    ThrowStmt _ e -> do
+      expr env e
+      noop
+    ReturnStmt _ Nothing 
+      | rettype == undefType -> noop
+      | otherwise -> fail $ "expected return value, returning nothing"
+    ReturnStmt _ (Just e) -> do
+      te <- expr env e
+      unless (te == rettype) $
+        fail $ printf "expected return %s, got %s" (show rettype) (show te)
+      noop
+    LabelledStmt _ _ _ -> noop
+    BreakStmt _ _ -> noop
+    ContinueStmt _ _ -> noop
+    SwitchStmt _ _ cases default_ -> undefined
 
 expr :: Env -- ^the environment in which to type-check this expression
      -> Expr (Int,SourcePos)
@@ -130,10 +157,20 @@ expr env e = case e of
     Just (Just t) -> return t
   DotRef{} -> fail "NYI"
   BracketRef{} -> fail "NYI"
-  OpExpr _ f args -> fail "NYI"
+  OpExpr _ f args -> fail "NYI" -- perator f args
   Lit (StringLit (_,a) _) -> return $ TId a "string"
   Lit (NumLit (_,a) _) -> return $ TId a "double"
   Lit (IntLit (_,a) _) -> return $ TId a "int"
+  Lit (BoolLit (_,p) _) -> return $ TId p "bool"
+  Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
+  Lit (ArrayLit (_,p) es) -> do
+    -- TODO: Allow subtyping
+    ts <- mapM (expr env) es
+    if (length (nub ts) == 1) 
+      then return (TApp p (TId p "Array") [head ts])
+      else fail "array subtyping NYI"
+  Lit (ObjectLit _ props) -> fail "object lits NYI"
+  
 
 -- |When a node has multiple parents, this function combines their environments.
 unionEnv :: Env -> Env -> Env

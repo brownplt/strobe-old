@@ -15,6 +15,7 @@ module TypedJavaScript.Prelude
   , Set
   , Foldable
   , Traversable
+  , printf
   ) where
 
 
@@ -29,6 +30,7 @@ import Data.Set (Set)
 import Data.Foldable (Foldable)
 import Data.Traversable (Traversable)
 import Text.PrettyPrint.HughesPJ
+import Text.Printf
 
  
 -- |Similar to 'everything'.  'everythingBut' descends into 'term' only if
