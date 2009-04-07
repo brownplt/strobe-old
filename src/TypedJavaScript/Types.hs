@@ -3,11 +3,17 @@ module TypedJavaScript.Types
   , emptyEnv
  -- , argEnv
   , undefType
+  , stringType
+  , intType
+  , doubleType
+  , boolType
   , inferLit
   , unTVal
   , deconstrFnType
   , applyType
   , freeTIds
+  , (<:)
+  , unionType
   ) where
 
 import TypedJavaScript.Prelude
@@ -28,6 +34,14 @@ emptyEnv = M.empty
 
 undefType :: Type SourcePos
 undefType = (TId p "undefined")
+
+stringType = TId p "string"
+
+intType = TId p "integer"
+
+doubleType = TId p "double"
+
+boolType = TId p "bool"
 
 {-
 -- |Builds the local enviroment of a function.
@@ -118,3 +132,90 @@ inferLit expr =
 
 unTVal (TVal _ t) = t
 unTVal t = error $ "unTVal expected a TVal, received " ++ show t
+
+x <: y = x <:~ y
+x <:~ y = isSubType' x y
+
+isSubType' :: Type SourcePos -> Type SourcePos -> Bool
+--objects are invariant in their common field types
+--TODO: verify that the 'case' here is well-founded, and that I'm not
+--      doing something silly.
+isSubType' (TObject _ props1) (TObject _ props2) =
+  all (\(o2id@(Id _ o2propname), o2proptype) -> maybe
+        False (\o1proptype -> case (o1proptype,o2proptype) of
+                  --want to preserve this subtype among object props:
+                  (TObject{},TObject{}) -> isSubType' 
+                    o1proptype o2proptype
+                  --but don't want subtype for other things:
+                  _ -> o1proptype == o2proptype)     
+              (lookup o2id props1))
+      props2
+
+isSubType' f2@(TFunc _ this2 req2 var2 ret2 lp2)  -- is F2 <= F1?
+          f1@(TFunc _ this1 req1 var1 ret1 lp1) =
+  let ist = isSubType'       
+   in ist ret2 ret1                       --covariance of return types
+      && length req2 >= length req1       --at least as many req args
+      && (var2==Nothing || var1/=Nothing) --f2 has varargs -> f1 has varargs
+      && (lp1 == lp2 || lp1 == LPNone) --from TypedScheme
+      && --contravariance of arg types. TODO: fix this.
+         (let maxargs = max (length req2 + (maybe 0 (const 1) var2)) 
+                            (length req1 +  (maybe 0 (const 1) var1))
+              all2    = (map Just $ req2 ++ (maybe [] repeat var2)) ++ repeat Nothing
+              all1    = (map Just $ req1 ++ (maybe [] repeat var1)) ++ repeat Nothing
+           in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
+
+--the first of these cases works if both are unions; the second does not.
+{- 
+(x U y) <: (x U y)
+--------------------------
+first: x <: x U y and y <: x U y
+-----------------------------------------
+second: 
+(x U y) <: x or (x U y) <: y
+(x <: x and x <: y) or (x <: y and y <: y)
+-}
+isSubType' (TUnion _ ts) t = case ts of
+  [] -> False
+  _ -> all (\ti -> ti <:~ t) ts
+isSubType' t (TUnion _ ts) = any (t <:~) ts
+isSubType' _ (TId _ "any") = True -- TODO: O RLY?
+isSubType' (TId _ "int") (TId _ "double") = True
+isSubType' (TId _ x) (TId _ y) = x == y
+isSubType' (TApp _ (TId _ "Array") args1) (TApp _ (TId _ "Array") args2) =
+  args1 == args2
+isSubType' (TApp _ c1 args1) (TApp _ c2 args2) = 
+  c2 <:~ c1 &&
+  (and $ zipWith (==) args1 args2) && --TODO: invariance better than subtyping?
+  (length args1 == length args2)
+isSubType'(TVal v1 t1) (TVal v2 t2) = v1 `eqLit` v2 && t1 <:~ t2
+isSubType' (TVal _ t1) t2 = t1 <:~ t2
+isSubType' (TForall ids1 tcs1 t1) (TForall ids2 tcs2 t2) = 
+  ids1 == ids2 && tcs1 == tcs2 && t1 == t2
+
+isSubType' (TIndex (TObject _ props1) (TVal (StringLit p s1) _) kn1)
+          (TIndex (TObject _ props2) (TVal (StringLit _ s2) _) kn2) = 
+  s1 == s2 && kn1 == kn2 && (do
+    p1 <- lookup (Id p s1) props1
+    p2 <- lookup (Id p s2) props2
+    if p1 <:~ p2
+      then return True
+      else Nothing) /= Nothing
+isSubType' (TIndex o1@(TObject _ props1) kt1@(TUnion _ s1s) kn1)
+          (TIndex o2@(TObject _ props2) kt2@(TUnion _ s2s) kn2) = 
+  kt1 == kt2 && kn1 == kn2 && 
+    all (\s1 -> isSubType' (TIndex o1 s1 kn1) (TIndex o2 s1 kn2))
+        s1s
+
+isSubType' _ _ = False
+
+
+unionType :: Maybe (Type SourcePos) 
+          -> Maybe (Type SourcePos)
+          -> Maybe (Type SourcePos)
+unionType Nothing _ = Nothing
+unionType _ Nothing = Nothing
+unionType (Just t1) (Just t2)
+  | t1 <: t2 = Just t2
+  | t2 <: t1 = Just t1
+  | otherwise = Just (TUnion noPos [t1, t2]) -- TODO: What?

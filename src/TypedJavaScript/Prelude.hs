@@ -7,6 +7,7 @@ module TypedJavaScript.Prelude
   , everythingBut
   , SourcePos
   , initialPos
+  , noPos
   , sourceName
   , sourceLine
   , sourceColumn
@@ -32,7 +33,9 @@ import Data.Traversable (Traversable)
 import Text.PrettyPrint.HughesPJ
 import Text.Printf
 
- 
+noPos :: SourcePos
+noPos = initialPos ""
+
 -- |Similar to 'everything'.  'everythingBut' descends into 'term' only if
 -- the generic predicate is 'True'.  If the predicate is 'False',
 -- the query is still applied to 'term'.

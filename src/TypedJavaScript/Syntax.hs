@@ -7,7 +7,6 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          exprPos, stmtPos, typePos, TypeConstraint (..)) where
 
 import TypedJavaScript.Prelude
-import BrownPLT.Common()
 import qualified Data.Foldable as F
 import BrownPLT.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..), 
   PostfixOp (..))
