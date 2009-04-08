@@ -13,7 +13,7 @@ module TypedJavaScript.Types
   , applyType
   , freeTIds
   , (<:)
-  , unionType
+  , unionType, unionTypeVP
   ) where
 
 import TypedJavaScript.Prelude
@@ -26,8 +26,9 @@ import TypedJavaScript.Syntax (Type (..))
 
 p = initialPos "TypedJavaScript.Types"
 
---maps names to their type... should visible predicates be here?
-type Env = Map String (Maybe (Type SourcePos))
+--maps names to their type.
+--ANF-generated variables have visible predicates.
+type Env = Map String (Maybe (Type SourcePos, Maybe VP))
 
 emptyEnv :: Env
 emptyEnv = M.empty
@@ -219,3 +220,16 @@ unionType (Just t1) (Just t2)
   | t1 <: t2 = Just t2
   | t2 <: t1 = Just t1
   | otherwise = Just (TUnion noPos [t1, t2]) -- TODO: What?
+
+{- so far, the only things that have VPs are ANF vars,
+   and they will never appear in both branches, or after the branch
+   they are in at all, so it is irrelevant to keep ther VPs around -}
+unionTypeVP :: Maybe (Type SourcePos, Maybe VP)
+            -> Maybe (Type SourcePos, Maybe VP)
+            -> Maybe (Type SourcePos, Maybe VP)
+unionTypeVP Nothing _ = Nothing
+unionTypeVP _ Nothing = Nothing
+unionTypeVP (Just (t1, mvp1)) (Just (t2, mvp2)) = 
+  case unionType (Just t1) (Just t2) of
+    Nothing -> Nothing
+    Just t  -> Just (t, Nothing)

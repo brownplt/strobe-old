@@ -37,7 +37,7 @@ typeOfExpr expr' = do
     Nothing -> fail $ "catastrophic failure: result unbound in " ++ show env
     Just Nothing -> fail "catastrophic result not found"
     
-    Just (Just t) -> return t
+    Just (Just (t, mvp)) -> return t
 
 assertType :: SourcePos -> Expression SourcePos -> Type SourcePos -> Assertion
 assertType pos expr expectedType = do

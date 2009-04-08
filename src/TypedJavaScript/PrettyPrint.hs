@@ -316,6 +316,15 @@ instance Show (Statement a) where
   show t = show $ pp t
 instance Show (Type a) where
   show t = show $ pp t
+  
+instance Show VP where
+  show (VPId s)     = "VPId " ++ show s
+  show (VPType t s) = "VPType " ++ show t ++ " " ++ show s
+  show VPTrue       = "VPTrue"
+  show VPFalse      = "VPFalse"
+  show VPNone       = "VPNone"
+  show (VPTypeof s) = "VPTypeof " ++ s
+  show (VPNot v)    = "VPNot " ++ show v
 
 --}}}
 

@@ -6,7 +6,7 @@ import qualified Data.Set as S
 import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Strict
 import qualified TypedJavaScript.Syntax as TJS
-import TypedJavaScript.Syntax (Type (..), VP (..))
+import TypedJavaScript.Syntax (Type (..), VP (..), LatentPred (..))
 import TypedJavaScript.Environment
 import TypedJavaScript.Types
 import TypedJavaScript.Graph
@@ -120,7 +120,7 @@ catastrophe loc msg =
   fail $ printf "CATASTROPHIC FAILURE: %s (at %s)" msg (show loc)
 
 forceEnvLookup :: Monad m
-               => SourcePos -> Env -> Id -> m (Type SourcePos)
+               => SourcePos -> Env -> Id -> m (Type SourcePos, Maybe VP)
 forceEnvLookup loc env name = case M.lookup name env of
   Nothing -> 
     fail $ printf "at %s: identifier %s is unbound" (show loc) name
@@ -151,22 +151,39 @@ stmt env ee rettype node s = do
     SeqStmt{} -> noop
     EmptyStmt _ -> noop
     AssignStmt (_,p) v e -> do
-      (te,v_vp) <- expr env ee e
-      case M.lookup v env of
-        Nothing -> 
+      (te,e_vp) <- expr env ee e
+      case M.lookup v env of        
+        Nothing -> --unbound id
           fail $ printf "at %s: identifier %s is unbound" (show p) v
-        Just Nothing -> do
-          let env' = M.insert v (Just te) env
+        Just Nothing -> do --ANF variable, or locally inferred variable
+          let env' = if v !! 0 == '&'
+                       then M.insert v (Just (te, Just e_vp)) env
+                       else M.insert v (Just (te, Nothing)) env
           return $ zip succs (repeat env')
-        Just (Just t) | te <: t -> noop
-                      | otherwise -> subtypeError p t te
+        Just (Just (t, v_vp)) --explicitly typed variable
+          --the presence of these asserts makes me think our env-type is
+          --not descriptive enough.
+          | v !! 0 == '&' -> fail "ANF var shouldnt have a type"
+          | v_vp /= Nothing -> fail "non-ANF var shouldn't have a VP"
+          | te <: t -> noop 
+          | otherwise -> subtypeError p t te
     DirectPropAssignStmt _ obj method e -> undefined
     IndirectPropAssignStmt _ obj method e -> fail "obj[method] NYI"
     DeleteStmt _ r del -> fail "delete NYI"
     NewStmt{} -> fail "NewStmt will be removed from ANF"
     CallStmt (_,p) r_v f_v args_v -> do
-        f <- forceEnvLookup p env f_v
-        actuals' <- mapM (forceEnvLookup p env) args_v
+        (f, f_vp) <- forceEnvLookup p env f_v
+        actualsWithVP' <- mapM (forceEnvLookup p env) args_v
+        let (actuals', actuals_mvps) = unzip actualsWithVP'
+        --actuals_vps contains Maybe VP. If it's Just, then it's an ANF
+        --var remembering its VP. If it's Nothing, then it's a real variable,
+        --and it's VP is the variable itself.
+        let getvp name mvp = case mvp of
+              Nothing -> VPId name
+              Just vp  
+                | name !! 0 /= '&' -> error "non-ANF var has VP in the env"
+                | otherwise        -> vp
+            actuals_vps = zipWith getvp args_v actuals_mvps
         let actuals = tail (tail actuals') -- drop this, arguments for now
         case deconstrFnType f of
           Nothing -> typeError p ("expected function; received " ++ show f)
@@ -184,26 +201,34 @@ stmt env ee rettype node s = do
                   unless (undefType <: actual) $
                     typeError p "non-null argument not supplied"
             mapM_ checkMissingArg missing
-            -- For call statemens, we must ensure that the result type is
-            -- a subtype of the named result.
-            case M.lookup r_v env of
-              Nothing -> catastrophe p (printf "result %s is unbound" r_v)
-              Just Nothing -> do
-                let env' = M.insert r_v (Just r) env
-                return $ zip succs (repeat env')
-              Just (Just r') | r <: r' -> noop -- No refinement?
-                             | otherwise -> subtypeError p r' r
-   {- 
+    
             --if we have a 1-arg func that has a latent pred, applied to a
             --visible pred of VID, then this is a T-AppPred        
             let isvpid (VPId _) = True
                 isvpid _        = False
-                a1vp            = args_vp !! 0
-            if length formals_t == 1 
-               && latentPred /= LPNone && isvpid a1vp
-              then let (VPId id) = a1vp
-                       (LPType ltype) = latentPred
-                    in return (result_t, VPType ltype id) -}
+                arg1_vp         = actuals_vps !! 0
+                r_vp = if length formals == 1 
+                          && latentPred /= LPNone && isvpid arg1_vp
+                         then let (VPId id) = arg1_vp
+                                  (LPType ltype) = latentPred
+                               in (VPType ltype id)
+                         else VPNone
+                
+            -- For call statemens, we must ensure that the result type is
+            -- a subtype of the named result.
+            case M.lookup r_v env of
+              Nothing -> catastrophe p (printf "result %s is unbound" r_v)
+              Just Nothing -> do --ANF, or type-infer
+                let env' = if r_v !! 0 == '&'
+                             then M.insert r_v (Just (r, Just r_vp)) env
+                             else M.insert r_v (Just (r, Nothing)) env
+                return $ zip succs (repeat env')
+              Just (Just (r', r_vp) )
+                | r_v !! 0 == '&' -> fail "ANF var has type"
+                | r_vp /= Nothing -> fail "non-ANF var shouldn't have a VP"
+                | r <: r' -> noop -- No refinement?
+                | otherwise -> subtypeError p r' r
+ 
           Just (typeArgs,_,_,_,_) ->
             -- This should not happen:
             -- forall a b c. forall x y z . int -> bool
@@ -239,14 +264,17 @@ expr :: Env -- ^the environment in which to type-check this expression
      -> TypeCheck (Type SourcePos, VP) 
 expr env ee e = case e of 
   VarRef (_,p) id -> do
-    t <- forceEnvLookup p env id
-    return (t,VPId id)
+    (t, mvp) <- forceEnvLookup p env id
+    case mvp of
+      Nothing | id !! 0 == '&' -> fail "ANF var should have VP"
+              | otherwise      -> return (t, VPId id)
+      Just vp | id !! 0 /= '&' -> fail "non-ANf var shouldn't have VP"
+              | otherwise      -> return (t, vp) 
   DotRef{} -> fail "NYI"
   BracketRef{} -> fail "NYI"
   OpExpr (_,p) f args_e -> do
     args <- mapM (expr env ee) args_e
-    t <- operator p f (map fst args)
-    return (t, VPNone)
+    operator p f args
   Lit (StringLit (_,a) s) -> 
     return (TId a "string", if length s == 0 then VPFalse else VPTrue)
   Lit (RegexpLit _ _ _ _) -> fail "regexp NYI"
@@ -271,19 +299,26 @@ expr env ee e = case e of
     Just _ -> catastrophe p "many types for function in the erased environment"
   
 operator :: SourcePos -> FOp 
-         -> [Type SourcePos] -> TypeCheck (Type SourcePos)
-operator loc op args = do
+         -> [(Type SourcePos, VP)] -> TypeCheck (Type SourcePos, VP)
+operator loc op argsvp = do
+  let (args, vps) = unzip argsvp
   -- The ANF transform gaurantees that the number of arguments is correct for
   -- the specified operator.
+  let novp t = (t, VPNone)
+  
   let lhs = args !! 0
-  let rhs = args !! 1 -- Do not use rhs if  op takes just one argument!
+  let rhs = args !! 1 -- Do not use rhs if op takes just one argument!
+                      -- (yay for laziness)
+                      -- TODO: what if len args > 2?
+  let lvp = vps !! 0
+      rvp = vps !! 1                      
   let cmp = do
         unless ((lhs == stringType && rhs == stringType) ||
                 (lhs <: doubleType && rhs <: doubleType)) $ do
           typeError loc (printf "can only compare numbers and strings")
-        return boolType
+        return $ novp boolType
   let bool = if lhs == rhs && lhs == boolType
-               then return boolType
+               then return $ novp boolType
                else typeError loc "expected a boolean"
   let numeric requireInts returnDouble = do
         assertSubtype loc lhs
@@ -291,8 +326,22 @@ operator loc op args = do
         assertSubtype loc rhs
           (if requireInts then intType else doubleType)
         if returnDouble
-          then return doubleType
-          else return (if lhs <: intType then rhs else lhs)
+          then return $ novp doubleType
+          else return $ novp (if lhs <: intType then rhs else lhs)
+
+  --TODO: equalityvp will only work once we have value types again
+  let equalityvp a b@(_,VPTypeof _) = equalityvp b a
+      equalityvp (_,(VPTypeof i)) (TVal (TJS.StringLit _ s) (TId p "string"),_) =
+        case s of
+          "number" -> VPType (TId p "double") i
+          "undefined" -> VPType undefType i
+          "boolean" -> VPType (TId p "bool") i
+          "string" -> VPType (TId p "string") i
+          "function" -> error "vp for typeof x == 'function' nyi"
+          "object" -> error "vp for typeof x == 'object' nyi"
+          _ -> VPNone
+      equalityvp _ _ = VPNone
+
   case op of
     OpLT -> cmp
     OpLEq -> cmp
@@ -300,10 +349,14 @@ operator loc op args = do
     OpGEq -> cmp 
     OpIn -> fail "OpIn NYI"
     OpInstanceof -> fail "OpInstanceof NYI"
-    OpEq -> return boolType
-    OpStrictEq -> return boolType
-    OpNEq -> return boolType
-    OpStrictNEq -> return boolType
+
+    OpEq        -> return (boolType, equalityvp (lhs,lvp) (rhs,rvp))
+    OpStrictEq  -> return (boolType, equalityvp (lhs,lvp) (rhs,rvp))
+    OpNEq       -> return (boolType, 
+                           VPNot (equalityvp (lhs,lvp) (rhs,rvp)))
+    OpStrictNEq -> return (boolType, 
+                           VPNot (equalityvp (lhs,lvp) (rhs,rvp)))
+
     OpLAnd -> bool
     OpLOr -> bool
     OpMul -> numeric False False
@@ -316,27 +369,28 @@ operator loc op args = do
     OpBAnd -> numeric True False
     OpBXor -> numeric True False
     OpBOr -> numeric True False
-    OpAdd | lhs == rhs && lhs == stringType -> return stringType
+    OpAdd | lhs == rhs && lhs == stringType -> return $ novp stringType
           | otherwise -> numeric False False
     PrefixLNot -> do
       assertSubtype loc lhs boolType
-      return boolType
+      return $ novp boolType
     PrefixBNot -> do
       assertSubtype loc lhs intType
-      return intType
+      return $ novp intType
     PrefixMinus -> do
-      assertSubtype loc lhs doubleType
-      return lhs
+      assertSubtype loc lhs doubleType -- TODO: more like, asserSub intType
+      return $ novp lhs
     PrefixVoid -> do
       catastrophe loc (printf "void has been removed")
-    PrefixTypeof -> do
-      fail "typeof NYI"
+    PrefixTypeof -> case lvp of 
+      VPId i -> return (stringType, VPTypeof i)
+      _      -> return (stringType, VPNone)
 
 
 -- |When a node has multiple parents, this function combines their environments.
 unionEnv :: Env -> Env -> Env
 unionEnv env1 env2 =
-  foldl' (\env (id, maybeType) -> M.insertWith unionType id maybeType env)
+  foldl' (\env (id, maybeType) -> M.insertWith unionTypeVP id maybeType env)
          env1 (M.toList env2)
 
 uneraseEnv :: Env -> ErasedEnv -> Lit (Int, SourcePos) -> (Env, Type SourcePos)
@@ -348,7 +402,11 @@ uneraseEnv env ee (FuncLit (_, pos) args locals _) = (env', rettype) where
   argtypes = zip (map fst args') (map Just (undefined:undefined:types))
   localtypes = map (\(name,(_, pos)) -> (name, liftM head (M.lookup pos ee))) 
                    locals
-  env' = M.union (M.fromList (argtypes++localtypes)) env 
+  --the only typed things here are args and explicitly typed locals, neither
+  --of which have VPs.
+  novp (a,Just t)  = (a, Just (t, Nothing))
+  novp (a,Nothing) = (a, Nothing)
+  env' = M.union (M.fromList (map novp $ argtypes++localtypes)) env 
 uneraseEnv env ee _ = error "coding fail - uneraseEnv given a function-not"
 
 typeCheckProgram :: Env
@@ -388,7 +446,7 @@ typeCheck prog = do
   -- These "erased environments" are returned in a tree with the same shape as
   -- 'intraprocs' above.
   let envs = buildErasedEnvTree prog
-  let globalEnv = M.fromList [("this", Just (TObject noPos []))]
+  let globalEnv = M.fromList [("this", Just (TObject noPos [], Nothing))]
   (env, state) <- runStateT (typeCheckProgram globalEnv (envs, intraprocs)) 
                             (TypeCheckState G.empty M.empty)
   return env
