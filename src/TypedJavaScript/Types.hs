@@ -120,6 +120,7 @@ freeTIds type_ =
     findTId _ = S.empty
   
 
+
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
 -- expressions in types
 inferLit :: Monad m 
@@ -127,7 +128,7 @@ inferLit :: Monad m
          -> m (Type SourcePos)
 inferLit (StringLit p _) = return (TId p "string")
 inferLit (NumLit p _) = return (TId p "double")
-inferLit (IntLit p _) = return (TId p "integer")
+inferLit (IntLit p _) = return (TId p "int")
 inferLit (BoolLit p _) = return (TId p "bool")
 inferLit expr =
   fail $ "Cannot use as a literal"
