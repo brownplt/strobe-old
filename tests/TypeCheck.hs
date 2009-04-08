@@ -21,6 +21,7 @@ import TypedJavaScript.Syntax
 import TypedJavaScript.Lexer (semi,reservedOp,reserved)
 import TypedJavaScript.Parser (parseType,parseExpression)
 import TypedJavaScript.TypeCheck (typeCheck)
+import TypedJavaScript.Types ((<:))
 import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
 
@@ -49,7 +50,7 @@ assertType pos expr expectedType = do
       assertBool ((showSp pos) ++ ": type mismatch, " ++ 
                   (show exprType) ++ " is not a subtype of " ++ 
                   (show expectedType)) 
-                 (exprType == expectedType)
+                 (exprType <: expectedType)
 
 assertTypeError :: SourcePos -> Expression SourcePos -> Assertion
 assertTypeError pos expr = do

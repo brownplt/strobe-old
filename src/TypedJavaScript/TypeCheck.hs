@@ -15,6 +15,7 @@ import BrownPLT.JavaScript.Analysis.Intraprocedural (Graph,
   allIntraproceduralGraphs)
 import BrownPLT.JavaScript.Analysis.ANF
 import BrownPLT.JavaScript.Analysis.ANFUtils
+import BrownPLT.JavaScript.Analysis.ANFPrettyPrint
 import TypedJavaScript.ErasedEnvTree
 
 import TypedJavaScript.TypeErasure
@@ -156,14 +157,16 @@ stmt env ee rettype node s = do
         Nothing -> --unbound id
           fail $ printf "at %s: identifier %s is unbound" (show p) v
         Just Nothing -> do --ANF variable, or locally inferred variable
-          let env' = if v !! 0 == '&'
+          let env' = if v !! 0 == '@'
                        then M.insert v (Just (te, Just e_vp)) env
                        else M.insert v (Just (te, Nothing)) env
           return $ zip succs (repeat env')
-        Just (Just (t, v_vp)) --explicitly typed variable
+        Just (Just (t, v_vp)) --explicitly typed variable, or ANF w/ type now
           --the presence of these asserts makes me think our env-type is
           --not descriptive enough.
-          | v !! 0 == '&' -> fail "ANF var shouldnt have a type"
+          | v !! 0 == '@' -> fail $ printf "var at %s has type %s" (show p)
+                                    (show t)
+
           | v_vp /= Nothing -> fail "non-ANF var shouldn't have a VP"
           | te <: t -> noop 
           | otherwise -> subtypeError p t te
@@ -181,7 +184,7 @@ stmt env ee rettype node s = do
         let getvp name mvp = case mvp of
               Nothing -> VPId name
               Just vp  
-                | name !! 0 /= '&' -> error "non-ANF var has VP in the env"
+                | name !! 0 /= '@' -> error "non-ANF var has VP in the env"
                 | otherwise        -> vp
             actuals_vps = zipWith getvp args_v actuals_mvps
         let actuals = tail (tail actuals') -- drop this, arguments for now
@@ -219,12 +222,12 @@ stmt env ee rettype node s = do
             case M.lookup r_v env of
               Nothing -> catastrophe p (printf "result %s is unbound" r_v)
               Just Nothing -> do --ANF, or type-infer
-                let env' = if r_v !! 0 == '&'
+                let env' = if r_v !! 0 == '@'
                              then M.insert r_v (Just (r, Just r_vp)) env
                              else M.insert r_v (Just (r, Nothing)) env
                 return $ zip succs (repeat env')
               Just (Just (r', r_vp) )
-                | r_v !! 0 == '&' -> fail "ANF var has type"
+                | r_v !! 0 == '@' -> fail "ANF var has type"
                 | r_vp /= Nothing -> fail "non-ANF var shouldn't have a VP"
                 | r <: r' -> noop -- No refinement?
                 | otherwise -> subtypeError p r' r
@@ -234,8 +237,9 @@ stmt env ee rettype node s = do
             -- forall a b c. forall x y z . int -> bool
             catastrophe p "application still has uninstantiated type variables"
          
-    IfStmt _ e s1 s2 -> do
-      t <- expr env ee e -- this permits non-boolean tests
+    IfStmt (_, p) e s1 s2 -> do
+      (t, _) <- expr env ee e -- this permits non-boolean tests
+      assertSubtype p t boolType
       noop -- will change for occurrence types
     WhileStmt _ e s -> do
       expr env ee e -- this permits non-boolean tests
@@ -266,9 +270,9 @@ expr env ee e = case e of
   VarRef (_,p) id -> do
     (t, mvp) <- forceEnvLookup p env id
     case mvp of
-      Nothing | id !! 0 == '&' -> fail "ANF var should have VP"
+      Nothing | id !! 0 == '@' -> fail "ANF var should have VP"
               | otherwise      -> return (t, VPId id)
-      Just vp | id !! 0 /= '&' -> fail "non-ANf var shouldn't have VP"
+      Just vp | id !! 0 /= '@' -> fail "non-ANf var shouldn't have VP"
               | otherwise      -> return (t, vp) 
   DotRef{} -> fail "NYI"
   BracketRef{} -> fail "NYI"
@@ -295,7 +299,11 @@ expr env ee e = case e of
   Lit (ObjectLit _ props) -> fail "object lits NYI"
   Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
     Nothing -> catastrophe p "function type is not in the erased environment"
-    Just [t] -> return (t, VPTrue)
+    Just [t] -> case deconstrFnType t of
+      Just (_, _, argTypes, _, _) 
+        | length argTypes == (length args - 2) -> return (t, VPTrue)
+        | otherwise -> typeError p "invalid number of arguments"
+      Nothing -> typeError p "not a function type"
     Just _ -> catastrophe p "many types for function in the erased environment"
   
 operator :: SourcePos -> FOp 
@@ -308,8 +316,6 @@ operator loc op argsvp = do
   
   let lhs = args !! 0
   let rhs = args !! 1 -- Do not use rhs if op takes just one argument!
-                      -- (yay for laziness)
-                      -- TODO: what if len args > 2?
   let lvp = vps !! 0
       rvp = vps !! 1                      
   let cmp = do
@@ -369,7 +375,7 @@ operator loc op argsvp = do
     OpBAnd -> numeric True False
     OpBXor -> numeric True False
     OpBOr -> numeric True False
-    OpAdd | lhs == rhs && lhs == stringType -> return $ novp stringType
+    OpAdd | lhs == stringType || rhs == stringType -> return $ novp stringType
           | otherwise -> numeric False False
     PrefixLNot -> do
       assertSubtype loc lhs boolType
@@ -395,12 +401,16 @@ unionEnv env1 env2 =
 
 uneraseEnv :: Env -> ErasedEnv -> Lit (Int, SourcePos) -> (Env, Type SourcePos)
 uneraseEnv env ee (FuncLit (_, pos) args locals _) = (env', rettype) where
+  lookupEE pos name = case M.lookup pos ee of
+    Nothing -> Nothing
+    Just t | head name == '@' -> Nothing
+           | otherwise -> Just t
   functype = head $ ee ! pos
   Just (_, cs, types, rettype, lp) = deconstrFnType functype
   -- undefined for this, arguments
   args' = args -- if null args then args else (tail $ tail args)
   argtypes = zip (map fst args') (map Just (undefined:undefined:types))
-  localtypes = map (\(name,(_, pos)) -> (name, liftM head (M.lookup pos ee))) 
+  localtypes = map (\(name,(_, pos)) -> (name, liftM head (lookupEE pos name))) 
                    locals
   --the only typed things here are args and explicitly typed locals, neither
   --of which have VPs.
@@ -437,6 +447,7 @@ typeCheck prog = do
   -- original program.  For now, we assume that the conversion to ANF preserves
   -- the type structure of the program.
   let (topDecls, anfProg) = jsToCore (simplify (eraseTypes prog))
+  liftIO $ putStrLn $ "\n" ++ (prettyANF anfProg)
   let (anf, intraprocs) = allIntraproceduralGraphs (topDecls, anfProg)
   -- Since all type annotations are erased in the previous step, map locations
   -- to type annotations, so they may be recovered later.  The locations are

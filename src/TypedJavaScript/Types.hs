@@ -38,7 +38,7 @@ undefType = (TId p "undefined")
 
 stringType = TId p "string"
 
-intType = TId p "integer"
+intType = TId p "int"
 
 doubleType = TId p "double"
 
@@ -232,4 +232,5 @@ unionTypeVP _ Nothing = Nothing
 unionTypeVP (Just (t1, mvp1)) (Just (t2, mvp2)) = 
   case unionType (Just t1) (Just t2) of
     Nothing -> Nothing
-    Just t  -> Just (t, Nothing)
+    Just t  -> Just (t, if mvp1 == mvp2 then mvp1 else Just VPNone)
+
