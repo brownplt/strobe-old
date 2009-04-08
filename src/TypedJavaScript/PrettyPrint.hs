@@ -5,6 +5,7 @@ module TypedJavaScript.PrettyPrint
 
 import Text.PrettyPrint.HughesPJ
 import TypedJavaScript.Syntax
+import BrownPLT.JavaScript.Analysis.ANFPrettyPrint (prettyLit)
 
 class PrettyPrintable a where
   pp :: a -> Doc
@@ -52,7 +53,7 @@ instance PrettyPrintable (Type a) where
   pp (TId _ id) = text id
   pp (TApp _ constr args) = 
     pp constr <> text "<" <> (hsep $ punctuate comma $ map pp args) <> text ">"
-  pp (TVal e t) = text "'" <> pp e -- <> text " (" <> pp t <> text ")"
+  pp (TVal e t) = text "'" <> (text.prettyLit) e -- <> text " (" <> pp t <> text ")"
   pp (TForall ids constraints t) =
     text "forall" <+> (hsep $ punctuate comma $ map text ids) <+> text ":" <+>
     (hsep $ punctuate comma $ map pp constraints) <+> text "." <+> pp t

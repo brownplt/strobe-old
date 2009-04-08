@@ -10,6 +10,7 @@ import TypedJavaScript.Prelude
 import qualified Data.Foldable as F
 import BrownPLT.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..), 
   PostfixOp (..))
+import BrownPLT.JavaScript.Analysis.ANF (Lit, eqLit)
 
 data JavaScript a
   -- |A script in <script> ... </script> tags.  This may seem a little silly,
@@ -37,7 +38,7 @@ data Type a
   | TId a String -- an Id defined through a 'type' statement
   | TApp a (Type a) [Type a]
   | TUnion a [Type a]
-  | TVal (Expression a) (Type a) -- expr should be a literal
+  | TVal (Lit a) (Type a)
   | TForall [String] [TypeConstraint] (Type a)
   | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
   deriving (Data,Typeable,Ord)
@@ -61,12 +62,6 @@ data LatentPred a = LPType (Type a) | LPNone
 instance Eq (Id a) where
   Id _ s1 == Id _ s2 = s1 == s2
 
-eqLit :: Expression a -> Expression a -> Bool
-eqLit (StringLit _ s1) (StringLit _ s2) = s1 == s2
-eqLit (NumLit _ n1) (NumLit _ n2) = n1 == n2
-eqLit (IntLit _ n1) (IntLit _ n2) = n1 == n2
-eqLit (BoolLit _ b1) (BoolLit _ b2) = b1 == b2
-eqLit _ _ = False
 
 instance Eq (Type a) where
   TObject _ props1 == TObject _ props2 = 

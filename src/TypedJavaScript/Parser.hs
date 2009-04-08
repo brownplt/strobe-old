@@ -18,6 +18,7 @@ module TypedJavaScript.Parser
   ) where
 
 import qualified TypedJavaScript.Types as Types
+import qualified BrownPLT.JavaScript.Analysis.ANF as ANF
 import TypedJavaScript.Lexer hiding (identifier)
 import qualified TypedJavaScript.Lexer as Lexer
 import TypedJavaScript.Syntax
@@ -151,12 +152,21 @@ type_'' =
         | otherwise = fail "duplicate fields in an object type specification"
     in (parens type_) <|> union <|> object <|> valueType <|> constrOrId
 
+
+toANFLit :: Expression SourcePos -> ANF.Lit SourcePos
+toANFLit (StringLit p s) = ANF.StringLit p s
+toANFLit (NumLit p x) = ANF.NumLit p x
+toANFLit (IntLit p n) = ANF.IntLit p n
+toANFLit (BoolLit p b) = ANF.BoolLit p b
+toANFLit e = error $ "toANFLit: cannot use " ++ show e ++ " as a literal type"
+
+
 valueType :: CharParser st (Type SourcePos)
 valueType = do
   char '\'' -- the expression must immediately follow, no spaces
   e <- parseSimpleExpr'
   t <- Types.inferLit e
-  return (TVal e t)
+  return (TVal (toANFLit e) t)
 
 constrOrId :: CharParser st (Type SourcePos)
 constrOrId = do

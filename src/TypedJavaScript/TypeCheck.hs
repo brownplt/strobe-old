@@ -31,6 +31,14 @@ data TypeCheckState = TypeCheckState {
 
 type TypeCheck a = StateT TypeCheckState IO a
 
+-- |Returns the successors of the node, paired with the labels on the edges to the successors.
+stmtSuccs :: Stmt (Int, SourcePos) -> TypeCheck [(G.Node, Maybe (Lit (Int, SourcePos)))]
+stmtSuccs s = do
+  state <- get
+  let node = fst (stmtLabel s)
+  let gr = stateGraph state
+  return (G.lsuc gr node) 
+
 
 nodeToStmt :: G.Node -> TypeCheck (Stmt (Int,SourcePos))
 nodeToStmt node = do
@@ -93,10 +101,6 @@ stmtForBody enclosingEnv erasedEnv rettype node = do
   succs <- stmt (M.union localEnv enclosingEnv) erasedEnv rettype node s
   mapM_ updateLocalEnv succs
     
-stmtSuccs :: G.Node -> TypeCheck [G.Node]
-stmtSuccs stmtNode = do
-  state <- get
-  return (G.suc (stateGraph state) stmtNode)
 
 subtypeError :: Monad m
              => SourcePos
@@ -129,6 +133,10 @@ forceEnvLookup loc env name = case M.lookup name env of
     fail $ printf "at %s: identifier %s is unbound" (show loc) name
   Just (Just t) -> return t
 
+assert :: Monad m => Bool -> String -> m ()
+assert True _ = return ()
+assert False msg = fail ("CATASPROPHIC FAILURE: " ++  msg)
+
 assertSubtype :: Monad m
               => SourcePos -> Type SourcePos -> Type SourcePos -> m ()
 assertSubtype loc received expected = case received <: expected of
@@ -143,9 +151,9 @@ stmt :: Env -- ^the environment in which to type-check this statement
      -> Stmt (Int, SourcePos)
      -> TypeCheck [(G.Node, Env)]
 stmt env ee rettype node s = do
-  succs <- stmtSuccs node
+  succs <- stmtSuccs s
   -- statements that do not affect the incoming environment are "no-ops"
-  let noop = return (zip succs (repeat env))
+  let noop = return (zip (map fst succs) (repeat env))
   case s of
     EnterStmt _ -> noop
     ExitStmt _ -> noop
@@ -160,7 +168,7 @@ stmt env ee rettype node s = do
           let env' = if v !! 0 == '@'
                        then M.insert v (Just (te, Just e_vp)) env
                        else M.insert v (Just (te, Nothing)) env
-          return $ zip succs (repeat env')
+          return $ zip (map fst succs) (repeat env')
         Just (Just (t, v_vp)) --explicitly typed variable, or ANF w/ type now
           --the presence of these asserts makes me think our env-type is
           --not descriptive enough.
@@ -225,7 +233,7 @@ stmt env ee rettype node s = do
                 let env' = if r_v !! 0 == '@'
                              then M.insert r_v (Just (r, Just r_vp)) env
                              else M.insert r_v (Just (r, Nothing)) env
-                return $ zip succs (repeat env')
+                return $ zip (map fst succs) (repeat env')
               Just (Just (r', r_vp) )
                 | r_v !! 0 == '@' -> fail "ANF var has type"
                 | r_vp /= Nothing -> fail "non-ANF var shouldn't have a VP"
@@ -238,8 +246,10 @@ stmt env ee rettype node s = do
             catastrophe p "application still has uninstantiated type variables"
          
     IfStmt (_, p) e s1 s2 -> do
-      (t, _) <- expr env ee e -- this permits non-boolean tests
+      (t, vp) <- expr env ee e -- this permits non-boolean tests
       assertSubtype p t boolType
+      assert (length succs == 2) "IfStmt should have two successors"
+      
       noop -- will change for occurrence types
     WhileStmt _ e s -> do
       expr env ee e -- this permits non-boolean tests
@@ -337,7 +347,7 @@ operator loc op argsvp = do
 
   --TODO: equalityvp will only work once we have value types again
   let equalityvp a b@(_,VPTypeof _) = equalityvp b a
-      equalityvp (_,(VPTypeof i)) (TVal (TJS.StringLit _ s) (TId p "string"),_) =
+      equalityvp (_,(VPTypeof i)) (TVal (StringLit _ s) (TId p "string"),_) =
         case s of
           "number" -> VPType (TId p "double") i
           "undefined" -> VPType undefType i

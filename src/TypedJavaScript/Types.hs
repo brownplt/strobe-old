@@ -16,6 +16,7 @@ module TypedJavaScript.Types
   , unionType, unionTypeVP
   ) where
 
+import qualified BrownPLT.JavaScript.Analysis.ANF as ANF
 import TypedJavaScript.Prelude
 import TypedJavaScript.PrettyPrint()
 import TypedJavaScript.Syntax
@@ -194,8 +195,8 @@ isSubType' (TVal _ t1) t2 = t1 <:~ t2
 isSubType' (TForall ids1 tcs1 t1) (TForall ids2 tcs2 t2) = 
   ids1 == ids2 && tcs1 == tcs2 && t1 == t2
 
-isSubType' (TIndex (TObject _ props1) (TVal (StringLit p s1) _) kn1)
-          (TIndex (TObject _ props2) (TVal (StringLit _ s2) _) kn2) = 
+isSubType' (TIndex (TObject _ props1) (TVal (ANF.StringLit p s1) _) kn1)
+          (TIndex (TObject _ props2) (TVal (ANF.StringLit _ s2) _) kn2) = 
   s1 == s2 && kn1 == kn2 && (do
     p1 <- lookup (Id p s1) props1
     p2 <- lookup (Id p s2) props2
