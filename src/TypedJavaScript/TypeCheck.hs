@@ -17,11 +17,8 @@ import BrownPLT.JavaScript.Analysis.ANF
 import BrownPLT.JavaScript.Analysis.ANFUtils
 import BrownPLT.JavaScript.Analysis.ANFPrettyPrint
 import TypedJavaScript.ErasedEnvTree
-
 import TypedJavaScript.TypeErasure
 
-
-import qualified Data.GraphViz as GV
 
 data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,

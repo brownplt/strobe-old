@@ -236,3 +236,83 @@ unionTypeVP (Just (t1, mvp1)) (Just (t2, mvp2)) =
     Nothing -> Nothing
     Just t  -> Just (t, if mvp1 == mvp2 then mvp1 else Just VPNone)
 
+flattenUnion :: (Type SourcePos) -> (Type SourcePos)
+flattenUnion (TUnion pos ts) = 
+	case (foldl
+				 (\res t -> case t of
+											TUnion _ tocomb -> res ++ tocomb
+											regular -> res ++ [regular])
+				 [] ts) of
+	 [onet] -> onet
+	 noneormanyt -> TUnion pos noneormanyt
+
+flattenUnion  t = t
+
+
+-- Helpers for occurrence typing, from TypedScheme paper
+-- TODO: should occurrence typing have isSubType', or isSubType ?
+restrict :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
+restrict s t
+ | s <:~ t = s
+ | otherwise = case t of
+     TUnion pos ts -> flattenUnion $ 
+                        TUnion pos (map (restrict s) ts)
+     --TODO: make sure restrict is correct; this is different than
+     --the typed scheme paper
+     _ -> let rez = flattenUnion $
+                      TUnion (typePos s) 
+                             (filter (\hm -> isSubType' hm t)
+                                     (case s of
+                                        TUnion _ ts -> ts
+                                        _ -> [s]))
+           in case rez of 
+                TUnion _ [] -> t
+                _ -> rez
+
+remove :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
+remove s t
+ | s <:~ t = TUnion (typePos s) []
+ | otherwise = case t of
+     TUnion pos ts -> flattenUnion $ 
+                        TUnion pos (map (remove s) ts)
+     --TODO: make sure remove is correct; this is different than
+     --the typed scheme paper
+     _ -> flattenUnion $ 
+            TUnion (typePos s) 
+                   (filter (\hm -> not $ isSubType' hm t)
+                           (case s of
+                             TUnion _ ts -> ts
+                             _ -> [s]))
+     
+--TODO: in TS, 'false' is false, and everything else is true. the same
+--is not true in JS, so we have to think about how to handle gammaPlus
+--and gammaMinus with VPIds.
+
+gammaPlus :: Env -> VP -> Env
+gammaPlus env (VPType t v) =  case M.lookup v env of
+  Nothing -> env
+  Just Nothing -> env
+  Just (Just (t', vp_t)) -> M.insert v (Just (restrict t' t, vp_t)) env
+--gammaPlus g (VPId x) = error "Gamma + VPId NYI" 
+gammaPlus g (VPNot vp) = gammaMinus g vp
+gammaPlus g _ = g
+
+gammaMinus :: Env -> VP -> Env
+gammaMinus env (VPType t v) = case M.lookup v env of
+  Nothing -> env
+  Just Nothing -> env
+  Just (Just (t', vp_t)) -> M.insert v (Just (remove t' t, vp_t)) env
+gammaMinus g (VPNot vp) = gammaPlus g vp
+gammaMinus g _ = g
+
+combpred :: VP -> VP -> 
+            VP -> VP 
+combpred (VPType t x1) VPTrue (VPType s x2) =
+  if (x1 == x2) 
+    then VPType (TUnion (typePos t) [t, s]) x1 --flattenUnion here?
+    else VPNone
+combpred VPTrue f1 f2 = f1
+combpred VPFalse f1 f2 = f2
+combpred f VPTrue VPFalse = f
+combpred f1 f2 f3 = if f2 == f3 then f2 else VPNone
+
