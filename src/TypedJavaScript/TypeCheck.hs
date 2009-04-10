@@ -475,24 +475,23 @@ typeCheck prog = do
   
   -- load the global environment from "core.js"
   dir <- getDataDir
-  toplevels <- parseFromFile (parseToplevels) (dir </> "core.tjs")
+  toplevels' <- parseFromFile (parseToplevels) (dir </> "core.tjs")
+  toplevels <- case toplevels' of
+    Left err -> fail $ "PARSD ERROR ON CORE.TJS: " ++ show err
+    Right tls -> return tls
   
   -- (varenv, typeenv)
-  let tl2env vs ts (TJS.ExternalStmt _ (TJS.Id _ s) t) = 
-        (M.insertWith (error $ "already bound id: " ++ s)
-                      s t vs,
-         ts)
-      tl2env vs ts (TJS.TypeStmt _ (TJS.Id _ s) t) =  
-        (vs, 
-         M.insertWith (error $ "already bound id: " ++ s)
-                      s t ts)  
+  let tl2env (TJS.ExternalStmt _ (TJS.Id _ s) t) = 
+        (M.singleton s (Just (t, Nothing)), M.empty)
+      tl2env (TJS.TypeStmt _ (TJS.Id _ s) t) =  
+        (M.empty, M.singleton s (Just (t, Nothing)))
 
   --TODO: pass typeenv around, too.
   let globalVarEnv = M.unions $ 
-        (map (tl2env M.empty M.empty) toplevels) ++ 
+        (map fst (map tl2env toplevels)) ++ 
         [M.fromList [("this", Just (TObject noPos [], Nothing))]]
   
-  (env, state) <- runStateT (typeCheckProgram globalEnv (envs, intraprocs)) 
+  (env, state) <- runStateT (typeCheckProgram globalVarEnv (envs, intraprocs)) 
                             (TypeCheckState G.empty M.empty)
   return env
 
