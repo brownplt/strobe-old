@@ -69,6 +69,7 @@ assertTypeSuccess pos expr = do
 
 parseTestCase :: CharParser st Test
 parseTestCase = (do
+  --whiteSpace --TODO: make uncomment work to fix bug
   pos <- getPosition
   expr <- parseExpression
   let typeOK = do

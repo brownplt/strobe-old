@@ -106,4 +106,4 @@ stmt s = case s of
   ThrowStmt _ e -> expr e
   ReturnStmt _ e -> maybe empty expr e
   VarDeclStmt _ vars -> unions $ map vardecl vars
-  TypeStmt{} -> error "TODO: not implemented"  
+

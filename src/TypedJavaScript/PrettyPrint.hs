@@ -91,8 +91,12 @@ instance PrettyPrintable (VarDecl a) where
   pp (VarDeclExpr _ id t expr) =
     pp id <+> ppt t <+> equals <+> pp expr
 
+instance PrettyPrintable (ToplevelStatement a) where
+  pp (TypeStmt _ id t) = text "type " $+$ (pp id) $+$ text " :: " $+$ (pp t) $+$ text ";"
+  pp (ExternalStmt _ id t) = text "external " $+$ (pp id) $+$ text " :: " $+$ (pp t) $+$ text ";"
+  
 instance PrettyPrintable (Statement a) where
-  pp (TypeStmt _ id t) = text "type" <+> pp id <+> ppt (Just t) <> semi
+--  pp (TypeStmt _ id t) = text "type" <+> pp id <+> ppt (Just t) <> semi
   pp (BlockStmt _ stmts) =
     text "{" $+$ nest 2 (vcat (map pp stmts)) $+$ text "}"
   pp (EmptyStmt _) =
@@ -316,6 +320,9 @@ instance Show (ForInInit a) where
 instance Show (Statement a) where
   show t = show $ pp t
 instance Show (Type a) where
+  show t = show $ pp t
+
+instance Show (ToplevelStatement a) where
   show t = show $ pp t
   
 instance Show VP where

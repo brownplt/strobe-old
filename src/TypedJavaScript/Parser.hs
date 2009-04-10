@@ -15,6 +15,7 @@ module TypedJavaScript.Parser
   , StatementParser
   , ExpressionParser
   , parseAssignExpr
+  , parseToplevel, parseToplevels
   ) where
 
 import qualified TypedJavaScript.Types as Types
@@ -35,6 +36,7 @@ import qualified Data.List as L
 type ParsedStatement = Statement SourcePos
 type ParsedExpression = Expression SourcePos
 type ParsedType = Type SourcePos
+type ParsedToplevel = ToplevelStatement SourcePos
 type MaybeParsedType = Maybe (Type SourcePos)
 
 -- These parsers can store some arbitrary state
@@ -42,6 +44,7 @@ type StatementParser state = CharParser state ParsedStatement
 type ExpressionParser state = CharParser state ParsedExpression
 type TypeParser state = CharParser state ParsedType
 type MaybeTypeParser state = CharParser state MaybeParsedType
+type ToplevelParser state = CharParser state ParsedToplevel
 
 identifier =
   liftM2 Id getPosition Lexer.identifier
@@ -422,6 +425,7 @@ parseConstructorStmt = do
   body <- parseBlockStmt <?> "function body in { ... }"
   return (ConstructorStmt pos name args [] Nothing body) -}
 
+{-
 parseTypeStmt :: StatementParser st
 parseTypeStmt = do
   pos <- getPosition
@@ -429,7 +433,7 @@ parseTypeStmt = do
   id <- identifier
   thetype <- parseType
   semi
-  return (TypeStmt pos id thetype)
+  return (TypeStmt pos id thetype) -}
                
 parseStatement:: StatementParser st
 parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt 
@@ -438,7 +442,7 @@ parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt
   <|> parseTryStmt <|> parseThrowStmt <|> parseReturnStmt
   <|> parseVarDeclStmt  <|> parseFunctionStmt
   -- added for tJS
-  <|> parseTypeStmt <|> parseConstructorStmt 
+  <|> parseConstructorStmt 
   
   -- labelled, expression and the error message always go last, in this order
   <|> parseLabelledStmt <|> parseExpressionStmt <?> "statement"
@@ -834,6 +838,30 @@ parseAssignExpr = buildExpressionParser assignTable parseTernaryExpr
 parseExpression:: ExpressionParser st
 parseExpression = parseAssignExpr
 
+
+externalStmt = do
+  pos <- getPosition --TODO: is this a good position?
+  reserved "external"
+  id <- identifier
+  t <- parseType
+  semi
+  return (ExternalStmt pos id t)
+typeStmt = do
+  pos <- getPosition --TODO: is this a good position?
+  reserved "type"
+  id <- identifier
+  t <- parseType
+  semi
+  return (TypeStmt pos id t)
+
+parseToplevel :: ToplevelParser st
+parseToplevel = externalStmt <|> typeStmt
+
+parseToplevels = do
+  whiteSpace
+  res <- parseToplevel `sepBy` whiteSpace
+  return res
+
 parseListExpr =
   liftM2 ListExpr getPosition (parseAssignExpr `sepBy1` comma)
 
@@ -862,3 +890,4 @@ parseString :: String -> [Statement SourcePos]
 parseString str = case parse parseScript "" str of
   Left err -> error (show err)
   Right (Script _ stmts) -> stmts
+

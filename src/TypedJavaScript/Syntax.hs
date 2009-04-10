@@ -2,7 +2,8 @@
 module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
-         ForInit(..),ForInInit(..),Type(..), VP(..),LatentPred(..),
+         ForInit(..),ForInInit(..),Type(..), VP(..),LatentPred(..),         
+         ToplevelStatement(..),
          showSp, propToString, unId, eqLit,
          exprPos, stmtPos, typePos, TypeConstraint (..)) where
 
@@ -42,6 +43,13 @@ data Type a
   | TForall [String] [TypeConstraint] (Type a)
   | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
   deriving (Data,Typeable,Ord)
+
+-- the following are constructs which just assign types to IDs, either
+-- in the variable environment (ExternalStmt) or in the type
+-- environment (TypeStmt).
+data ToplevelStatement a 
+  = TypeStmt a (Id a) (Type a)
+  | ExternalStmt a (Id a) (Type a)
 
 --visible pred is always paired with a type, so can get its pos from there
 --latent pred is always part of a function, so can get its pos from there
@@ -189,16 +197,11 @@ data Statement a
                       [(Id a, Type a)] {- optional args -}
                       (Maybe (Id a, Type a)) {- optional var arg -}
                       (Statement a) {-body-} -}
-  | TypeStmt a (Id a) (Type a) -- e.g. "type Point :: {x :: int, y :: int};"
   deriving (Data,Typeable,Eq,Ord)  
   
 showSp :: SourcePos -> String
 showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)
   
---external statements should only go in the top-level?
-{- data Toplevel a
-  =  ExternalStmt a (Id a) (Type a) -}
-
 -- <3 generics:
 exprPos :: (Expression SourcePos) -> SourcePos
 exprPos x = maybe (error "Expression has no SourcePos")

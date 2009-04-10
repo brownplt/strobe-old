@@ -19,6 +19,12 @@ import BrownPLT.JavaScript.Analysis.ANFPrettyPrint
 import TypedJavaScript.ErasedEnvTree
 import TypedJavaScript.TypeErasure
 
+import Paths_TypedJavaScript
+import Text.ParserCombinators.Parsec
+import TypedJavaScript.Parser (parseToplevels)
+
+import System.Directory
+import System.FilePath
 
 data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,
@@ -28,8 +34,10 @@ data TypeCheckState = TypeCheckState {
 
 type TypeCheck a = StateT TypeCheckState IO a
 
--- |Returns the successors of the node, paired with the labels on the edges to the successors.
-stmtSuccs :: Stmt (Int, SourcePos) -> TypeCheck [(G.Node, Maybe (Lit (Int, SourcePos)))]
+-- |Returns the successors of the node, paired with the labels on the
+-- |edges to the successors.
+stmtSuccs :: Stmt (Int, SourcePos) -> 
+             TypeCheck [(G.Node, Maybe (Lit (Int, SourcePos)))]
 stmtSuccs s = do
   state <- get
   let node = fst (stmtLabel s)
@@ -40,7 +48,7 @@ stmtSuccs s = do
 nodeToStmt :: G.Node -> TypeCheck (Stmt (Int,SourcePos))
 nodeToStmt node = do
   state <- get
-  -- Nodes are just intstateEnvs = M.emptyegers, so looking up the
+  -- Nodes are just integers, so looking up the
   -- node label can fail with an arbitrary integer.
   case G.lab (stateGraph state) node of
     Just stmt -> return stmt
@@ -464,7 +472,26 @@ typeCheck prog = do
   -- These "erased environments" are returned in a tree with the same shape as
   -- 'intraprocs' above.
   let envs = buildErasedEnvTree prog
-  let globalEnv = M.fromList [("this", Just (TObject noPos [], Nothing))]
+  
+  -- load the global environment from "core.js"
+  dir <- getDataDir
+  toplevels <- parseFromFile (parseToplevels) (dir </> "core.tjs")
+  
+  -- (varenv, typeenv)
+  let tl2env vs ts (TJS.ExternalStmt _ (TJS.Id _ s) t) = 
+        (M.insertWith (error $ "already bound id: " ++ s)
+                      s t vs,
+         ts)
+      tl2env vs ts (TJS.TypeStmt _ (TJS.Id _ s) t) =  
+        (vs, 
+         M.insertWith (error $ "already bound id: " ++ s)
+                      s t ts)  
+
+  --TODO: pass typeenv around, too.
+  let globalVarEnv = M.unions $ 
+        (map (tl2env M.empty M.empty) toplevels) ++ 
+        [M.fromList [("this", Just (TObject noPos [], Nothing))]]
+  
   (env, state) <- runStateT (typeCheckProgram globalEnv (envs, intraprocs)) 
                             (TypeCheckState G.empty M.empty)
   return env
