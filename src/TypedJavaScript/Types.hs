@@ -13,23 +13,28 @@ module TypedJavaScript.Types
   , applyType
   , freeTIds
   , (<:)
-  , unionType, unionTypeVP
+  , unionType, unionTypeVP, equalityvp
+  , restrict, remove, gammaPlus, gammaMinus
   ) where
 
-import qualified BrownPLT.JavaScript.Analysis.ANF as ANF
+--import qualified BrownPLT.JavaScript.Analysis.ANF as ANF
+import BrownPLT.JavaScript.Analysis.ANF
 import TypedJavaScript.Prelude
 import TypedJavaScript.PrettyPrint()
-import TypedJavaScript.Syntax
 import qualified Data.Set as S
 import qualified Data.Map as M
 
-import TypedJavaScript.Syntax (Type (..))
+-- we don't want TJS expressions here
+import TypedJavaScript.Syntax (Type (..), VP (..), Id(..),
+  TypeConstraint(..), LatentPred(..), typePos)
+-- but we do need the lits
+import qualified TypedJavaScript.Syntax as TJS
 
 p = initialPos "TypedJavaScript.Types"
 
 --maps names to their type.
 --ANF-generated variables have visible predicates.
-type Env = Map String (Maybe (Type SourcePos, Maybe VP))
+type Env = Map String (Maybe (Type SourcePos, VP))
 
 emptyEnv :: Env
 emptyEnv = M.empty
@@ -95,6 +100,7 @@ substType var sub (TObject p fields) =
   TObject p (map (\(v,t) -> (v,substType var sub t)) fields)
 substType _ _ (TFunc _ (Just _) _ _ _ _) = 
   error "cannot substitute into functions with this-types"
+substType _ _ (TRefined _ _) = error "substType TRefined NYI"
 
 applyType :: Monad m => Type SourcePos -> [Type SourcePos] -> m (Type SourcePos) -- TODO: ensure constraints
 applyType (TForall formals constraints body) actuals = do
@@ -120,16 +126,15 @@ freeTIds type_ =
     findTId _ = S.empty
   
 
-
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
 -- expressions in types
 inferLit :: Monad m 
-         => Expression SourcePos
+         => TJS.Expression SourcePos
          -> m (Type SourcePos)
-inferLit (StringLit p _) = return (TId p "string")
-inferLit (NumLit p _) = return (TId p "double")
-inferLit (IntLit p _) = return (TId p "int")
-inferLit (BoolLit p _) = return (TId p "bool")
+inferLit (TJS.StringLit p _) = return (TId p "string")
+inferLit (TJS.NumLit p _) = return (TId p "double")
+inferLit (TJS.IntLit p _) = return (TId p "int")
+inferLit (TJS.BoolLit p _) = return (TId p "bool")
 inferLit expr =
   fail $ "Cannot use as a literal"
 
@@ -191,11 +196,12 @@ isSubType' (TApp _ c1 args1) (TApp _ c2 args2) =
   c2 <:~ c1 &&
   (and $ zipWith (==) args1 args2) && --TODO: invariance better than subtyping?
   (length args1 == length args2)
-isSubType'(TVal v1 t1) (TVal v2 t2) = v1 `eqLit` v2 && t1 <:~ t2
+isSubType' (TVal v1 t1) (TVal v2 t2) = v1 `eqLit` v2 && t1 <:~ t2
 isSubType' (TVal _ t1) t2 = t1 <:~ t2
 isSubType' (TForall ids1 tcs1 t1) (TForall ids2 tcs2 t2) = 
   ids1 == ids2 && tcs1 == tcs2 && t1 == t2
 
+{-
 isSubType' (TIndex (TObject _ props1) (TVal (ANF.StringLit p s1) _) kn1)
           (TIndex (TObject _ props2) (TVal (ANF.StringLit _ s2) _) kn2) = 
   s1 == s2 && kn1 == kn2 && (do
@@ -209,42 +215,60 @@ isSubType' (TIndex o1@(TObject _ props1) kt1@(TUnion _ s1s) kn1)
   kt1 == kt2 && kn1 == kn2 && 
     all (\s1 -> isSubType' (TIndex o1 s1 kn1) (TIndex o2 s1 kn2))
         s1s
+-}
 
+--TODO: check these TRefined stuff
+-- the 2nd one can only be a TRefined if we're assigning to it (right?)
+-- in this case, we can over-write its refined type, so only the main
+-- matters.
+isSubType' (TRefined m1 r1) (TRefined m2 r2) = isSubType' r1 m2
+isSubType' (TRefined m r) b = isSubType' r b
+isSubType' a (TRefined m r) = isSubType' a m
 isSubType' _ _ = False
+
+{-
+-- can you assign a to b? this is just subtyping.
+assignable (TRefined m1 r1) (TRefined m2 r2) = isSubType' r1 m2
+assignable (TRefined main ref) b = isSubType' ref b
+assignable a (TRefined main ref) = isSubType' a main
+assignable a b = isSubType' a b -}
 
 
 unionType :: Maybe (Type SourcePos) 
           -> Maybe (Type SourcePos)
           -> Maybe (Type SourcePos)
-unionType Nothing _ = Nothing
+unionType Nothing _ = Nothing -- TODO: should this be undefType?
 unionType _ Nothing = Nothing
 unionType (Just t1) (Just t2)
   | t1 <: t2 = Just t2
   | t2 <: t1 = Just t1
   | otherwise = Just (TUnion noPos [t1, t2]) -- TODO: What?
 
-{- so far, the only things that have VPs are ANF vars,
-   and they will never appear in both branches, or after the branch
-   they are in at all, so it is irrelevant to keep ther VPs around -}
-unionTypeVP :: Maybe (Type SourcePos, Maybe VP)
-            -> Maybe (Type SourcePos, Maybe VP)
-            -> Maybe (Type SourcePos, Maybe VP)
+-- keep the VPs that are the same
+-- TODO: something like VPLit 3 "int", VPLit 4 "int" might be salvageable.
+takeEquals :: VP -> VP -> VP
+takeEquals (VPMulti v1s) (VPMulti v2s) = VPMulti (zipWith takeEquals v1s v2s)
+takeEquals (VPMulti v1s) v2 = VPMulti (map (takeEquals v2) v1s)
+takeEquals v1 (VPMulti v2s) = VPMulti (map (takeEquals v1) v2s)
+takeEquals v1 v2 = if v1 == v2 then v1 else VPNone
+
+unionTypeVP :: Maybe (Type SourcePos, VP)
+            -> Maybe (Type SourcePos, VP)
+            -> Maybe (Type SourcePos, VP)
 unionTypeVP Nothing _ = Nothing
 unionTypeVP _ Nothing = Nothing
-unionTypeVP (Just (t1, mvp1)) (Just (t2, mvp2)) = 
+unionTypeVP (Just (t1, vp1)) (Just (t2, vp2)) = 
   case unionType (Just t1) (Just t2) of
     Nothing -> Nothing
-    Just t  -> Just (t, if mvp1 == mvp2 then mvp1 else Just VPNone)
-
+    Just t  -> Just (t, takeEquals vp1 vp2)
 flattenUnion :: (Type SourcePos) -> (Type SourcePos)
 flattenUnion (TUnion pos ts) = 
-	case (foldl
-				 (\res t -> case t of
-											TUnion _ tocomb -> res ++ tocomb
-											regular -> res ++ [regular])
-				 [] ts) of
-	 [onet] -> onet
-	 noneormanyt -> TUnion pos noneormanyt
+	case (foldl (\res t -> case t of 
+                       TUnion _ tocomb -> res ++ tocomb
+                       regular -> res ++ [regular])
+                    [] ts) of
+          [onet] -> onet
+          noneormanyt -> TUnion pos noneormanyt
 
 flattenUnion  t = t
 
@@ -295,6 +319,7 @@ gammaPlus env (VPType t v) =  case M.lookup v env of
   Just (Just (t', vp_t)) -> M.insert v (Just (restrict t' t, vp_t)) env
 --gammaPlus g (VPId x) = error "Gamma + VPId NYI" 
 gammaPlus g (VPNot vp) = gammaMinus g vp
+gammaPlus g (VPMulti vs) = foldl gammaPlus g vs
 gammaPlus g _ = g
 
 gammaMinus :: Env -> VP -> Env
@@ -303,16 +328,104 @@ gammaMinus env (VPType t v) = case M.lookup v env of
   Just Nothing -> env
   Just (Just (t', vp_t)) -> M.insert v (Just (remove t' t, vp_t)) env
 gammaMinus g (VPNot vp) = gammaPlus g vp
+gammaMinus g (VPMulti vs) = foldl gammaMinus g vs
 gammaMinus g _ = g
 
+asBool :: forall a. Lit a -> Bool
+asBool l = case l of
+  StringLit _ s -> s == ""
+  RegexpLit{}   -> True
+  NumLit _ n    -> n == 0.0
+  IntLit _ i    -> i == 0
+  BoolLit _ b   -> b
+  NullLit{}     -> False
+  ArrayLit{}    -> True
+  ObjectLit{}   -> True
+  FuncLit{}     -> True
+
+-- TODO: combpred is not applicable to us anymore, since we don't
+-- have any if expression. this is good/bad?  
 combpred :: VP -> VP -> 
             VP -> VP 
-combpred (VPType t x1) VPTrue (VPType s x2) =
-  if (x1 == x2) 
-    then VPType (TUnion (typePos t) [t, s]) x1 --flattenUnion here?
-    else VPNone
-combpred VPTrue f1 f2 = f1
-combpred VPFalse f1 f2 = f2
-combpred f VPTrue VPFalse = f
+combpred (VPType t x1) (VPLit l _) (VPType s x2) 
+  | asBool l = if (x1 == x2) 
+      then VPType (TUnion (typePos t) [t, s]) x1 --flattenUnion here?
+      else VPNone
+  | otherwise = VPNone
+combpred (VPLit l t) f1 f2 
+  | asBool l = f1
+  | otherwise = f2
+combpred f (VPLit l1 t1) (VPLit l2 t2)
+  | (asBool l1) && (not $ asBool l2) = f
+  | otherwise = VPNone
 combpred f1 f2 f3 = if f2 == f3 then f2 else VPNone
 
+-- combine two VPs into a third, happens with == sign.
+equalityvp :: VP -> VP -> VP
+-- x == 4
+equalityvp (VPId x) (VPLit lit t) = VPType (TVal lit t) x
+equalityvp (VPLit lit t) (VPId x) = VPType (TVal lit t) x
+-- typeof x == "number"
+equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId _ "string")) = case s of
+  "number"    -> VPType (TId p "double") x
+  "undefined" -> VPType undefType x
+  "boolean"   -> VPType (TId p "bool") x
+  "string"    -> VPType (TId p "string") x
+  "function"  -> error "vp for typeof x == 'function' nyi"
+  "object"    -> error "vp for typeof x == 'object' nyi"
+  _           -> VPNone
+equalityvp a@(VPLit (StringLit l s) (TId _ "string")) b@(VPTypeof x) = 
+  equalityvp b a
+
+-- yay for cartesian product.
+-- this could be done implicitly from the other equalityvp definition, but
+-- then we'd have nested VPMultis. doesn't really matter.
+equalityvp (VPMulti v1) (VPMulti v2) = 
+  VPMulti (nub [equalityvp a b | a <- v1, b <- v2])               
+equalityvp a (VPMulti vs) = 
+  VPMulti (map (equalityvp a) vs)
+equalityvp a@(VPMulti{}) b = equalityvp b a
+
+equalityvp _ _ = VPNone
+  
+  
+-- x = typeof y;
+-- VP of x is: VPInfluencer (VPId "x") [VPTypeof "y"]
+-- if (x == "number") {
+--   causes two VPs to be formed and immediately restricted to true:
+--     VPId "x" == VPLit "number" String
+--     VPTypeof "y" == VPLit "number" String
+
+
+-- var x = ...
+-- var tx = typeof x;
+
+-- var stra = "number";
+-- if (tx == stra)
+
+-- VPInfluencer (VPId "tx") [VPTypeof "x"] vs.
+-- VPInfluencer (VPId "stra")  [VPLit "number"]
+
+-- will result in: VPNone, VPType (TVal "number") "tx", 
+--                 VPNone, VPType (TId "double") "x"
+-- the VPNones will be noops, the other 2 are useful.
+
+-- pathological case:
+-- var x = ...
+-- var x1 = typeof x
+-- var x2 = x1
+-- var x3 = x2
+-- var x4 = x3
+
+-- var cmp = "number";
+-- var cmp1 = cmp;
+-- var cmp2 = cmp1;
+-- var cmp3 = cmp2;
+
+-- if (x4 == cmp3) {
+-- }
+
+-- Now we have 5 vs. 5 vps = 25 combinations. yay?
+
+-- VPInfluencer (VPId "x4") [id x3, id x2, id x1, typeof x] vs.
+-- VPInfluencer (VPId "cmp3") [id cmp2, id cmp1, id cmp, vplit "number"]

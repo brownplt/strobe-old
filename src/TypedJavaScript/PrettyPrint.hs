@@ -57,9 +57,11 @@ instance PrettyPrintable (Type a) where
   pp (TForall ids constraints t) =
     text "forall" <+> (hsep $ punctuate comma $ map text ids) <+> text ":" <+>
     (hsep $ punctuate comma $ map pp constraints) <+> text "." <+> pp t
-  pp (TIndex objt keyt keyname) = 
+{-  pp (TIndex objt keyt keyname) = 
     text "@TIndex: " <> pp objt <> text " with " <> pp keyt <> text 
-         " called " <> text keyname <> text "@"
+         " called " <> text keyname <> text "@" -}
+  pp (TRefined general refined) =
+    text "@TRefined:" <+> pp general <+> pp refined
 
 instance PrettyPrintable (Id a) where
   pp (Id _ str) = text str
@@ -328,11 +330,13 @@ instance Show (ToplevelStatement a) where
 instance Show VP where
   show (VPId s)     = "VPId " ++ show s
   show (VPType t s) = "VPType " ++ show t ++ " " ++ show s
-  show VPTrue       = "VPTrue"
-  show VPFalse      = "VPFalse"
+{-  show VPTrue       = "VPTrue"
+  show VPFalse      = "VPFalse" -}
   show VPNone       = "VPNone"
   show (VPTypeof s) = "VPTypeof " ++ s
   show (VPNot v)    = "VPNot " ++ show v
+  show (VPLit l t)  = "VPLit '" ++ show l ++ " " ++ show t
+  show (VPMulti vs) = "VPMulti " ++ show vs
 
 --}}}
 

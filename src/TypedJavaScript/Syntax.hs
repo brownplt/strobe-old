@@ -41,7 +41,10 @@ data Type a
   | TUnion a [Type a]
   | TVal (Lit a) (Type a)
   | TForall [String] [TypeConstraint] (Type a)
-  | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
+  -- | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
+  --the first type, 'refined' to the 2nd
+  | TRefined (Type a) (Type a) 
+  
   deriving (Data,Typeable,Ord)
 
 -- the following are constructs which just assign types to IDs, either
@@ -51,17 +54,32 @@ data ToplevelStatement a
   = TypeStmt a (Id a) (Type a)
   | ExternalStmt a (Id a) (Type a)
 
---visible pred is always paired with a type, so can get its pos from there
---latent pred is always part of a function, so can get its pos from there
+-- hack-ish to avoid parametrizing VP. 
 data VP = VPId String
         | VPType (Type SourcePos) String
-        | VPTrue 
-        | VPFalse
         | VPNone
-        --TODO: Justify VPTypeof, VPNot
+        --TODO: Justify the following VPs:
         | VPTypeof String
         | VPNot VP
+        | VPLit (Lit SourcePos) (Type SourcePos)
+        | VPMulti [VP]
     deriving (Data, Typeable, Ord, Eq)
+
+-- VPId "x" == VPLit 3 (TId "int")
+--  becomes:
+-- VPType (TVal 3 (TId "int")) "x"
+-- when it's true: 
+--    restrict x to TVal 3 int
+-- when false:
+--    remove TVal 3 int from x
+
+-- x --> VPId "x"
+-- typeof e where e has vp VPID "x" --> VPTypeof "x"
+-- e1 == e2 where e1 has vp VPTypeof "x" and
+--  e2 has vp VPLit "number" (TId "String"):
+-- VPTypeof "x" == VPLit "number" (TId "string")
+--  becomes:
+-- VPType (TId "double") "x"
 
 data LatentPred a = LPType (Type a) | LPNone
     deriving (Data,Typeable,Ord)
