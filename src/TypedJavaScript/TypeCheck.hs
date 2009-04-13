@@ -73,16 +73,32 @@ enterNodeOf gr = fst (G.nodeRange gr)
 exitNodeOf :: Graph -> G.Node
 exitNodeOf gr = snd (G.nodeRange gr)
 
+assertReturn :: Monad m => SourcePos -> Maybe (Stmt (Int, SourcePos)) -> m ()
+assertReturn loc Nothing = 
+  catastrophe loc "predecessor of an Exit node is unlabelled in the control \
+                  \flow graph"
+assertReturn _ (Just (ReturnStmt _ _)) =
+  return ()
+assertReturn loc (Just s) =
+  typeError (snd $ stmtLabel s) "expected return after this statement"
+
+
 body :: Env
      -> ErasedEnv
      -> Type SourcePos
      -> G.Node
+     -> G.Node
      -> TypeCheck Env
-body env ee rettype enterNode = do
+body env ee rettype enterNode exitNode = do
   state <- get
   let gr = stateGraph state
-  unless (null $ G.pre gr enterNode) $ -- ENTER has no predecessors
+  -- Enter has no predecessors
+  unless (null $ G.pre gr enterNode) $
     fail $ "Unexpected edges into  " ++ show (G.lab gr enterNode)
+  -- All predecessors of Exit must be ReturnStmt
+  exitStmt <- nodeToStmt exitNode
+  let exitPos = snd (stmtLabel exitStmt)
+  mapM_ (assertReturn exitPos) (map (G.lab gr) (G.pre gr exitNode))
 
   let (nodes,removedEdges) = topologicalOrder gr enterNode
 
@@ -435,7 +451,7 @@ typeCheckProgram env (Node ee subEes, Node (_, lit, gr) subGraphs) = do
   put $ state { stateGraph = gr, stateEnvs = M.empty }
   -- When type-checking the body, we assume the declared types for functions.
   let (env', rettype) = uneraseEnv env ee lit
-  topLevelEnv <- body env' ee rettype (enterNodeOf gr)
+  topLevelEnv <- body env' ee rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descent into nested functions, we ensure that functions satisfy
   -- their declared types.
   -- This handles mutually-recursive functions correctly.  
