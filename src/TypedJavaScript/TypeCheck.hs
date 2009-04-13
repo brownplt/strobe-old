@@ -302,14 +302,15 @@ expr env ee e = case e of
             VPLit (BoolLit a v) (TId a "bool"))
   Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
   Lit (ArrayLit (_,p) es) -> do
-    -- TODO: Allow subtyping
     r <- mapM (expr env ee) es
-    let ts = map fst r
-    if (length (nub ts) == 1) 
-      then return (TApp p (TId p "Array") [head ts], 
-                   VPLit (ArrayLit p (error "dont look inside VP arraylit")) 
-                         (TApp p (TId p "Array") [head ts]))
-      else fail "array subtyping NYI"
+    let ts = nub (map fst r)
+    --TODO: does this type make sense?
+    let atype = if length ts == 1 
+                  then head ts
+                  else TUnion p ts
+    let vp = VPLit (ArrayLit p (error "dont look inside VP arraylit"))
+                   (TApp p (TId p "Array") [atype])
+    return (TApp p (TId p "Array") [atype], vp)
   Lit (ObjectLit _ props) -> fail "object lits NYI"
   Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
     Nothing -> catastrophe p "function type is not in the erased environment"

@@ -1,0 +1,26 @@
+//methods of Array should go here
+
+//constructors should go here; can't do that, yet.
+//we can have certain types, though:
+type RegExp :: {global :: bool,
+                ignoreCase :: bool,
+                lastIndex :: int,
+                multiline :: bool,
+                source :: string,
+                exec :: (string -> Array<string>),
+                test :: (string -> bool)};
+//all this is missing is what to do when you say "new RegExp".
+
+//'static' methods of Date:
+external Date :: {parse :: (string -> int),
+                  UTC :: (int, int, int?, int?, int?, int?, int? -> int)};
+external decodeURI :: (string -> string);
+
+external undefined :: undefined;
+
+//etc... these aren't important. add as they become necessary in examples.
+
+//TODO: DOM stuff. Add those to another file, once these types of
+//  files can be parsed.
+
+
