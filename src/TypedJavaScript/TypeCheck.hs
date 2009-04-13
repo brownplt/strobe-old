@@ -454,7 +454,6 @@ typeCheck prog = do
   -- original program.  For now, we assume that the conversion to ANF preserves
   -- the type structure of the program.
   let (topDecls, anfProg) = jsToCore (simplify (eraseTypes prog))
-  liftIO $ putStrLn $ "\n" ++ (prettyANF anfProg)
   let (anf, intraprocs) = allIntraproceduralGraphs (topDecls, anfProg)
   -- Since all type annotations are erased in the previous step, map locations
   -- to type annotations, so they may be recovered later.  The locations are
