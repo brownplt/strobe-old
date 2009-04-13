@@ -24,7 +24,7 @@ Executable tjs
   Build-Depends:
     base>=4, mtl>=1.1.0.1, parsec<3.0.0, pretty>=0.1, containers>=0.1, syb>=0.1,
     filepath>=1.1.0.1, JsContracts>=0.4, WebBits>=0.13.0,
-    javascript-analysis>=0.5,
+    javascript-analysis>=0.5, directory >= 1.0.0.2,
     fgl
   ghc-options:
     -fwarn-incomplete-patterns

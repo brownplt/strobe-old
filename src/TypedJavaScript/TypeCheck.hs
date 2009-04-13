@@ -1,4 +1,4 @@
-module TypedJavaScript.TypeCheck  where
+module TypedJavaScript.TypeCheck where
 
 import TypedJavaScript.Prelude
 import qualified Data.Map as M
@@ -7,7 +7,6 @@ import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Strict
 import qualified TypedJavaScript.Syntax as TJS
 import TypedJavaScript.Syntax (Type (..), VP (..), LatentPred (..))
-import TypedJavaScript.Environment
 import TypedJavaScript.Types
 import TypedJavaScript.Graph
 import BrownPLT.JavaScript.Analysis (jsToCore, simplify)

@@ -11,7 +11,6 @@ module TypedJavaScript.Types
   , unTVal
   , deconstrFnType
   , applyType
-  , freeTIds
   , (<:)
   , unionType, unionTypeVP, equalityvp
   , restrict, remove, gammaPlus, gammaMinus
@@ -113,18 +112,6 @@ applyType t actuals =
   fail $ "type " ++ show t ++ " is not quantified, but " ++ 
          show (length actuals)  ++ " type arguments were supplied"
 
-freeTIds :: Type SourcePos -> S.Set String
-freeTIds type_ = 
-  everythingBut S.union (mkQ True isNotForall) (mkQ S.empty findTId) type_ where
-    isNotForall :: Type SourcePos -> Bool
-    isNotForall (TForall _ _ _) = False
-    isNotForall _ = True
- 
-    findTId :: Type SourcePos -> S.Set String
-    findTId (TId _ v) = S.singleton v
-    findTId (TForall vars _ t) = S.difference (freeTIds t) (S.fromList vars)
-    findTId _ = S.empty
-  
 
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
 -- expressions in types

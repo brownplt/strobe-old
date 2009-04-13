@@ -5,7 +5,7 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          ForInit(..),ForInInit(..),Type(..), VP(..),LatentPred(..),         
          ToplevelStatement(..),
          showSp, propToString, unId, eqLit,
-         exprPos, stmtPos, typePos, TypeConstraint (..)) where
+         typePos, TypeConstraint (..)) where
 
 import TypedJavaScript.Prelude
 import qualified Data.Foldable as F
@@ -18,7 +18,7 @@ data JavaScript a
   -- but the Flapjax analogue has an inline variant and attribute-inline 
   -- variant.
   = Script a [Statement a] 
-  deriving (Data,Typeable,Eq,Ord)
+  deriving (Eq,Ord)
 
 unId (Id _ s) = s
 
@@ -26,7 +26,7 @@ data Id a = Id a String deriving (Ord,Data,Typeable)
 
 data TypeConstraint
   = TCSubtype (Type SourcePos) (Type SourcePos)
-  deriving (Data,Typeable,Eq,Ord)
+  deriving (Eq,Ord)
 
 --TODO: add TExtend syntax ( <- operator), and a syntax for constructors
 data Type a 
@@ -45,7 +45,7 @@ data Type a
   --the first type, 'refined' to the 2nd
   | TRefined (Type a) (Type a) 
   
-  deriving (Data,Typeable,Ord)
+  deriving (Ord)
 
 -- the following are constructs which just assign types to IDs, either
 -- in the variable environment (ExternalStmt) or in the type
@@ -63,7 +63,7 @@ data VP = VPId String
         | VPNot VP
         | VPLit (Lit SourcePos) (Type SourcePos)
         | VPMulti [VP]
-    deriving (Data, Typeable, Ord, Eq)
+    deriving (Ord, Eq)
 
 -- VPId "x" == VPLit 3 (TId "int")
 --  becomes:
@@ -82,7 +82,7 @@ data VP = VPId String
 -- VPType (TId "double") "x"
 
 data LatentPred a = LPType (Type a) | LPNone
-    deriving (Data,Typeable,Ord)
+    deriving (Ord)
 
 --equalities:
 instance Eq (Id a) where
@@ -120,7 +120,7 @@ instance Eq (LatentPred a) where
 --      that would take any one of these and return its source position?
 data Prop a 
   = PropId a (Id a) | PropString a String | PropNum a Integer
-  deriving (Data,Typeable,Ord)
+  deriving (Ord)
 
 propToString (PropId _ (Id _ s)) = s
 propToString (PropString _ s)    = s
@@ -154,27 +154,27 @@ data Expression a
   | FuncExpr a [Id a] {- arg names -} 
                (Type a)
                (Statement a)    {- body -}
-  deriving (Data,Typeable,Eq,Ord)
+  deriving (Eq,Ord)
 
 data CaseClause a 
   = CaseClause a (Expression a) [Statement a]
   | CaseDefault a [Statement a]
-  deriving (Data,Typeable,Eq,Ord)
+  deriving (Eq,Ord)
   
 data CatchClause a 
   = CatchClause a (Id a) (Statement a) 
-  deriving (Data,Typeable,Eq,Ord)
+  deriving (Eq,Ord)
 
 data VarDecl a 
   = VarDecl a (Id a) (Type a)
   | VarDeclExpr a (Id a) (Maybe (Type a)) (Expression a)
-  deriving (Data,Typeable,Eq,Ord)
+  deriving (Eq,Ord)
   
 data ForInit a
   = NoInit
   | VarInit [VarDecl a]
   | ExprInit (Expression a)
-  deriving (Data,Typeable,Eq,Ord)
+  deriving (Eq,Ord)
 
 data ForInInit a
  -- |These terms introduce a name to the enclosing function's environment.
@@ -182,7 +182,7 @@ data ForInInit a
  -- type inference.  Save type inference for later.
  = ForInVar (Id a) 
  | ForInNoVar (Id a) 
- deriving (Data,Typeable,Eq,Ord)
+ deriving (Eq,Ord)
 
 data Statement a
   = BlockStmt a [Statement a]
@@ -215,20 +215,19 @@ data Statement a
                       [(Id a, Type a)] {- optional args -}
                       (Maybe (Id a, Type a)) {- optional var arg -}
                       (Statement a) {-body-} -}
-  deriving (Data,Typeable,Eq,Ord)  
+  deriving (Eq,Ord)  
   
 showSp :: SourcePos -> String
 showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)
   
--- <3 generics:
-exprPos :: (Expression SourcePos) -> SourcePos
-exprPos x = maybe (error "Expression has no SourcePos")
-                  id (gfindtype x)
-stmtPos :: (Statement SourcePos) -> SourcePos
-stmtPos x = maybe (error "Statement has no SourcePos")
-                  id (gfindtype x)
+-- TODO: Make this function unnecessary.
 typePos :: (Type SourcePos) -> SourcePos
-typePos (TVal xpr t) = typePos t
-typePos x = maybe (error "Type has no SourcePos")
-                  id (gfindtype x)
-
+typePos t = case t of
+  TObject p _ -> p
+  TFunc p _ _ _ _ _ -> p
+  TId p _ -> p
+  TApp p _ _ -> p
+  TUnion p _ -> p
+  TVal _ t' -> typePos t'
+  TForall _ _ t' -> typePos t'
+  TRefined _ t' -> typePos t'

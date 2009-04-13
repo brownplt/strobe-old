@@ -11,8 +11,7 @@ import TypedJavaScript.Lexer
 import TypedJavaScript.Contracts
 import TypedJavaScript.TypeErasure
 import TypedJavaScript.PrettyPrint (pp)
-import TypedJavaScript.Environment
-import TypedJavaScript.TypeChecker
+import TypedJavaScript.TypeCheck
 
 
 pretty :: [ParsedStatement] -> String
