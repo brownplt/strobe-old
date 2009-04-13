@@ -180,7 +180,7 @@ stmt env ee rettype node s = do
                                            VPMulti [VPId v, v_vp])) env
               return $ zip (map fst succs) (repeat env')              
           | otherwise -> subtypeError p t te
-    DirectPropAssignStmt _ obj method e -> undefined
+    DirectPropAssignStmt _ obj method e -> fail "direct prop assgn NYI"
     IndirectPropAssignStmt _ obj method e -> fail "obj[method] NYI"
     DeleteStmt _ r del -> fail "delete NYI"
     NewStmt{} -> fail "NewStmt will be removed from ANF"
@@ -270,7 +270,7 @@ stmt env ee rettype node s = do
     LabelledStmt _ _ _ -> noop
     BreakStmt _ _ -> noop
     ContinueStmt _ _ -> noop
-    SwitchStmt _ _ cases default_ -> undefined
+    SwitchStmt _ _ cases default_ -> error "switch stmt NYI"
 
 expr :: Env -- ^the environment in which to type-check this expression
      -> ErasedEnv
@@ -341,8 +341,8 @@ operator loc op argsvp = do
                 (lhs <: doubleType && rhs <: doubleType)) $ do
           typeError loc (printf "can only compare numbers and strings")
         return $ novp boolType
-  let bool = if lhs == rhs && lhs == boolType
-               then return $ novp boolType
+  let bool = if lhs <: boolType && rhs <: boolType
+               then return $ novp boolType --TODO: combine bool-lits smartly
                else typeError loc "expected a boolean"
   let numeric requireInts returnDouble = do
         assertSubtype loc lhs
@@ -380,7 +380,7 @@ operator loc op argsvp = do
     OpBAnd -> numeric True False
     OpBXor -> numeric True False
     OpBOr -> numeric True False
-    OpAdd | lhs == stringType || rhs == stringType -> return $ novp stringType
+    OpAdd | lhs <: stringType || rhs <: stringType -> return $ novp stringType
           | otherwise -> numeric False False
     PrefixLNot -> do
       assertSubtype loc lhs boolType
