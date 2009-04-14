@@ -30,7 +30,7 @@ data TypeConstraint
 
 --TODO: add TExtend syntax ( <- operator), and a syntax for constructors
 data Type a 
-  = TObject a [(Id a, Type a)]
+  = TObject a [(String, Type a)]
   | TFunc a (Maybe (Type a)) {- type of this -} 
             [Type a] {- required args -} 
             (Maybe (Type a)) {- optional var arg -}
@@ -93,7 +93,7 @@ instance Eq (Type a) where
   TObject _ props1 == TObject _ props2 = 
     (hasall props1 props2) && (hasall props2 props1) where
       hasall p1 p2 = all
-        (\(o2id@(Id _ o2propname), o2proptype) -> maybe
+        (\(o2id, o2proptype) -> maybe
           False ((==) o2proptype) (lookup o2id p1))
         p2
      -- all id (zipWith (==) props props2)

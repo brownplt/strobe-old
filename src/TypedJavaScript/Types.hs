@@ -136,7 +136,7 @@ isSubType' :: Type SourcePos -> Type SourcePos -> Bool
 --TODO: verify that the 'case' here is well-founded, and that I'm not
 --      doing something silly.
 isSubType' (TObject _ props1) (TObject _ props2) =
-  all (\(o2id@(Id _ o2propname), o2proptype) -> maybe
+  all (\(o2id, o2proptype) -> maybe
         False (\o1proptype -> case (o1proptype,o2proptype) of
                   --want to preserve this subtype among object props:
                   (TObject{},TObject{}) -> isSubType' 

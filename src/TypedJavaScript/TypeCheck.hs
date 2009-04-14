@@ -285,7 +285,7 @@ stmt env ee rettype node s = do
     LabelledStmt _ _ _ -> noop
     BreakStmt _ _ -> noop
     ContinueStmt _ _ -> noop
-    SwitchStmt _ _ cases default_ -> error "switch stmt NYI"
+    SwitchStmt _ e cases default_ -> error "switch stmt NYI"
 
 expr :: Env -- ^the environment in which to type-check this expression
      -> ErasedEnv
@@ -297,7 +297,14 @@ expr env ee e = case e of
     case vp of
       VPNone -> return (t, VPId id)
       _      -> return (t, VPMulti [VPId id, vp])
-  DotRef{} -> fail "NYI"
+  DotRef (_, loc) e p -> do
+    (t, _) <- expr env ee e
+    case t of
+      TObject _ props -> case lookup p props of
+        Just t' -> return (t', VPNone)
+        Nothing -> typeError loc (printf "expected object with field %s" p)
+      otherwise -> typeError loc (printf "expected object, received %s"
+                                         (show t))
   BracketRef{} -> fail "NYI"
   OpExpr (_,p) f args_e -> do
     args <- mapM (expr env ee) args_e
@@ -326,7 +333,16 @@ expr env ee e = case e of
     let vp = VPLit (ArrayLit p (error "dont look inside VP arraylit"))
                    (TApp p (TId p "Array") [atype])
     return (TApp p (TId p "Array") [atype], vp)
-  Lit (ObjectLit _ props) -> fail "object lits NYI"
+  Lit (ObjectLit (_, loc) props) -> do
+    let prop (Left s, e) = do
+          -- the VP is simply dropped, but it is always safe to drop a VP
+          (t, vp) <- expr env ee e
+          return (s, t)
+        prop (Right n, e) = do
+          catastrophe loc "object literals with numeric keys NYI"
+    propTypes <- mapM prop props
+    let t = TObject loc propTypes
+    return (t, VPNone)
   Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
     Nothing -> catastrophe p "function type is not in the erased environment"
     Just [t] -> case deconstrFnType t of

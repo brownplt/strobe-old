@@ -180,9 +180,9 @@ constrOrId = do
         return (TApp p (TId p id) args)
   constr <|> (return (TId p id))
 
-field :: CharParser st (Id SourcePos, Type SourcePos)
+field :: CharParser st (String, Type SourcePos)
 field = do
-  id <- identifier
+  id <- Lexer.identifier
   reservedOp "::"
   t <- type_' 
   return (id,t)
