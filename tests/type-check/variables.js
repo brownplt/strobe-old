@@ -1,6 +1,6 @@
 function (x) :: (double -> double) {
   var z :: double = 23;
-  return 54;
+  return z * x;
 } :: (double -> double);
 //both expr and type:
 function (x) :: (double -> double) {
