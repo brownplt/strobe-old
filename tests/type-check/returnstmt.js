@@ -47,7 +47,7 @@ function (x) :: (double -> double ) {
     x++;
   if (x == 9)
     --x;
-    
+
   return x;
 } :: (double -> double);
 
@@ -73,7 +73,7 @@ function(x) :: (double -> int) {
 bar: { break;
        return 500; }
 } @@ fails;
-    
+
 
 function (x) :: (double -> double ) {
   switch (x) {
@@ -81,6 +81,13 @@ function (x) :: (double -> double ) {
     case 4: return 12;
   }
 } @@ fails;
+
+//not all paths returning:
+function (x) :: (U(int, bool) -> bool) {
+   if (typeof x == "number") {
+     return false;
+   }
+} @@ fails; //not all paths return
 
 //Questionable cases: should tJS fail these, because it has code that is impossible to be executed? (like java does)
 function (x) :: (double -> ) {

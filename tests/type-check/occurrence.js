@@ -69,6 +69,84 @@ function (x) :: (U(int, bool) -> bool) {
   }
 } :: (U(int, bool) -> bool);
 
+//testing control flow:
+function (x) :: (U(int, bool) -> bool) {
+   if (typeof x == "number") {
+     return false;
+   }
+   else {
+     return x; //x should be bool
+   }
+} :: U(int, bool) -> bool;
+
+function (x) :: (U(int, bool) -> bool) {
+   if (typeof x == "number") {
+     return false;
+   }
+   return x; //x should be bool
+} :: U(int, bool) -> bool;
+
+//CATASTROPHIC FAILURES:
+//---------------------
+function (x) :: (U(int, bool) -> bool) {
+   if (typeof x == "number") {
+     return false;
+   }
+   if (x) {}
+   return x; //x should be bool
+} :: U(int, bool) -> bool;
+function (x) :: (U(int, bool) -> bool) {
+   if (typeof x == "number") {
+     return false;
+   }
+   if (x) {3;}
+   return x; //x should be bool
+} :: U(int, bool) -> bool;
+//---------------------
+
+//y is not declared, so the following should fail:
+function (x) :: (U(int, bool) -> bool) {
+   if (typeof x == "number") {
+     return false;
+   }
+   if (x) {
+     var z = 9;
+     y = z;
+   }
+   return x; //x should be bool
+} @@ fails;
+//---------------------
+
+function (x) :: (U(int, bool) -> bool) {
+   if (typeof x == "number") {
+     return false;
+   }
+   if (x) {
+     var z = 9;
+   }
+   return x; //x should be bool
+} :: U(int, bool) -> bool;
+function (x) :: (U(int, bool) -> bool) {
+   if (typeof x != "boolean") {
+     return false;
+   }
+   if (x) {
+     var z = 9;
+   }
+   return x; //x should be bool
+} :: U(int, bool) -> bool;
+function (x) :: (U(int, bool) -> bool) {
+   if (typeof x != "boolean") {
+     var ppzzr = 9;
+     return false;
+   }
+   if (x) {
+     var z = 9;
+   }
+   return x; //x should be bool
+} :: U(int, bool) -> bool;
+
+
 function (x) :: (U(int, bool) -> bool) {
   if ((typeof x) != "boolean") {
     var f :: int = 0;
