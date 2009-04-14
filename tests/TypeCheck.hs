@@ -25,11 +25,11 @@ import TypedJavaScript.Types ((<:))
 import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
 
-import Text.ParserCombinators.Parsec.Pos (initialPos, SourcePos)
+import Text.ParserCombinators.Parsec.Pos (newPos, SourcePos)
 
 typeOfExpr :: Expression SourcePos -> IO (Type SourcePos)
 typeOfExpr expr' = do 
-  let p = initialPos "testcase"
+  let p = newPos "@testcase" (-3000) (-4000)
   let stmt = VarDeclStmt p [VarDeclExpr p (Id p "result")
                                          Nothing
                                          expr']

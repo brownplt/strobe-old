@@ -7,7 +7,8 @@ import qualified Data.Set as S
 import Data.Graph.Inductive (Graph, DynGraph, Node, Edge)
 import Data.Set (Set)
 import Data.List
-  
+
+-- this line tests github  
 hasIncomingEdges :: Graph gr
                  => gr a b
                  -> Node -> Bool

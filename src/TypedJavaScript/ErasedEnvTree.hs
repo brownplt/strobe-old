@@ -3,10 +3,12 @@ module TypedJavaScript.ErasedEnvTree
   , ErasedEnv
   ) where
 
+
 import Prelude hiding (catch)
 import Data.Tree
 import TypedJavaScript.Prelude
 import TypedJavaScript.Syntax
+import TypedJavaScript.PrettyPrint ()
 import qualified Data.Map as M
 
 type ErasedEnvTree = Tree ErasedEnv
@@ -17,8 +19,11 @@ empty :: ErasedEnvTree
 empty = Node M.empty []
 
 unions :: [ErasedEnvTree] -> ErasedEnvTree
-unions et = Node (M.unions $ map rootLabel et)
-                    (concatMap subForest et)
+unions et = Node (M.unionsWith 
+                    (\t1 t2 -> error $ printf "Overlapping %s, %s" 
+                                              (show t1) (show t2))
+                    (map rootLabel et))
+                 (concatMap subForest et)
 
 buildErasedEnvTree :: [Statement SourcePos] -> ErasedEnvTree
 buildErasedEnvTree stmts = complete M.empty $ unions (map stmt stmts) where

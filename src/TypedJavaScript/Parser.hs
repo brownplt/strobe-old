@@ -406,8 +406,8 @@ parseVarDeclStmt = do
 
 parseFunctionStmt:: StatementParser st
 parseFunctionStmt = do
-  name <- try (reserved "function" >> identifier) -- ambiguity with FuncExpr
   pos <- getPosition
+  name <- try (reserved "function" >> identifier) -- ambiguity with FuncExpr
   args <- parens (identifier `sepBy` comma)
   functype <- parseType <?> "function type annotation"
   body <- parseBlockStmt
@@ -498,8 +498,8 @@ parseArrayLit = liftM2 ArrayLit getPosition (squares (parseExpression `sepEndBy`
 -- }
   
 parseFuncExpr = do
-  reserved "function"
   pos <- getPosition
+  reserved "function"
   args <- parens (identifier `sepBy` comma)
   functype <- parseType <?> "function type annotation"
   body <- parseBlockStmt

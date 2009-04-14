@@ -57,24 +57,6 @@ function (x) :: (double -> double ) {
   if (x == 5) return 20;
 } @@ fails;
 
-function() :: (double -> int) {
- ; // the type of the function is irrelevant when a path does not return
-} @@ fails;
-
-function(x) :: (double -> int) {
-foo: {
-  if (x == 12.0) { return 500; }
-  else { break; }
-  return 700; // unreachable, but we do not care about that right now
-}
-} @@ fails;
-
-function(x) :: (double -> int) {
-bar: { break;
-       return 500; }
-} @@ fails;
-    
-
 function (x) :: (double -> double ) {
   switch (x) {
     case 3: return 2;
