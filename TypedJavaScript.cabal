@@ -13,7 +13,7 @@ Build-Type:     Custom
 Synopsis:       Typed JavaScript compiler
 Data-Dir:       data
 Data-Files:
-  typedjs_contracts.js
+  typedjs_contracts.js core.tjs
 Description:
 
  
