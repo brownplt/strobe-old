@@ -49,21 +49,7 @@ doubleType = TId p "double"
 
 boolType = TId p "bool"
 
-{-
--- |Builds the local enviroment of a function.
-argEnv :: [(String,Type SourcePos)] -- ^positional arguments
-       -> Maybe (String,Type SourcePos) -- ^vararity argument
-       -> Env
-argEnv posArgs varArg = addVarArg $ foldl' addPosArg emptyEnv posArgs where
-  addPosArg env (x,t) = M.insertWith'
-    (error $ "repeated identifier " ++ x ++ " in an argument list")
-    x t env
-  addVarArg env = case varArg of
-    Nothing -> env
-    Just (x,t) -> M.insertWith'
-      (error $ "repeated identifier " ++ x ++ " in an argument list")
-      x t env
--}
+
 -- |Deconstructs the declared type of a function, returning a list of quantified
 -- variables, the types of each argument, and a return type.  As we enrich the
 -- type-checker to handle more of a function type, include them here.

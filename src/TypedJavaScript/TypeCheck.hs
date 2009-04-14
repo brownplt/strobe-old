@@ -187,14 +187,18 @@ stmt env ee rettype node s = do
         Just Nothing -> do --ANF variable, or locally inferred variable
           let env' = M.insert v (Just (te, VPMulti [VPId v, e_vp])) env
           return $ zip (map fst succs) (repeat env')
-        Just (Just (t, v_vp)) --explicitly typed variable, or ANF w/ type now
-          -- this will nest VPInfluencers.
+        Just (Just (TRefined t _, vp)) | te <: t -> do
+          -- If the LHS has been refined, we can "revert" to its declared
+          -- type.
+          let env' = M.insert v (Just ((TRefined t te), VPMulti [VPId v, vp]))
+                              env
+          return $ zip (map fst succs) (repeat env')
+        Just (Just (t, v_vp)) | te <: t -> do
           -- TODO: remove, from environment, any VP referring to this var!
-          | te <: t -> do
-              let env' = M.insert v (Just (TRefined t te, 
-                                           VPMulti [VPId v, v_vp])) env
-              return $ zip (map fst succs) (repeat env')              
-          | otherwise -> subtypeError p t te
+          let env' = M.insert v (Just (TRefined t te, VPMulti [VPId v, v_vp])) 
+                              env
+          return $ zip (map fst succs) (repeat env')              
+        Just (Just (t, vp)) -> subtypeError p t te
     DirectPropAssignStmt _ obj method e -> fail "direct prop assgn NYI"
     IndirectPropAssignStmt _ obj method e -> fail "obj[method] NYI"
     DeleteStmt _ r del -> fail "delete NYI"
