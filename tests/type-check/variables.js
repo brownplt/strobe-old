@@ -63,21 +63,6 @@ function (ignore) :: (int -> string) {
   }
   return c+d;
 } :: (int -> string);
-function (ignore) :: (int -> string) {
-  var a = 3;
-  var b = 19 + a;
-  var c = "A STRING";
-  var d = "ANOTHeR STRING";
-  var e = (a*4 == (b - 23)) ? c : d;
-
-  if (a*b == 4)
-  {
-      if (e == c) {
-        return d;
-      }
-      return c;
-  }
-} @@ fails; //not all paths return
 
 //function variables!!
 function (mult) :: (double -> (double -> double)) {
@@ -110,7 +95,8 @@ function (x) :: (double -> string) {
   }
   return y;
 } @@ fails;
-//for similar reasons, the next one succeeds:
+
+//the next one should fail, since z has type string?
 function (x) :: (double -> string) {
   var y = 5;
   if (true)
@@ -119,7 +105,17 @@ function (x) :: (double -> string) {
     z += y;
   }
   return z;
-} :: (double -> string);
+} @@ fails;
+//but the next one should succeed
+function (x) :: (double -> string?) {
+  var y = 5;
+  if (true)
+  {
+    var z = "stringy";
+    z += y;
+  }
+  return z;
+} :: (double -> string?);
 
 //re-declaring parameter as another type:
 function (x) :: (double -> string) {
@@ -134,7 +130,7 @@ function (x) :: (double -> string) {
   return y;
 } @@ fails;
 function (x) :: (double -> string) {
-  var x = x + 9;
+  var x = x + 9; //TODO: this fails because of an unbound id error. WTF?
   return x + "s";
 } @@ fails;
 

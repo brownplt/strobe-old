@@ -7,7 +7,7 @@ module TypedJavaScript.Types
   , intType
   , doubleType
   , boolType
-  , inferLit
+  , inferLit, localInference, refined
   , unTVal
   , deconstrFnType
   , applyType
@@ -112,6 +112,11 @@ inferLit (TJS.BoolLit p _) = return (TId p "bool")
 inferLit expr =
   fail $ "Cannot use as a literal"
 
+-- in "var x = e", given the type of e, return what type x should have.
+localInference :: Type SourcePos -> Type SourcePos
+localInference (TVal lit t) = t
+localInference t = t
+
 unTVal (TVal _ t) = t
 unTVal t = error $ "unTVal expected a TVal, received " ++ show t
 
@@ -211,8 +216,9 @@ assignable a b = isSubType' a b -}
 unionType :: Maybe (Type SourcePos) 
           -> Maybe (Type SourcePos)
           -> Maybe (Type SourcePos)
-unionType Nothing _ = Nothing -- TODO: should this be undefType?
-unionType _ Nothing = Nothing
+unionType Nothing Nothing = error "unionType called with 2 Nothings"
+unionType Nothing (Just t) = Just $ TUnion noPos [undefType, t]
+unionType (Just t) Nothing = Just $ TUnion noPos [t, undefType]
 unionType (Just t1) (Just t2)
   | t1 <: t2 = Just t2
   | t2 <: t1 = Just t1
@@ -229,8 +235,9 @@ takeEquals v1 v2 = if v1 == v2 then v1 else VPNone
 unionTypeVP :: Maybe (Type SourcePos, VP)
             -> Maybe (Type SourcePos, VP)
             -> Maybe (Type SourcePos, VP)
-unionTypeVP Nothing _ = Nothing
-unionTypeVP _ Nothing = Nothing
+unionTypeVP Nothing Nothing = error "unionTypeVP called with 2 Nothings"
+unionTypeVP Nothing (Just (t, v)) = Just (TUnion noPos [undefType, t], VPNone)
+unionTypeVP (Just (t, v)) Nothing = Just (TUnion noPos [t, undefType], VPNone)
 unionTypeVP (Just (t1, vp1)) (Just (t2, vp2)) = 
   case unionType (Just t1) (Just t2) of
     Nothing -> Nothing
@@ -363,7 +370,9 @@ equalityvp a (VPMulti vs) =
 equalityvp a@(VPMulti{}) b = equalityvp b a
 
 equalityvp _ _ = VPNone
-  
+
+refined (TRefined main ref) = ref
+refined t = t  
   
 -- x = typeof y;
 -- VP of x is: VPInfluencer (VPId "x") [VPTypeof "y"]

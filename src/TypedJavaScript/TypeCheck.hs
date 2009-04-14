@@ -163,7 +163,6 @@ assertSubtype loc received expected = case received <: expected of
   True -> return ()
   False -> subtypeError loc expected received
 
-
 stmt :: Env -- ^the environment in which to type-check this statement
      -> ErasedEnv
      -> Type SourcePos
@@ -180,12 +179,14 @@ stmt env ee rettype node s = do
     SeqStmt{} -> noop
     EmptyStmt _ -> noop
     AssignStmt (_,p) v e -> do
+      --TODO: distinguish TRefined from Type.
       (te,e_vp) <- expr env ee e
       case M.lookup v env of        
         Nothing -> --unbound id
           fail $ printf "at %s: identifier %s is unbound" (show p) v
         Just Nothing -> do --ANF variable, or locally inferred variable
-          let env' = M.insert v (Just (te, VPMulti [VPId v, e_vp])) env
+          let env' = M.insert v (Just (localInference te, 
+                                       VPMulti [VPId v, e_vp])) env
           return $ zip (map fst succs) (repeat env')
         Just (Just (TRefined t _, vp)) | te <: t -> do
           -- If the LHS has been refined, we can "revert" to its declared
@@ -199,7 +200,15 @@ stmt env ee rettype node s = do
                               env
           return $ zip (map fst succs) (repeat env')              
         Just (Just (t, vp)) -> subtypeError p t te
-    DirectPropAssignStmt _ obj method e -> fail "direct prop assgn NYI"
+    DirectPropAssignStmt (_,p) obj method e -> do
+      (te, e_vp) <- expr env ee e
+      case M.lookup obj env of
+        Nothing -> fail $ printf "at %s: id %s for an object is unbound"
+                             (show p) obj
+        Just Nothing -> do --an object that doesn't have a type yet?
+          fail $ printf "at %s: can't assign to obj %s; has no type yet"
+                   (show p) obj
+        Just (Just (t, vp)) -> fail "(a.b = e) NYI." 
     IndirectPropAssignStmt _ obj method e -> fail "obj[method] NYI"
     DeleteStmt _ r del -> fail "delete NYI"
     NewStmt{} -> fail "NewStmt will be removed from ANF"
@@ -302,7 +311,8 @@ expr env ee e = case e of
       VPNone -> return (t, VPId id)
       _      -> return (t, VPMulti [VPId id, vp])
   DotRef (_, loc) e p -> do
-    (t, _) <- expr env ee e
+    (t', _) <- expr env ee e
+    let t = refined t'
     case t of
       TObject _ props -> case lookup p props of
         Just t' -> return (t', VPNone)
@@ -324,8 +334,8 @@ expr env ee e = case e of
     return (TVal  (IntLit a n) (TId a "int"),
             VPLit (IntLit a n) (TId a "int"))
   Lit (BoolLit (_,a) v) ->
-    return (TVal  (BoolLit a v) (TId a "bool"),
-            VPLit (BoolLit a v) (TId a "bool"))
+    return (TVal  (BoolLit a v) boolType,
+            VPLit (BoolLit a v) boolType)
   Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
   Lit (ArrayLit (_,p) es) -> do
     r <- mapM (expr env ee) es
@@ -341,14 +351,15 @@ expr env ee e = case e of
     let prop (Left s, e) = do
           -- the VP is simply dropped, but it is always safe to drop a VP
           (t, vp) <- expr env ee e
-          return (s, t)
+          -- TODO: extract prop's pos, look it up in EE, make sure it matches. 
+          return (s, t) 
         prop (Right n, e) = do
           catastrophe loc "object literals with numeric keys NYI"
     propTypes <- mapM prop props
     let t = TObject loc propTypes
     return (t, VPNone)
   Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
-    Nothing -> catastrophe p "function type is not in the erased environment"
+    Nothing -> catastrophe p "function lit is not in the erased environment"
     Just [t] -> case deconstrFnType t of
       Just (_, _, argTypes, _, _) 
         | length argTypes == (length args - 2) -> 

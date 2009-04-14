@@ -89,6 +89,22 @@ function (x) :: (U(int, bool) -> bool) {
    }
 } @@ fails; //not all paths return
 
+function (ignore) :: (int -> string) {
+  var a = 3;
+  var b = 19 + a;
+  var c = "A STRING";
+  var d = "ANOTHeR STRING";
+  var e = (a*4 == (b - 23)) ? c : d;
+
+  if (a*b == 4)
+  {
+      if (e == c) {
+        return d;
+      }
+      return c;
+  }
+} @@ fails; //not all paths return
+
 //Questionable cases: should tJS fail these, because it has code that is impossible to be executed? (like java does)
 function (x) :: (double -> ) {
   return;
