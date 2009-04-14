@@ -1,6 +1,6 @@
 function (x) :: (U(int, bool) -> bool) {
   //the typed scheme paper example
-  return (isInt(x) ? (x<<3)==8 : !x);
+  return (typeof x == "number" ? (x<<3)==8 : !x);
 } :: (U(int, bool) -> bool);
 
 //make sure we can filter out not only equal types:
@@ -161,7 +161,7 @@ function (x) :: (U(int, bool) -> string) {
   //now, x should be an integer
   var xshift :: int = x >> 3;
   return "x was an int, here it is: " + x;
-} :: (U(int, bool) -> bool);
+} :: (U(int, bool) -> string);
 
 function (x) :: (U(int, bool) -> string) {
   var result :: string = "tmp";
