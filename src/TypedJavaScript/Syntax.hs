@@ -28,7 +28,6 @@ data TypeConstraint
   = TCSubtype (Type SourcePos) (Type SourcePos)
   deriving (Eq,Ord)
 
---TODO: add TExtend syntax ( <- operator), and a syntax for constructors
 data Type a 
   = TObject a [(String, Type a)]
   | TFunc a (Maybe (Type a)) {- type of this -} 
