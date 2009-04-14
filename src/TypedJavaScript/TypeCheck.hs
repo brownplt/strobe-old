@@ -309,7 +309,7 @@ expr env ee e = case e of
         Nothing -> typeError loc (printf "expected object with field %s" p)
       otherwise -> typeError loc (printf "expected object, received %s"
                                          (show t))
-  BracketRef{} -> fail "NYI"
+  BracketRef{} -> fail "bracketref NYI"
   OpExpr (_,p) f args_e -> do
     args <- mapM (expr env ee) args_e
     operator p f args

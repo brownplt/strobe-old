@@ -55,6 +55,7 @@ boolType = TId p "bool"
 -- type-checker to handle more of a function type, include them here.
 deconstrFnType :: Type SourcePos 
                -> Maybe ([String],[TypeConstraint],[Type SourcePos],Type SourcePos,LatentPred SourcePos)
+deconstrFnType (TRefined main refined) = deconstrFnType refined
 deconstrFnType (TFunc _ _ args _ result latentP) = 
   Just ([],[],args,result,latentP)
 deconstrFnType (TForall ids constraints (TFunc _ _ args _ result latentP)) = 
@@ -252,10 +253,12 @@ restrict :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
 restrict s t
  | s <:~ t = s
  | otherwise = case t of
+     --TODO: make sure TRefined-ness deals well with the following case:
      TUnion pos ts -> flattenUnion $ 
                         TUnion pos (map (restrict s) ts)
      --TODO: make sure restrict is correct; this is different than
      --the typed scheme paper
+     --TODO: make sure returning a TRefined here is correct
      _ -> let rez = flattenUnion $
                       TUnion (typePos s) 
                              (filter (\hm -> isSubType' hm t)
@@ -263,8 +266,8 @@ restrict s t
                                         TUnion _ ts -> ts
                                         _ -> [s]))
            in case rez of 
-                TUnion _ [] -> t
-                _ -> rez
+                TUnion _ [] -> TRefined s t
+                _ -> TRefined s rez
 
 remove :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
 remove s t
@@ -274,7 +277,7 @@ remove s t
                         TUnion pos (map (remove s) ts)
      --TODO: make sure remove is correct; this is different than
      --the typed scheme paper
-     _ -> flattenUnion $ 
+     _ -> TRefined s $ flattenUnion $ 
             TUnion (typePos s) 
                    (filter (\hm -> not $ isSubType' hm t)
                            (case s of

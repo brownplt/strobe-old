@@ -127,6 +127,17 @@ function (x) :: (U(int, bool) -> bool) {
    return x; //x should be bool
 } :: U(int, bool) -> bool;
 function (x) :: (U(int, bool) -> bool) {
+   if (typeof x == "number") {
+     var ppzzr = 10;
+     return false;
+   }
+   if (x) {
+     var z = 9;
+   }
+   return x; //x should be bool
+} :: U(int, bool) -> bool;
+
+function (x) :: (U(int, bool) -> bool) {
    if (typeof x != "boolean") {
      return false;
    }

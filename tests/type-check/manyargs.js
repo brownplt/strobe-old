@@ -1,4 +1,4 @@
-function (a, b, c) :: (int, int, int -> int) { 
+function (a, b, c) :: (int, int, int -> int) {
     return a + b + c;
 } :: (int, int, int -> int);
 function (i, d, s) :: (int, double, string -> string) {
@@ -13,7 +13,7 @@ function () :: (-> string) {
     var z = s+s, z2 = s+x, z3 = z+d; //strings
     return z + z2 + z3;
   }
-  return inner(true, 3.96, "A STRING!!!"); 
+  return inner(true, 3.96, "A STRING!!!");
 } :: (-> string);
 
 function (r1, r2, o1, o2) :: (int, int, int, double -> string) {
