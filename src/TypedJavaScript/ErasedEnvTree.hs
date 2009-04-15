@@ -31,13 +31,12 @@ proploc (PropId pos _) = pos
 proploc (PropString pos _) = pos
 proploc (PropNum pos _) = pos
 
-prop :: [(Prop SourcePos, Maybe (Type SourcePos), Expression SourcePos)]
+prop :: (Prop SourcePos, Maybe (Type SourcePos), Expression SourcePos)
      -> ErasedEnvTree
-prop [] = empty
-prop ((prp, mtype, e):ps) = case mtype of
-  Nothing -> unions [expr e, prop ps]
-  Just type_ -> unions [Node (M.singleton (proploc prp) [type_]) [], 
-                       expr e, prop ps]
+prop (prop, mtype, e) = case mtype of
+  Nothing -> expr e -- If there is no type annotation, we add nothing
+  Just type_ -> Node (M.singleton (proploc prop) [type_]) []
+
 
 expr :: Expression SourcePos -> ErasedEnvTree
 expr e = case e of
@@ -48,7 +47,7 @@ expr e = case e of
   BoolLit{} -> empty
   NullLit{} -> empty
   ArrayLit _ es -> unions $ map expr es
-  ObjectLit _ ps -> prop ps
+  ObjectLit _ ps -> unions (map prop ps)
   ThisRef{} -> empty
   VarRef{} -> empty
   DotRef _ e _ -> expr e

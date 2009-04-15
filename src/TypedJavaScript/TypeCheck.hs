@@ -348,13 +348,21 @@ expr env ee e = case e of
                    (TApp p (TId p "Array") [atype])
     return (TApp p (TId p "Array") [atype], vp)
   Lit (ObjectLit (_, loc) props) -> do
-    let prop (Left s, e) = do
+    let prop (Left s, (_, propLoc), e) = do
           -- the VP is simply dropped, but it is always safe to drop a VP
           (t, vp) <- expr env ee e
+          case M.lookup propLoc ee of
+            Just [t'] -> do
+              assertSubtype propLoc t t'
+              return (s, t')
+            Nothing -> return (s, t)
+            Just ts ->
+              catastrophe propLoc (printf "erased-env for property is %s" 
+                                          (show ts))
           -- TODO: extract prop's pos, look it up in EE, make sure it matches. 
           return (s, t) 
-        prop (Right n, e) = do
-          catastrophe loc "object literals with numeric keys NYI"
+        prop (Right n, (_, propLoc), e) = do
+          catastrophe propLoc "object literals with numeric keys NYI"
     propTypes <- mapM prop props
     let t = TObject loc propTypes
     return (t, VPNone)
