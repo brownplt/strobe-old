@@ -17,6 +17,14 @@ function (a) :: (int? -> int) {
     return x;
 } :: int? -> int;
 
+function (x) :: (int? -> int) {
+  if (typeof x == "undefined") {
+    return 4;
+  }
+  else
+    return x;
+} :: int? -> int;
+
 function (a) :: (int? -> int) {
   var x :: int? = undefined;
   if (typeof x == "undefined") {
@@ -48,11 +56,13 @@ function (a) :: (int -> int) {
   return procint(a);
 } @@ fails;
 
+//YAY WE OWNED SCHEME:
 function (a) :: (int -> int) {
   var procint :: (int -> int)?;
   procint = function (v) :: (int -> int) { return v*2; };
   return procint(a);
-} @@ fails;
+} :: (int -> int);
+
 function (a) :: (int -> int) {
   var procint :: (int -> int)?;
   procint = function (v) :: (int -> int) { return v*2; };

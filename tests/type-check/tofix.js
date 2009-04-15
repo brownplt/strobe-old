@@ -42,7 +42,7 @@ function(x) :: U(int, string) -> string {
   if (typeof y == "number")
     y = "bookr";
   return y;
-} :: U(int, string) -> string; 
+} :: U(int, string) -> string;
 
 
 //recursive function declarations:
@@ -71,8 +71,10 @@ function() :: (-> int) {
   function add(a,b) :: int, int -> int {
     return a + b; //expects int, not int?
   }
-  if (false) var v = 10;
-  if (false) var q = 15;
+  if (false)
+    var v = 10;
+  if (false)
+    var q = 15;
   return add(v, q);
 } @@ fails;
 

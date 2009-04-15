@@ -286,14 +286,14 @@ function (x) :: U(int, bool) -> int {
   return 10;
 } :: U(int, bool) -> int;
 
-function (x) :: U(int, bool) -> int {
+function (x) :: U(int, bool) -> double {
   var y = typeof x;
   x = false;
   if (y == "number") {
     return x;
   }
   return 10;
-} @@ succeeds; //fails;
+} @@ fails;
 
 
 

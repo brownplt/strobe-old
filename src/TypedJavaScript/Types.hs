@@ -155,9 +155,7 @@ second:
 (x U y) <: x or (x U y) <: y
 (x <: x and x <: y) or (x <: y and y <: y)
 -}
-isSubType' (TUnion _ ts) t = case ts of
-  [] -> False
-  _ -> all (\ti -> ti <:~ t) ts
+isSubType' (TUnion _ ts) t = all (\ti -> ti <:~ t) ts
 isSubType' t (TUnion _ ts) = any (t <:~) ts
 isSubType' _ (TId _ "any") = True -- TODO: O RLY?
 isSubType' (TId _ "int") (TId _ "double") = True
@@ -255,7 +253,7 @@ restrict s t
                 _ -> TRefined s rez
 
 remove :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
-remove (TRefined main ref) t = case restrict ref t of
+remove (TRefined main ref) t = case remove ref t of
   TRefined _ reallyrefined -> TRefined main reallyrefined
   reallyrefined -> TRefined main reallyrefined
 remove s t

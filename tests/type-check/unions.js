@@ -15,13 +15,13 @@ function() :: (->) {
   z = false;
 } :: (->);
 
-//empty union?
+//empty union? is stupid.
 function(x) :: (U() -> string) {
   var z = 3;
   if (x) {
     return x;
   }
   return x;
-} @@ fails;
+} @@ succeeds;
 
 
