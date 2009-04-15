@@ -277,5 +277,24 @@ function (x) :: U(int, bool, string) -> U(int, bool) {
   return 4;
 } :: U(int, bool, string) -> U(int, bool);
 
+//soundness plz
+function (x) :: U(int, bool) -> int {
+  var y = typeof x;
+  if (y == "number") {
+    return x;
+  }
+  return 10;
+} :: U(int, bool) -> int;
+
+function (x) :: U(int, bool) -> int {
+  var y = typeof x;
+  x = false;
+  if (y == "number") {
+    return x;
+  }
+  return 10;
+} @@ succeeds; //fails;
+
+
 
 

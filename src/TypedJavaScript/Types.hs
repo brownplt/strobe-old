@@ -116,6 +116,10 @@ isSubType' :: Type SourcePos -> Type SourcePos -> Bool
 --objects are invariant in their common field types
 --TODO: verify that the 'case' here is well-founded, and that I'm not
 --      doing something silly.
+isSubType' (TRefined m1 r1) (TRefined m2 r2) = isSubType' r1 m2
+isSubType' (TRefined m r) b = isSubType' r b
+isSubType' a (TRefined m r) = isSubType' a m
+
 isSubType' (TObject _ props1) (TObject _ props2) =
   all (\(o2id, o2proptype) -> maybe
         False (\o1proptype -> case (o1proptype,o2proptype) of
@@ -171,9 +175,6 @@ isSubType' (TForall ids1 tcs1 t1) (TForall ids2 tcs2 t2) =
 -- the 2nd one can only be a TRefined if we're assigning to it (right?)
 -- in this case, we can over-write its refined type, so only the main
 -- matters.
-isSubType' (TRefined m1 r1) (TRefined m2 r2) = isSubType' r1 m2
-isSubType' (TRefined m r) b = isSubType' r b
-isSubType' a (TRefined m r) = isSubType' a m
 isSubType' _ _ = False
 
 {-
@@ -231,6 +232,9 @@ flattenUnion  t = t
 -- Helpers for occurrence typing, from TypedScheme paper
 -- TODO: should occurrence typing have isSubType', or isSubType ?
 restrict :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
+restrict (TRefined main ref) t = case restrict ref t of
+  TRefined _ reallyrefined -> TRefined main reallyrefined
+  reallyrefined -> TRefined main reallyrefined
 restrict s t
  | s <:~ t = s
  | otherwise = case t of
@@ -251,6 +255,9 @@ restrict s t
                 _ -> TRefined s rez
 
 remove :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
+remove (TRefined main ref) t = case restrict ref t of
+  TRefined _ reallyrefined -> TRefined main reallyrefined
+  reallyrefined -> TRefined main reallyrefined
 remove s t
  | s <:~ t = TUnion (typePos s) []
  | otherwise = case t of

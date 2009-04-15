@@ -61,7 +61,7 @@ instance PrettyPrintable (Type a) where
     text "@TIndex: " <> pp objt <> text " with " <> pp keyt <> text 
          " called " <> text keyname <> text "@" -}
   pp (TRefined general refined) =
-    text "@TRefined:" <+> pp general <+> pp refined
+    text "@TRefined: (" <> pp general <+> pp refined <> text ")"
 
 instance PrettyPrintable (Id a) where
   pp (Id _ str) = text str

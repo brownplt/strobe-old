@@ -265,14 +265,19 @@ stmt env ee rettype node s = do
                 --function modifies that aren't local to that function
                 --itself.
                 return $ zip (map fst succs) (repeat env')
-              Just (Just (r', r_vp)) 
-                | r <: r' -> do
-                    let env' = M.insert r_v (Just (TRefined r' r,
+              Just (Just (TRefined r_vt _, vp))
+                | r <: r_vt -> do
+                    let env' = M.insert r_v (Just (TRefined r_vt r,
                                                    VPMulti [VPId r_v, r_vp]))
                                             env
                     return $ zip (map fst succs) (repeat env')
-                | otherwise -> subtypeError p r' r
- 
+              Just (Just (r_vt, r_vp)) 
+                | r <: r_vt -> do
+                    let env' = M.insert r_v (Just (TRefined r_vt r,
+                                                   VPMulti [VPId r_v, r_vp]))
+                                            env
+                    return $ zip (map fst succs) (repeat env')
+                | otherwise -> subtypeError p r_vt r
           Just (typeArgs,_,_,_,_) ->
             -- This should not happen:
             -- forall a b c. forall x y z . int -> bool
@@ -295,14 +300,14 @@ stmt env ee rettype node s = do
     ThrowStmt _ e -> do
       expr env ee e
       noop
-    ReturnStmt (_,p) Nothing 
-      | undefType <: rettype -> noop
-      | otherwise -> subtypeError p rettype undefType
+    ReturnStmt (_,p) Nothing -> do
+      assertSubtype p undefType rettype
+      noop
     ReturnStmt (_,p) (Just e) -> do
       (te, vp) <- expr env ee e
-      if te <: rettype
-        then noop
-        else subtypeError p rettype te
+      assertSubtype p te rettype
+      noop
+
     LabelledStmt _ _ _ -> noop
     BreakStmt _ _ -> noop
     ContinueStmt _ _ -> noop
