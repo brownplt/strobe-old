@@ -163,6 +163,10 @@ assertSubtype loc received expected = case received <: expected of
   True -> return ()
   False -> subtypeError loc expected received
 
+unrefine :: Type a -> Type a
+unrefine (TRefined _ t) = t
+unrefine t = t
+
 stmt :: Env -- ^the environment in which to type-check this statement
      -> ErasedEnv
      -> Type SourcePos
@@ -201,14 +205,22 @@ stmt env ee rettype node s = do
           return $ zip (map fst succs) (repeat env')              
         Just (Just (t, vp)) -> subtypeError p t te
     DirectPropAssignStmt (_,p) obj method e -> do
-      (te, e_vp) <- expr env ee e
+      (t, e_vp) <- expr env ee e
       case M.lookup obj env of
-        Nothing -> fail $ printf "at %s: id %s for an object is unbound"
-                             (show p) obj
-        Just Nothing -> do --an object that doesn't have a type yet?
+        Nothing -> 
+          catastrophe p (printf "id %s for an object is unbound" obj)
+        Just Nothing -> do
+          -- Variable is in scope but is yet to be defined.
           fail $ printf "at %s: can't assign to obj %s; has no type yet"
                    (show p) obj
-        Just (Just (t, vp)) -> fail "(a.b = e) NYI." 
+        Just (Just (t, vp)) -> case unrefine t of
+          TObject _ props -> case lookup method props of
+            Nothing -> 
+              typeError p (printf "object does not have the property %s" method)
+            Just t' -> do
+              assertSubtype p t t'
+              noop -- TODO: Affect the VP somehow?
+          t' -> typeError p (printf "expected object, received %s" (show t'))
     IndirectPropAssignStmt _ obj method e -> fail "obj[method] NYI"
     DeleteStmt _ r del -> fail "delete NYI"
     NewStmt{} -> fail "NewStmt will be removed from ANF"

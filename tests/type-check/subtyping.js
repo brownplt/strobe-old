@@ -86,3 +86,9 @@ function (b,a) :: (U(int, bool, string), any->) { a = b; } @@ succeeds;
 function (b,a) :: (any, any->) { a = b; } @@ succeeds;
 function (b,a) :: (any, U(int, bool, string)->) { a = b; } @@ fails;
 
+// object field assignment
+function() :: (->) {
+  var obj = { x : 234, y : "hello" };
+
+  obj.x = 9000;
+} @@ succeeds;
