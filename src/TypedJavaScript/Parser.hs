@@ -153,7 +153,7 @@ type_'' =
       noDupFields fields
         | length (L.nub $ map fst fields) == length fields = return fields
         | otherwise = fail "duplicate fields in an object type specification"
-    in (parens type_) <|> union <|> object <|> valueType <|> constrOrId
+    in (parens type_) <|> union <|> object <|> constrOrId
 
 
 toANFLit :: Expression SourcePos -> ANF.Lit SourcePos
@@ -162,14 +162,6 @@ toANFLit (NumLit p x) = ANF.NumLit p x
 toANFLit (IntLit p n) = ANF.IntLit p n
 toANFLit (BoolLit p b) = ANF.BoolLit p b
 toANFLit e = error $ "toANFLit: cannot use " ++ show e ++ " as a literal type"
-
-
-valueType :: CharParser st (Type SourcePos)
-valueType = do
-  char '\'' -- the expression must immediately follow, no spaces
-  e <- parseSimpleExpr'
-  t <- Types.inferLit e
-  return (TVal (toANFLit e) t)
 
 constrOrId :: CharParser st (Type SourcePos)
 constrOrId = do

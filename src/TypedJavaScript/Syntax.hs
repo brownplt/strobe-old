@@ -38,7 +38,6 @@ data Type a
   | TId a String -- an Id defined through a 'type' statement
   | TApp a (Type a) [Type a]
   | TUnion a [Type a]
-  | TVal (Lit a) (Type a)
   | TForall [String] [TypeConstraint] (Type a)
   -- | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
   --the first type, 'refined' to the 2nd
@@ -105,7 +104,6 @@ instance Eq (Type a) where
     TFunc _ tt2 req2 var2 ret2 lp2 = tt1 == tt2 && req1 == req2 && 
                                           var1 == var2 && 
                                           ret1 == ret2 && lp1 == lp2
-  TVal x t == TVal x2 t2 = x `eqLit` x2 && t == t2
   t1 == t2                            = False
 
 instance Eq (LatentPred a) where
@@ -227,6 +225,5 @@ typePos t = case t of
   TId p _ -> p
   TApp p _ _ -> p
   TUnion p _ -> p
-  TVal _ t' -> typePos t'
   TForall _ _ t' -> typePos t'
   TRefined _ t' -> typePos t'

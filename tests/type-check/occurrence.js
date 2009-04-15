@@ -63,7 +63,7 @@ function (x) :: (U(int, bool) -> bool) {
   else
   {
     if (x) { return false; }
-    var b :: 'false = false; //'
+    var b = false;
     b = x; //x should be false here
     return true;
   }
@@ -167,6 +167,7 @@ function (x) :: (U(int, bool) -> bool) {
   if (x) { return false; }
   return true;
 } :: (U(int, bool) -> bool);
+
 function (x) :: (U(int, bool) -> bool) {
   if (!((typeof x) == "boolean")) {
     var f :: int = 0;
@@ -266,10 +267,15 @@ function (x) :: (U(int, bool) -> string) {
   //x should be an int here
   var b :: int = x << 3;
   return result + ", and x is an int here, and it's value * 8 = " + b;
-} :: (U(int, bool) -> bool);
+} :: (U(int, bool) -> string);
 
-
-
+//magic
+//TODO: fix operator precedence
+function (x) :: U(int, bool, string) -> U(int, bool) {
+  if ((typeof x == "number") || (typeof x == "bool"))
+    return x;
+  return 4;
+} :: U(int, bool, string) -> U(int, bool);
 
 
 

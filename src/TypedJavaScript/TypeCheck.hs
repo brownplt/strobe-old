@@ -185,7 +185,7 @@ stmt env ee rettype node s = do
         Nothing -> --unbound id
           fail $ printf "at %s: identifier %s is unbound" (show p) v
         Just Nothing -> do --ANF variable, or locally inferred variable
-          let env' = M.insert v (Just (unTVal te, 
+          let env' = M.insert v (Just (te, 
                                        VPMulti [VPId v, e_vp])) env
           return $ zip (map fst succs) (repeat env')
         Just (Just (TRefined t _, vp)) | te <: t -> do
@@ -200,8 +200,8 @@ stmt env ee rettype node s = do
                               env
           return $ zip (map fst succs) (repeat env')              
         Just (Just (t, vp)) -> subtypeError p t te
-    DirectPropAssignStmt (_,p) obj method e -> do
-      (t, e_vp) <- expr env ee e
+    DirectPropAssignStmt (_,p) obj prop e -> do
+      (t_rhs, e_vp) <- expr env ee e
       case M.lookup obj env of
         Nothing -> 
           catastrophe p (printf "id %s for an object is unbound" obj)
@@ -210,11 +210,11 @@ stmt env ee rettype node s = do
           fail $ printf "at %s: can't assign to obj %s; has no type yet"
                    (show p) obj
         Just (Just (t, vp)) -> case refined t of
-          TObject _ props -> case lookup method props of
+          TObject _ props -> case lookup prop props of
             Nothing -> 
-              typeError p (printf "object does not have the property %s" method)
+              typeError p (printf "object does not have the property %s" prop)
             Just t' -> do
-              assertSubtype p t t'
+              assertSubtype p t_rhs t'
               noop -- TODO: Affect the VP somehow?
           t' -> typeError p (printf "expected object, received %s" (show t'))
     IndirectPropAssignStmt _ obj method e -> fail "obj[method] NYI"
@@ -332,22 +332,22 @@ expr env ee e = case e of
     args <- mapM (expr env ee) args_e
     operator p f args
   Lit (StringLit (_,a) s) -> 
-    return (TVal  (StringLit a s) (TId a "string"),
+    return (TId a "string",
             VPLit (StringLit a s) (TId a "string"))
   Lit (RegexpLit _ _ _ _) -> fail "regexp NYI"
   Lit (NumLit (_,a) n) ->
-    return (TVal  (NumLit a n) (TId a "double"), 
+    return (TId a "double", 
             VPLit (NumLit a n) (TId a "double"))
   Lit (IntLit (_,a) n) -> 
-    return (TVal  (IntLit a n) (TId a "int"),
+    return (TId a "int",
             VPLit (IntLit a n) (TId a "int"))
   Lit (BoolLit (_,a) v) ->
-    return (TVal  (BoolLit a v) boolType,
+    return (boolType,
             VPLit (BoolLit a v) boolType)
   Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
   Lit (ArrayLit (_,p) es) -> do
     r <- mapM (expr env ee) es
-    let ts = nub (map (unTVal . refined . fst) r)
+    let ts = nub (map (refined . fst) r)
     --TODO: does this type make sense?
     let atype = if length ts == 1 
                   then head ts
@@ -358,8 +358,7 @@ expr env ee e = case e of
   Lit (ObjectLit (_, loc) props) -> do
     let prop (Left s, (_, propLoc), e) = do
           -- the VP is simply dropped, but it is always safe to drop a VP
-          (t'', vp) <- expr env ee e
-          let t = unTVal t''
+          (t, vp) <- expr env ee e
           case M.lookup propLoc ee of
             Just [t'] -> do
               assertSubtype propLoc t t'
@@ -431,8 +430,6 @@ operator loc op argsvp = do
     OpStrictNEq -> return (boolType, 
                            VPNot (equalityvp lvp rvp))
 
-    OpLAnd -> bool
-    OpLOr -> bool
     OpMul -> numeric False False
     OpDiv -> numeric False True
     OpMod -> numeric False True
@@ -447,7 +444,9 @@ operator loc op argsvp = do
           | otherwise -> numeric False False
     PrefixLNot -> do
       assertSubtype loc lhs boolType
-      return $ novp boolType
+      case lvp of
+        VPNot v -> return (boolType, v)
+        v -> return (boolType, VPNot v)
     PrefixBNot -> do
       assertSubtype loc lhs intType
       return $ novp intType

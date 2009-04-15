@@ -8,7 +8,6 @@ module TypedJavaScript.Types
   , doubleType
   , boolType
   , inferLit, refined
-  , unTVal
   , deconstrFnType
   , applyType
   , (<:)
@@ -72,8 +71,6 @@ substType var sub (TApp p constr args) =
   TApp p constr (map (substType var sub) args)
 substType var sub (TUnion p ts) = 
   TUnion p (map (substType var sub) ts)
-substType var sub (TVal e t) = 
-  TVal e t -- should not need to subst
 substType var sub (TId p var')
   | var == var' = sub
   | otherwise =  TId p var'
@@ -111,11 +108,6 @@ inferLit (TJS.IntLit p _) = return (TId p "int")
 inferLit (TJS.BoolLit p _) = return (TId p "bool")
 inferLit expr =
   fail $ "Cannot use as a literal"
-
--- in "var x = e", given the type of e, return what type x should have.
-unTVal :: Type SourcePos -> Type SourcePos
-unTVal (TVal lit t) = t
-unTVal t = t
 
 x <: y = x <:~ y
 x <:~ y = isSubType' x y
@@ -172,26 +164,8 @@ isSubType' (TApp _ c1 args1) (TApp _ c2 args2) =
   c2 <:~ c1 &&
   (and $ zipWith (==) args1 args2) && --TODO: invariance better than subtyping?
   (length args1 == length args2)
-isSubType' (TVal v1 t1) (TVal v2 t2) = v1 `eqLit` v2 && t1 <:~ t2
-isSubType' (TVal _ t1) t2 = t1 <:~ t2
 isSubType' (TForall ids1 tcs1 t1) (TForall ids2 tcs2 t2) = 
   ids1 == ids2 && tcs1 == tcs2 && t1 == t2
-
-{-
-isSubType' (TIndex (TObject _ props1) (TVal (ANF.StringLit p s1) _) kn1)
-          (TIndex (TObject _ props2) (TVal (ANF.StringLit _ s2) _) kn2) = 
-  s1 == s2 && kn1 == kn2 && (do
-    p1 <- lookup (Id p s1) props1
-    p2 <- lookup (Id p s2) props2
-    if p1 <:~ p2
-      then return True
-      else Nothing) /= Nothing
-isSubType' (TIndex o1@(TObject _ props1) kt1@(TUnion _ s1s) kn1)
-          (TIndex o2@(TObject _ props2) kt2@(TUnion _ s2s) kn2) = 
-  kt1 == kt2 && kn1 == kn2 && 
-    all (\s1 -> isSubType' (TIndex o1 s1 kn1) (TIndex o2 s1 kn2))
-        s1s
--}
 
 --TODO: check these TRefined stuff
 -- the 2nd one can only be a TRefined if we're assigning to it (right?)
@@ -223,10 +197,13 @@ unionType (Just t1) (Just t2)
 
 -- keep the VPs that are the same
 -- TODO: something like VPLit 3 "int", VPLit 4 "int" might be salvageable.
+-- TODO: rename this function
 takeEquals :: VP -> VP -> VP
 takeEquals (VPMulti v1s) (VPMulti v2s) = VPMulti (zipWith takeEquals v1s v2s)
 takeEquals (VPMulti v1s) v2 = VPMulti (map (takeEquals v2) v1s)
 takeEquals v1 (VPMulti v2s) = VPMulti (map (takeEquals v1) v2s)
+takeEquals (VPType t1 id1) (VPType t2 id2) = 
+  if id1 == id2 then (VPType (TUnion noPos [t1, t2]) id1) else VPNone
 takeEquals v1 v2 = if v1 == v2 then v1 else VPNone
 
 unionTypeVP :: Maybe (Type SourcePos, VP)
@@ -343,8 +320,6 @@ combpred f1 f2 f3 = if f2 == f3 then f2 else VPNone
 -- combine two VPs into a third, happens with == sign.
 equalityvp :: VP -> VP -> VP
 -- x == 4
-equalityvp (VPId x) (VPLit lit t) = VPType (TVal lit t) x
-equalityvp (VPLit lit t) (VPId x) = VPType (TVal lit t) x
 -- typeof x == "number"
 equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId _ "string")) = case s of
   "number"    -> VPType (TId p "double") x
@@ -370,44 +345,3 @@ equalityvp _ _ = VPNone
 
 refined (TRefined main ref) = ref
 refined t = t  
-  
--- x = typeof y;
--- VP of x is: VPInfluencer (VPId "x") [VPTypeof "y"]
--- if (x == "number") {
---   causes two VPs to be formed and immediately restricted to true:
---     VPId "x" == VPLit "number" String
---     VPTypeof "y" == VPLit "number" String
-
-
--- var x = ...
--- var tx = typeof x;
-
--- var stra = "number";
--- if (tx == stra)
-
--- VPInfluencer (VPId "tx") [VPTypeof "x"] vs.
--- VPInfluencer (VPId "stra")  [VPLit "number"]
-
--- will result in: VPNone, VPType (TVal "number") "tx", 
---                 VPNone, VPType (TId "double") "x"
--- the VPNones will be noops, the other 2 are useful.
-
--- pathological case:
--- var x = ...
--- var x1 = typeof x
--- var x2 = x1
--- var x3 = x2
--- var x4 = x3
-
--- var cmp = "number";
--- var cmp1 = cmp;
--- var cmp2 = cmp1;
--- var cmp3 = cmp2;
-
--- if (x4 == cmp3) {
--- }
-
--- Now we have 5 vs. 5 vps = 25 combinations. yay?
-
--- VPInfluencer (VPId "x4") [id x3, id x2, id x1, typeof x] vs.
--- VPInfluencer (VPId "cmp3") [id cmp2, id cmp1, id cmp, vplit "number"]
