@@ -7,7 +7,7 @@ module TypedJavaScript.Types
   , intType
   , doubleType
   , boolType
-  , inferLit, localInference, refined
+  , inferLit, refined
   , unTVal
   , deconstrFnType
   , applyType
@@ -113,12 +113,9 @@ inferLit expr =
   fail $ "Cannot use as a literal"
 
 -- in "var x = e", given the type of e, return what type x should have.
-localInference :: Type SourcePos -> Type SourcePos
-localInference (TVal lit t) = t
-localInference t = t
-
-unTVal (TVal _ t) = t
-unTVal t = error $ "unTVal expected a TVal, received " ++ show t
+unTVal :: Type SourcePos -> Type SourcePos
+unTVal (TVal lit t) = t
+unTVal t = t
 
 x <: y = x <:~ y
 x <:~ y = isSubType' x y
@@ -235,7 +232,7 @@ takeEquals v1 v2 = if v1 == v2 then v1 else VPNone
 unionTypeVP :: Maybe (Type SourcePos, VP)
             -> Maybe (Type SourcePos, VP)
             -> Maybe (Type SourcePos, VP)
-unionTypeVP Nothing Nothing = error "unionTypeVP called with 2 Nothings"
+unionTypeVP Nothing Nothing = Nothing
 unionTypeVP Nothing (Just (t, v)) = Just (TUnion noPos [undefType, t], VPNone)
 unionTypeVP (Just (t, v)) Nothing = Just (TUnion noPos [t, undefType], VPNone)
 unionTypeVP (Just (t1, vp1)) (Just (t2, vp2)) = 

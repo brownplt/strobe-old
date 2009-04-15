@@ -4,6 +4,7 @@ function (a) :: (int? -> int) {
   else
     return a * 15;
 } :: int? -> int;
+
 function (a) :: (int? -> int) {
   var x :: int?;
   x = undefined;
@@ -15,6 +16,7 @@ function (a) :: (int? -> int) {
   else
     return x;
 } :: int? -> int;
+
 function (a) :: (int? -> int) {
   var x :: int? = undefined;
   if (typeof x == "undefined") {

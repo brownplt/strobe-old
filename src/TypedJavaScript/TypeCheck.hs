@@ -163,10 +163,6 @@ assertSubtype loc received expected = case received <: expected of
   True -> return ()
   False -> subtypeError loc expected received
 
-unrefine :: Type a -> Type a
-unrefine (TRefined _ t) = t
-unrefine t = t
-
 stmt :: Env -- ^the environment in which to type-check this statement
      -> ErasedEnv
      -> Type SourcePos
@@ -189,7 +185,7 @@ stmt env ee rettype node s = do
         Nothing -> --unbound id
           fail $ printf "at %s: identifier %s is unbound" (show p) v
         Just Nothing -> do --ANF variable, or locally inferred variable
-          let env' = M.insert v (Just (localInference te, 
+          let env' = M.insert v (Just (unTVal te, 
                                        VPMulti [VPId v, e_vp])) env
           return $ zip (map fst succs) (repeat env')
         Just (Just (TRefined t _, vp)) | te <: t -> do
@@ -213,7 +209,7 @@ stmt env ee rettype node s = do
           -- Variable is in scope but is yet to be defined.
           fail $ printf "at %s: can't assign to obj %s; has no type yet"
                    (show p) obj
-        Just (Just (t, vp)) -> case unrefine t of
+        Just (Just (t, vp)) -> case refined t of
           TObject _ props -> case lookup method props of
             Nothing -> 
               typeError p (printf "object does not have the property %s" method)
@@ -351,7 +347,7 @@ expr env ee e = case e of
   Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
   Lit (ArrayLit (_,p) es) -> do
     r <- mapM (expr env ee) es
-    let ts = nub (map fst r)
+    let ts = nub (map (unTVal . refined . fst) r)
     --TODO: does this type make sense?
     let atype = if length ts == 1 
                   then head ts
@@ -362,7 +358,8 @@ expr env ee e = case e of
   Lit (ObjectLit (_, loc) props) -> do
     let prop (Left s, (_, propLoc), e) = do
           -- the VP is simply dropped, but it is always safe to drop a VP
-          (t, vp) <- expr env ee e
+          (t'', vp) <- expr env ee e
+          let t = unTVal t''
           case M.lookup propLoc ee of
             Just [t'] -> do
               assertSubtype propLoc t t'
@@ -371,7 +368,6 @@ expr env ee e = case e of
             Just ts ->
               catastrophe propLoc (printf "erased-env for property is %s" 
                                           (show ts))
-          -- TODO: extract prop's pos, look it up in EE, make sure it matches. 
           return (s, t) 
         prop (Right n, (_, propLoc), e) = do
           catastrophe propLoc "object literals with numeric keys NYI"

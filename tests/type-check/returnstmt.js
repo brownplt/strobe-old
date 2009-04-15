@@ -51,8 +51,16 @@ function (x) :: (double -> double ) {
   return x;
 } :: (double -> double);
 
+function (x) :: (double -> ) {
+} :: (double ->);
+
 function (x) :: (double -> double ) {
 } @@ fails;
+
+function (x) :: (double -> double ) {
+  return;
+} @@ fails;
+
 function (x) :: (double -> double ) {
   if (x == 5) return 20;
 } @@ fails;

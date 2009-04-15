@@ -11,7 +11,7 @@ function (point) :: ({x::int, y::int} -> double) {
   var magnitude = point.x * point.x + point.y * point.y;
   return sqrt(magnitude);
 } :: ({x :: int, y :: int} -> double);
-function (point) :: ({x::int, y::int} -> double) {  
+function (point) :: ({x::int, y::int} -> double) {
   var sqrt :: (double -> double);
   var magnitude = point.x * point.x + point.y * point.y + point.z * point.z;
   return sqrt(magnitude);
@@ -44,11 +44,11 @@ function() :: (->) {
   gadget.debug.trace = gadget.debug.error;
   gadget.debug.trace("This is showing an error, because I messed around with the functions.");
 } :: (->);
-  
+
 
 //TODO: add test cases using toString et. al., once inheritance from base object is done
 
-//TODO: allow number properties? 
+//TODO: allow number properties?
 {0: '3', 4: 4} @@ succeeds; //there is no way to write out this type
 
 //duplicates in literals:
@@ -58,11 +58,11 @@ function() :: (->) {
 // For the moment, this has turned into a parse error
 // {point :: {x::int,x::int} : {x:5}} @@ fails;
 
-function() :: (->) {
+/*function() :: (->) {
   var z :: {name :: int, name :: string, name :: double};
   //z = 4;
 } @@ fails;
 function() :: (->) {
   var z :: {name :: int, name :: int};
 } @@ fails;
-
+*/
