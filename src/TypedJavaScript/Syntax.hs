@@ -5,7 +5,7 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          ForInit(..),ForInInit(..),Type(..), VP(..),LatentPred(..),         
          ToplevelStatement(..),
          showSp, propToString, unId, eqLit,
-         typePos, TypeConstraint (..)) where
+         TypeConstraint (..)) where
 
 import TypedJavaScript.Prelude
 import qualified Data.Foldable as F
@@ -30,6 +30,7 @@ data TypeConstraint
 
 data Type a 
   = TObject a [(String, Type a)]
+  | TRec String (Type a)
   | TFunc a (Maybe (Type a)) {- type of this -} 
             [Type a] {- required args -} 
             (Maybe (Type a)) {- optional var arg -}
@@ -37,7 +38,7 @@ data Type a
             (LatentPred a) {- latent predicate -} 
   | TId a String -- an Id defined through a 'type' statement
   | TApp a (Type a) [Type a]
-  | TUnion a [Type a]
+  | TUnion [Type a]
   | TForall [String] [TypeConstraint] (Type a)
   -- | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
   --the first type, 'refined' to the 2nd
@@ -95,7 +96,7 @@ instance Eq (Type a) where
           False ((==) o2proptype) (lookup o2id p1))
         p2
      -- all id (zipWith (==) props props2)
-  TUnion _ types1 == TUnion _ types2 =
+  TUnion types1 == TUnion types2 =
     (hasall types1 types2) && (hasall types2 types1) where
       hasall t1s t2s = all (\t2 -> any ((==) t2) t1s) t2s
   TId _ s == TId _ s2                 = s == s2
@@ -216,14 +217,3 @@ data Statement a
   
 showSp :: SourcePos -> String
 showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)
-  
--- TODO: Make this function unnecessary.
-typePos :: (Type SourcePos) -> SourcePos
-typePos t = case t of
-  TObject p _ -> p
-  TFunc p _ _ _ _ _ -> p
-  TId p _ -> p
-  TApp p _ _ -> p
-  TUnion p _ -> p
-  TForall _ _ t' -> typePos t'
-  TRefined _ t' -> typePos t'

@@ -26,7 +26,7 @@ javascriptDef =
                  "default", "delete", "do", "else", "enum", "false", "finally",
                  "for", "function", "if", "instanceof", "in", "let", "new", 
                  "null", "return", "switch", "this", "throw", "true", "try", 
-                 "typeof", "var", "void", "while", "with","forall"]
+                 "typeof", "var", "void", "while", "with","forall", "rec"]
                 ["|=", "^=", "&=", "<<=", ">>=", ">>>=", "+=", "-=", "*=", "/=", 
                  "%=", "=", ";", ",", "?", ":", "||", "&&", "|", "^", "&", 
                  "===", "==", "=", "!==", "!=", "<<", "<=", "<", ">>>", ">>", 

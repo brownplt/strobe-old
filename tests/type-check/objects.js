@@ -19,21 +19,12 @@ function (point) :: ({x::int, y::int} -> double) {
 
 //more nested objects
 function() :: (->) {
-  // This sucks, but is not necessary!
-  var gadget :: {
-    debug :: {
-      error :: (string -> ),
-      trace :: (string->),
-      warning :: (string ->),
-    },
-    storage :: {
-      extract :: (string -> string),
-      openText :: (string -> string),
-    }} = { debug : { error: function(s) :: (string ->) { return; },
-                      trace: function(s) :: (string ->) { return; },
-                      warning: function(s) :: (string ->) { return; } },
-           storage : { extract: function(s) :: (string -> string) { return s; },
-                       openText: function(s) :: (string -> string) { return s; } } };
+  var gadget = { 
+    debug : { error: function(s) :: (string ->) { return; },
+              trace: function(s) :: (string ->) { return; },
+              warning: function(s) :: (string ->) { return; } },
+    storage : { extract: function(s) :: (string -> string) { return s; },
+                openText: function(s) :: (string -> string) { return s; } } };
 
   var debugfunc = gadget.debug.warning;
   var extractfunc = gadget.storage.extract;

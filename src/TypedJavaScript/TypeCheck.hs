@@ -356,7 +356,7 @@ expr env ee e = case e of
     --TODO: does this type make sense?
     let atype = if length ts == 1 
                   then head ts
-                  else TUnion p ts
+                  else TUnion ts
     let vp = VPLit (ArrayLit p (error "dont look inside VP arraylit"))
                    (TApp p (TId p "Array") [atype])
     return (TApp p (TId p "Array") [atype], vp)

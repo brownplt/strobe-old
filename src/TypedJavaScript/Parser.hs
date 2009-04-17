@@ -73,12 +73,14 @@ typeConstraint = do
         | constr<type [,*]>
         | forall identifier+ . type
         | forall identifier+ : typeConstraint+ . type
+        | rec identifier . type
         | ( type )
 
 Disambiguation:
 
  type ::= forall identifier+ . type_fn
         | forall identifier+ : typeConstraint+ . type
+        | rec identifier . type
         | type_fn
 
  type_fn ::= type' [,*] -> type?
@@ -98,7 +100,6 @@ Disambiguation:
 
 type_ :: CharParser st (Type SourcePos)
 type_ = do
-        
   let forall = do
         p <- getPosition
         reserved "forall"
@@ -108,7 +109,14 @@ type_ = do
         reservedOp "."
         t <- type_fn
         return (TForall ids constraints t)
-  forall <|> type_fn
+  let rec = do
+        p <- getPosition
+        reserved "rec"
+        id <- Lexer.identifier
+        reservedOp "."
+        t <- type_
+        return (TRec id t)
+  forall <|> rec <|> type_fn
 
 type_fn :: CharParser st (Type SourcePos)
 type_fn = do
@@ -135,16 +143,15 @@ type_' :: CharParser st (Type SourcePos)
 type_' = do
   t <- type_''
   let nullable = do
-        p <- getPosition
         reservedOp "?"
-        return (TUnion p [t, Types.undefType])
+        return (TUnion [t, Types.undefType])
   nullable <|> (return t) <?> "possibly nullable type"
 
 type_'' :: CharParser st (Type SourcePos)
 type_'' =
   let union = do 
         reservedOp "U";
-        parens $ withPos TUnion (type_'' `sepEndBy` comma)
+        liftM TUnion (parens (type_'' `sepEndBy` comma))
       object = do
         p <- getPosition
         fields <- braces $ field `sepEndBy` comma

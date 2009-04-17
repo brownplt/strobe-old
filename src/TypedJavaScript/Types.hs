@@ -24,7 +24,7 @@ import qualified Data.Map as M
 
 -- we don't want TJS expressions here
 import TypedJavaScript.Syntax (Type (..), VP (..), Id(..),
-  TypeConstraint(..), LatentPred(..), typePos)
+  TypeConstraint(..), LatentPred(..))
 -- but we do need the lits
 import qualified TypedJavaScript.Syntax as TJS
 
@@ -48,13 +48,14 @@ doubleType = TId p "double"
 
 boolType = TId p "bool"
 
-
 -- |Deconstructs the declared type of a function, returning a list of quantified
 -- variables, the types of each argument, and a return type.  As we enrich the
 -- type-checker to handle more of a function type, include them here.
 deconstrFnType :: Type SourcePos 
                -> Maybe ([String],[TypeConstraint],[Type SourcePos],Type SourcePos,LatentPred SourcePos)
 deconstrFnType (TRefined main refined) = deconstrFnType refined
+deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
+  deconstrFnType (substType id t t')
 deconstrFnType (TFunc _ _ args _ result latentP) = 
   Just ([],[],args,result,latentP)
 deconstrFnType (TForall ids constraints (TFunc _ _ args _ result latentP)) = 
@@ -64,13 +65,16 @@ deconstrFnType _ = Nothing
 
 -- |This is _not_ capture-free.
 substType :: String -> Type SourcePos -> Type SourcePos -> Type SourcePos
+substType var sub (TRec var' t) 
+  | var == var' = error "substType captures"
+  | otherwise   = TRec var' (substType var sub t)
 substType var sub (TForall formals constraints body)  -- TODO: Subst into?
   | var `elem` formals = TForall formals constraints body
   | otherwise = TForall formals constraints (substType var sub body)
 substType var sub (TApp p constr args) = 
   TApp p constr (map (substType var sub) args)
-substType var sub (TUnion p ts) = 
-  TUnion p (map (substType var sub) ts)
+substType var sub (TUnion ts) = 
+  TUnion (map (substType var sub) ts)
 substType var sub (TId p var')
   | var == var' = sub
   | otherwise =  TId p var'
@@ -165,10 +169,14 @@ st rel (t1, t2)
               (TObject _ _, TObject _ _) -> st rel (t1, t2)
               otherwise -> assert (t1 == t2) >> return rel
       foldM prop (S.insert (t1, t2) rel) props2
-    (TUnion _ ts1, t2) -> do
+    (TUnion ts1, t2) -> do
       foldM (\rel t1 -> st rel (t1, t2)) rel ts1 -- all
-    (t1, TUnion _ ts2) -> do
+    (t1, TUnion ts2) -> do
       anyM (\rel t2 -> st rel (t1, t2)) rel ts2
+    (t1, TRec v t2') -> do
+      st (S.insert (t1, t2) rel) (t1, substType v t2 t2')
+    (TRec v t1', t2) -> do
+      st (S.insert (t1, t2) rel) (substType v t1 t1', t2)
     otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
     
 
@@ -185,12 +193,12 @@ unionType :: Maybe (Type SourcePos)
           -> Maybe (Type SourcePos)
           -> Maybe (Type SourcePos)
 unionType Nothing Nothing = error "unionType called with 2 Nothings"
-unionType Nothing (Just t) = Just $ TUnion noPos [undefType, t]
-unionType (Just t) Nothing = Just $ TUnion noPos [t, undefType]
+unionType Nothing (Just t) = Just $ TUnion [undefType, t]
+unionType (Just t) Nothing = Just $ TUnion [t, undefType]
 unionType (Just t1) (Just t2)
   | t1 <: t2 = Just t2
   | t2 <: t1 = Just t1
-  | otherwise = Just (TUnion noPos [t1, t2]) -- TODO: What?
+  | otherwise = Just (TUnion [t1, t2]) -- TODO: What?
 
 -- keep the VPs that are the same
 -- TODO: something like VPLit 3 "int", VPLit 4 "int" might be salvageable.
@@ -200,27 +208,27 @@ takeEquals (VPMulti v1s) (VPMulti v2s) = VPMulti (zipWith takeEquals v1s v2s)
 takeEquals (VPMulti v1s) v2 = VPMulti (map (takeEquals v2) v1s)
 takeEquals v1 (VPMulti v2s) = VPMulti (map (takeEquals v1) v2s)
 takeEquals (VPType t1 id1) (VPType t2 id2) = 
-  if id1 == id2 then (VPType (TUnion noPos [t1, t2]) id1) else VPNone
+  if id1 == id2 then (VPType (TUnion [t1, t2]) id1) else VPNone
 takeEquals v1 v2 = if v1 == v2 then v1 else VPNone
 
 unionTypeVP :: Maybe (Type SourcePos, VP)
             -> Maybe (Type SourcePos, VP)
             -> Maybe (Type SourcePos, VP)
 unionTypeVP Nothing Nothing = Nothing
-unionTypeVP Nothing (Just (t, v)) = Just (TUnion noPos [undefType, t], VPNone)
-unionTypeVP (Just (t, v)) Nothing = Just (TUnion noPos [t, undefType], VPNone)
+unionTypeVP Nothing (Just (t, v)) = Just (TUnion [undefType, t], VPNone)
+unionTypeVP (Just (t, v)) Nothing = Just (TUnion [t, undefType], VPNone)
 unionTypeVP (Just (t1, vp1)) (Just (t2, vp2)) = 
   case unionType (Just t1) (Just t2) of
     Nothing -> Nothing
     Just t  -> Just (t, takeEquals vp1 vp2)
 flattenUnion :: (Type SourcePos) -> (Type SourcePos)
-flattenUnion (TUnion pos ts) = 
+flattenUnion (TUnion ts) = 
 	case (foldl (\res t -> case t of 
-                       TUnion _ tocomb -> res ++ tocomb
+                       TUnion tocomb -> res ++ tocomb
                        regular -> res ++ [regular])
                     [] ts) of
           [onet] -> onet
-          noneormanyt -> TUnion pos noneormanyt
+          noneormanyt -> TUnion noneormanyt
 
 flattenUnion  t = t
 
@@ -235,19 +243,18 @@ restrict s t
  | s <:~ t = s
  | otherwise = case t of
      --TODO: make sure TRefined-ness deals well with the following case:
-     TUnion pos ts -> flattenUnion $ 
-                        TUnion pos (map (restrict s) ts)
+     TUnion ts -> flattenUnion $ 
+                        TUnion (map (restrict s) ts)
      --TODO: make sure restrict is correct; this is different than
      --the typed scheme paper
      --TODO: make sure returning a TRefined here is correct
      _ -> let rez = flattenUnion $
-                      TUnion (typePos s) 
-                             (filter (\hm -> isSubType' hm t)
+                      TUnion (filter (\hm -> isSubType' hm t)
                                      (case s of
-                                        TUnion _ ts -> ts
+                                        TUnion ts -> ts
                                         _ -> [s]))
            in case rez of 
-                TUnion _ [] -> TRefined s t
+                TUnion [] -> TRefined s t
                 _ -> TRefined s rez
 
 remove :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
@@ -255,17 +262,17 @@ remove (TRefined main ref) t = case remove ref t of
   TRefined _ reallyrefined -> TRefined main reallyrefined
   reallyrefined -> TRefined main reallyrefined
 remove s t
- | s <:~ t = TUnion (typePos s) []
+ | s <:~ t = TUnion  []
  | otherwise = case t of
-     TUnion pos ts -> flattenUnion $ 
-                        TUnion pos (map (remove s) ts)
+     TUnion ts -> flattenUnion $ 
+                        TUnion (map (remove s) ts)
      --TODO: make sure remove is correct; this is different than
      --the typed scheme paper
      _ -> TRefined s $ flattenUnion $ 
-            TUnion (typePos s) 
+            TUnion  
                    (filter (\hm -> not $ isSubType' hm t)
                            (case s of
-                             TUnion _ ts -> ts
+                             TUnion ts -> ts
                              _ -> [s]))
      
 --TODO: in TS, 'false' is false, and everything else is true. the same
@@ -302,23 +309,6 @@ asBool l = case l of
   ArrayLit{}    -> True
   ObjectLit{}   -> True
   FuncLit{}     -> True
-
--- TODO: combpred is not applicable to us anymore, since we don't
--- have any if expression. this is good/bad?  
-combpred :: VP -> VP -> 
-            VP -> VP 
-combpred (VPType t x1) (VPLit l _) (VPType s x2) 
-  | asBool l = if (x1 == x2) 
-      then VPType (TUnion (typePos t) [t, s]) x1 --flattenUnion here?
-      else VPNone
-  | otherwise = VPNone
-combpred (VPLit l t) f1 f2 
-  | asBool l = f1
-  | otherwise = f2
-combpred f (VPLit l1 t1) (VPLit l2 t2)
-  | (asBool l1) && (not $ asBool l2) = f
-  | otherwise = VPNone
-combpred f1 f2 f3 = if f2 == f3 then f2 else VPNone
 
 -- combine two VPs into a third, happens with == sign.
 equalityvp :: VP -> VP -> VP
