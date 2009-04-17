@@ -112,7 +112,17 @@ inferLit expr =
 x <: y = x <:~ y
 x <:~ y = isSubType' x y
 
-{-
+
+assert :: Bool -> Maybe ()
+assert False = Nothing
+assert True = Just ()
+
+anyM :: (a -> b -> Maybe a) -> a -> [b] -> Maybe a
+anyM _ a [] = Nothing
+anyM f a (b:bs) = case f a b of
+  Nothing -> anyM f a bs
+  Just a  -> return a
+
 -- based on TAPL p.305
 st :: Set (Type SourcePos, Type SourcePos)
    -> (Type SourcePos, Type SourcePos)
@@ -120,93 +130,56 @@ st :: Set (Type SourcePos, Type SourcePos)
 st rel (t1, t2)
   | (t1, t2) `S.member` rel = return rel
   | otherwise = case (t1, t2) of
+    (TId _ "int", TId _ "double") -> return rel
+    (_, TId _ "any") -> return rel
     (TId _ x, TId _ y) 
       | x == y   -> return rel
       | otherwise -> fail $ printf "%s is not a subtype of %s" x y
-    (TId _ "int", TId _ "double") -> return rel
-    (_, TId _ "any") -> return rel
     (TRefined declared1 refined1, TRefined declared2 refined2) ->
       st (S.insert (t1, t2) rel) (refined1, declared2)
     (TRefined declared refined, other) ->
       st (S.insert (t1, t2) rel) (refined, other)
     (other, TRefined declared refined) -> 
       st (S.insert (t1, t2) rel) (other, declared)
-    (TApp _ c1 args1, TApp _ c2 args2) | length args1 == length args2 -> do
-      rel <- st (S.insert (t1, t2) rel) (c1, c2)
-      foldM st rel (zip args1 args2) 
-    (TFunc _ _ req2 var2 ret2 lp2, TFunc _ _ req1 var1 ret1 lp1) -> do
-      rel <- st (S.insert (t1, t2) rel) ret2 ret1
-      
-isSubType' f2@(TFunc _ this2 req2 var2 ret2 lp2)  -- is F2 <= F1?
-          f1@(TFunc _ this1 req1 var1 ret1 lp1) =
-  let ist = isSubType'       
-   in ist ret2 ret1                       --covariance of return types
-      && length req2 >= length req1       --at least as many req args
-      && (var2==Nothing || var1/=Nothing) --f2 has varargs -> f1 has varargs
-      && (lp1 == lp2 || lp1 == LPNone) --from TypedScheme
-      && --contravariance of arg types. TODO: fix this.
-         (let maxargs = max (length req2 + (maybe 0 (const 1) var2)) 
-                            (length req1 +  (maybe 0 (const 1) var1))
-              all2    = (map Just $ req2 ++ (maybe [] repeat var2)) ++ repeat Nothing
-              all1    = (map Just $ req1 ++ (maybe [] repeat var1)) ++ repeat Nothing
-           in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
--}  
+    (TApp _ c1 args1, TApp _ c2 args2) -> do
+      assert (length args1 == length args2)
+      assert (c1 == c2)
+      assert (args1 == args2)
+      return rel
+      -- rel <- st (S.insert (t1, t2) rel) (c1, c2)
+      -- foldM st rel (zip args1 args2) 
+    (TFunc _ _ req2 Nothing ret2 lp2, TFunc _ _ req1 Nothing ret1 lp1) -> do
+      assert (length req2 == length req1)
+      assert (lp1 == lp2 || lp1 == LPNone)
+      rel <- st (S.insert (t1, t2) rel) (ret2, ret1)
+      foldM st rel (zip req1 req2)
+    (TForall ids1 tcs1 t1, TForall ids2 tcs2 t2) -> do
+      assert (ids1 == ids2)
+      assert (tcs1 == tcs2)
+      st (S.insert (t1, t2) rel) (t1, t2)
+    (TObject _ props1, TObject _ props2) -> do
+      -- All of props2 must be in props1
+      let prop rel (id2, t2) = do
+            t1 <- lookup id2 props1
+            case (t1, t2) of
+              (TObject _ _, TObject _ _) -> st rel (t1, t2)
+              otherwise -> assert (t1 == t2) >> return rel
+      foldM prop (S.insert (t1, t2) rel) props2
+    (TUnion _ ts1, t2) -> do
+      foldM (\rel t1 -> st rel (t1, t2)) rel ts1 -- all
+    (t1, TUnion _ ts2) -> do
+      anyM (\rel t2 -> st rel (t1, t2)) rel ts2
+    otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
     
-    
-  
 
 
 
-    
+
 
 isSubType' :: Type SourcePos -> Type SourcePos -> Bool
---objects are invariant in their common field types
---TODO: verify that the 'case' here is well-founded, and that I'm not
---      doing something silly.
-isSubType' (TRefined m1 r1) (TRefined m2 r2) = isSubType' r1 m2
-isSubType' (TRefined m r) b = isSubType' r b
-isSubType' a (TRefined m r) = isSubType' a m
-isSubType' (TObject _ props1) (TObject _ props2) =
-  all (\(o2id, o2proptype) -> maybe
-        False (\o1proptype -> case (o1proptype,o2proptype) of
-                  --want to preserve this subtype among object props:
-                  (TObject{},TObject{}) -> isSubType' 
-                    o1proptype o2proptype
-                  --but don't want subtype for other things:
-                  _ -> o1proptype == o2proptype)     
-              (lookup o2id props1))
-      props2
-isSubType' f2@(TFunc _ _ req2 Nothing ret2 lp2)
-          f1@(TFunc _ _ req1 Nothing ret1 lp1) =
-  length req2 == length req1 &&
-  isSubType' ret2 ret1 &&
-  all (uncurry isSubType') (zip req1 req2) &&
-  (lp1 == lp2 || lp1 == LPNone)
-isSubType' (TUnion _ ts) t = all (\ti -> ti <:~ t) ts
-isSubType' t (TUnion _ ts) = any (t <:~) ts
-isSubType' _ (TId _ "any") = True -- TODO: O RLY?
-isSubType' (TId _ "int") (TId _ "double") = True
-isSubType' (TId _ x) (TId _ y) = x == y
-isSubType' (TApp _ c1 args1) (TApp _ c2 args2) = 
-  c2 <:~ c1 &&
-  (and $ zipWith (==) args1 args2) && --TODO: invariance better than subtyping?
-  (length args1 == length args2)
-isSubType' (TForall ids1 tcs1 t1) (TForall ids2 tcs2 t2) = 
-  ids1 == ids2 && tcs1 == tcs2 && t1 == t2
-
---TODO: check these TRefined stuff
--- the 2nd one can only be a TRefined if we're assigning to it (right?)
--- in this case, we can over-write its refined type, so only the main
--- matters.
-isSubType' _ _ = False
-
-{-
--- can you assign a to b? this is just subtyping.
-assignable (TRefined m1 r1) (TRefined m2 r2) = isSubType' r1 m2
-assignable (TRefined main ref) b = isSubType' ref b
-assignable a (TRefined main ref) = isSubType' a main
-assignable a b = isSubType' a b -}
-
+isSubType' t1 t2 = case st S.empty (t1, t2) of
+  Just _ -> True
+  Nothing -> False
 
 unionType :: Maybe (Type SourcePos) 
           -> Maybe (Type SourcePos)
