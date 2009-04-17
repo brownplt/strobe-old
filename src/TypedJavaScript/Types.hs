@@ -112,6 +112,34 @@ inferLit expr =
 x <: y = x <:~ y
 x <:~ y = isSubType' x y
 
+-- based on TAPL p.305
+st :: Set (Type SourcePos, Type SourcePos)
+   -> (Type SourcePos, Type SourcePos)
+   -> Maybe (Set (Type SourcePos, Type SourcePos))
+st rel (t1, t2) = case (t1, t2) of
+  (TId _ x, TId _ y) 
+    | x == y   -> return rel
+    | otherwise -> fail $ printf "%s is not a subtype of %s" x y
+  (TId _ "int", TId _ "double") -> return rel
+  (_, TId _ "any") -> return rel
+  (TRefined declared1 refined1, TRefined declared2 refined2) ->
+    st (S.insert (t1, t2) rel) (refined1, declared2)
+  (TRefined declared refined, other) ->
+    st (S.insert (t1, t2) rel) (refined, other)
+  (other, TRefined declared refined) -> 
+    st (S.insert (t1, t2) rel) (other, declared)
+  (TApp _ c1 args1, TApp _ c2 args2) | length args1 == length args2 -> do
+    rel <- st (S.insert (t1, t2) rel) (c1, c2)
+    foldM st rel (zip args1 args2) 
+  
+    
+    
+  
+
+
+
+    
+
 isSubType' :: Type SourcePos -> Type SourcePos -> Bool
 --objects are invariant in their common field types
 --TODO: verify that the 'case' here is well-founded, and that I'm not
@@ -119,7 +147,6 @@ isSubType' :: Type SourcePos -> Type SourcePos -> Bool
 isSubType' (TRefined m1 r1) (TRefined m2 r2) = isSubType' r1 m2
 isSubType' (TRefined m r) b = isSubType' r b
 isSubType' a (TRefined m r) = isSubType' a m
-
 isSubType' (TObject _ props1) (TObject _ props2) =
   all (\(o2id, o2proptype) -> maybe
         False (\o1proptype -> case (o1proptype,o2proptype) of
@@ -144,24 +171,11 @@ isSubType' f2@(TFunc _ this2 req2 var2 ret2 lp2)  -- is F2 <= F1?
               all2    = (map Just $ req2 ++ (maybe [] repeat var2)) ++ repeat Nothing
               all1    = (map Just $ req1 ++ (maybe [] repeat var1)) ++ repeat Nothing
            in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
-
---the first of these cases works if both are unions; the second does not.
-{- 
-(x U y) <: (x U y)
---------------------------
-first: x <: x U y and y <: x U y
------------------------------------------
-second: 
-(x U y) <: x or (x U y) <: y
-(x <: x and x <: y) or (x <: y and y <: y)
--}
 isSubType' (TUnion _ ts) t = all (\ti -> ti <:~ t) ts
 isSubType' t (TUnion _ ts) = any (t <:~) ts
 isSubType' _ (TId _ "any") = True -- TODO: O RLY?
 isSubType' (TId _ "int") (TId _ "double") = True
 isSubType' (TId _ x) (TId _ y) = x == y
-isSubType' (TApp _ (TId _ "Array") args1) (TApp _ (TId _ "Array") args2) =
-  args1 == args2
 isSubType' (TApp _ c1 args1) (TApp _ c2 args2) = 
   c2 <:~ c1 &&
   (and $ zipWith (==) args1 args2) && --TODO: invariance better than subtyping?
