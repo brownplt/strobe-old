@@ -408,9 +408,6 @@ operator loc op argsvp = do
                 (lhs <: doubleType && rhs <: doubleType)) $ do
           typeError loc (printf "can only compare numbers and strings")
         return $ novp boolType
-  let bool = if lhs <: boolType && rhs <: boolType
-               then return $ novp boolType --TODO: combine bool-lits smartly
-               else typeError loc "expected a boolean"
   let numeric requireInts returnDouble = do
         assertSubtype loc lhs
           (if requireInts then intType else doubleType)
