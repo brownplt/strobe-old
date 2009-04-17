@@ -112,26 +112,45 @@ inferLit expr =
 x <: y = x <:~ y
 x <:~ y = isSubType' x y
 
+{-
 -- based on TAPL p.305
 st :: Set (Type SourcePos, Type SourcePos)
    -> (Type SourcePos, Type SourcePos)
    -> Maybe (Set (Type SourcePos, Type SourcePos))
-st rel (t1, t2) = case (t1, t2) of
-  (TId _ x, TId _ y) 
-    | x == y   -> return rel
-    | otherwise -> fail $ printf "%s is not a subtype of %s" x y
-  (TId _ "int", TId _ "double") -> return rel
-  (_, TId _ "any") -> return rel
-  (TRefined declared1 refined1, TRefined declared2 refined2) ->
-    st (S.insert (t1, t2) rel) (refined1, declared2)
-  (TRefined declared refined, other) ->
-    st (S.insert (t1, t2) rel) (refined, other)
-  (other, TRefined declared refined) -> 
-    st (S.insert (t1, t2) rel) (other, declared)
-  (TApp _ c1 args1, TApp _ c2 args2) | length args1 == length args2 -> do
-    rel <- st (S.insert (t1, t2) rel) (c1, c2)
-    foldM st rel (zip args1 args2) 
-  
+st rel (t1, t2)
+  | (t1, t2) `S.member` rel = return rel
+  | otherwise = case (t1, t2) of
+    (TId _ x, TId _ y) 
+      | x == y   -> return rel
+      | otherwise -> fail $ printf "%s is not a subtype of %s" x y
+    (TId _ "int", TId _ "double") -> return rel
+    (_, TId _ "any") -> return rel
+    (TRefined declared1 refined1, TRefined declared2 refined2) ->
+      st (S.insert (t1, t2) rel) (refined1, declared2)
+    (TRefined declared refined, other) ->
+      st (S.insert (t1, t2) rel) (refined, other)
+    (other, TRefined declared refined) -> 
+      st (S.insert (t1, t2) rel) (other, declared)
+    (TApp _ c1 args1, TApp _ c2 args2) | length args1 == length args2 -> do
+      rel <- st (S.insert (t1, t2) rel) (c1, c2)
+      foldM st rel (zip args1 args2) 
+    (TFunc _ _ req2 var2 ret2 lp2, TFunc _ _ req1 var1 ret1 lp1) -> do
+      rel <- st (S.insert (t1, t2) rel) ret2 ret1
+      
+isSubType' f2@(TFunc _ this2 req2 var2 ret2 lp2)  -- is F2 <= F1?
+          f1@(TFunc _ this1 req1 var1 ret1 lp1) =
+  let ist = isSubType'       
+   in ist ret2 ret1                       --covariance of return types
+      && length req2 >= length req1       --at least as many req args
+      && (var2==Nothing || var1/=Nothing) --f2 has varargs -> f1 has varargs
+      && (lp1 == lp2 || lp1 == LPNone) --from TypedScheme
+      && --contravariance of arg types. TODO: fix this.
+         (let maxargs = max (length req2 + (maybe 0 (const 1) var2)) 
+                            (length req1 +  (maybe 0 (const 1) var1))
+              all2    = (map Just $ req2 ++ (maybe [] repeat var2)) ++ repeat Nothing
+              all1    = (map Just $ req1 ++ (maybe [] repeat var1)) ++ repeat Nothing
+           in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
+-}  
     
     
   
@@ -157,20 +176,12 @@ isSubType' (TObject _ props1) (TObject _ props2) =
                   _ -> o1proptype == o2proptype)     
               (lookup o2id props1))
       props2
-
-isSubType' f2@(TFunc _ this2 req2 var2 ret2 lp2)  -- is F2 <= F1?
-          f1@(TFunc _ this1 req1 var1 ret1 lp1) =
-  let ist = isSubType'       
-   in ist ret2 ret1                       --covariance of return types
-      && length req2 >= length req1       --at least as many req args
-      && (var2==Nothing || var1/=Nothing) --f2 has varargs -> f1 has varargs
-      && (lp1 == lp2 || lp1 == LPNone) --from TypedScheme
-      && --contravariance of arg types. TODO: fix this.
-         (let maxargs = max (length req2 + (maybe 0 (const 1) var2)) 
-                            (length req1 +  (maybe 0 (const 1) var1))
-              all2    = (map Just $ req2 ++ (maybe [] repeat var2)) ++ repeat Nothing
-              all1    = (map Just $ req1 ++ (maybe [] repeat var1)) ++ repeat Nothing
-           in maybe False (all id) $ mapM id $ zipWith (liftM2 ist) (take maxargs all1) (take maxargs all2))
+isSubType' f2@(TFunc _ _ req2 Nothing ret2 lp2)
+          f1@(TFunc _ _ req1 Nothing ret1 lp1) =
+  length req2 == length req1 &&
+  isSubType' ret2 ret1 &&
+  all (uncurry isSubType') (zip req1 req2) &&
+  (lp1 == lp2 || lp1 == LPNone)
 isSubType' (TUnion _ ts) t = all (\ti -> ti <:~ t) ts
 isSubType' t (TUnion _ ts) = any (t <:~) ts
 isSubType' _ (TId _ "any") = True -- TODO: O RLY?
