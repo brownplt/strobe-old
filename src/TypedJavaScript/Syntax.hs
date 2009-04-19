@@ -31,11 +31,10 @@ data TypeConstraint
 data Type a 
   = TObject a [(String, Type a)]
   | TRec String (Type a)
-  | TFunc a (Maybe (Type a)) {- type of this -} 
-            [Type a] {- required args -} 
-            (Maybe (Type a)) {- optional var arg -}
-            (Type a) {- ret type -}
-            (LatentPred a) {- latent predicate -} 
+  | TFunc [Type a] {- required args -} 
+          (Maybe (Type a)) {- optional var arg -}
+          (Type a) {- ret type -}
+          (LatentPred a) {- latent predicate -} 
   | TId a String -- an Id defined through a 'type' statement
   | TApp a (Type a) [Type a]
   | TUnion [Type a]
@@ -101,8 +100,8 @@ instance Eq (Type a) where
       hasall t1s t2s = all (\t2 -> any ((==) t2) t1s) t2s
   TId _ s == TId _ s2                 = s == s2
   TApp _ c1 v1 == TApp _ c2 v2        = c1 == c2 && v1 == v2
-  TFunc _ tt1 req1 var1 ret1 lp1 ==
-    TFunc _ tt2 req2 var2 ret2 lp2 = tt1 == tt2 && req1 == req2 && 
+  TFunc req1 var1 ret1 lp1 ==
+    TFunc req2 var2 ret2 lp2 = req1 == req2 && 
                                           var1 == var2 && 
                                           ret1 == ret2 && lp1 == lp2
   t1 == t2                            = False

@@ -16,6 +16,19 @@ type ErasedEnv = Map SourcePos [Type SourcePos]
 empty :: ErasedEnvTree
 empty = Node M.empty []
 
+single :: SourcePos -> Type SourcePos -> ErasedEnvTree
+single loc type_ = multi loc [type_]
+
+multi :: SourcePos -> [Type SourcePos] -> ErasedEnvTree
+multi loc types = Node (M.singleton loc types) []
+
+nest :: ErasedEnvTree -> ErasedEnvTree
+nest et = Node M.empty [et]
+
+(+++) :: ErasedEnvTree -> ErasedEnvTree -> ErasedEnvTree
+ee1 +++ ee2 = Node (M.union (rootLabel ee1) (rootLabel ee2))
+                   (subForest ee1 ++ subForest ee2)
+
 unions :: [ErasedEnvTree] -> ErasedEnvTree
 unions et = Node (M.unions $ map rootLabel et)
                     (concatMap subForest et)
@@ -35,7 +48,7 @@ prop :: (Prop SourcePos, Maybe (Type SourcePos), Expression SourcePos)
      -> ErasedEnvTree
 prop (prop, mtype, e) = case mtype of
   Nothing -> expr e -- If there is no type annotation, we add nothing
-  Just type_ -> Node (M.singleton (proploc prop) [type_]) []
+  Just type_ -> expr e +++ single (proploc prop) type_
 
 
 expr :: Expression SourcePos -> ErasedEnvTree
@@ -60,16 +73,14 @@ expr e = case e of
   AssignExpr _ _ e1 e2 -> unions [expr e1, expr e2]
   ParenExpr _ e -> expr e
   ListExpr _ es -> unions $ map expr es
-  CallExpr pos e ts es -> unions [Node (M.singleton pos ts) [],
-                                  unions $ map expr (e:es)]
-  FuncExpr pos _ t s -> Node (M.singleton pos [t]) [stmt s]
+  CallExpr pos e ts es -> multi pos ts +++ expr e +++ unions (map expr es)
+  FuncExpr pos _ t s -> single pos t +++ nest (stmt s)
 
 vardecl :: VarDecl SourcePos -> ErasedEnvTree
-vardecl (VarDecl _ (Id pos _) type_) = 
-  Node (M.singleton pos [type_]) []
+vardecl (VarDecl _ (Id pos _) type_) = single pos type_
 vardecl (VarDeclExpr _ (Id pos _) mtype e) = case mtype of
   Nothing -> expr e
-  Just type_ -> unions [Node (M.singleton pos [type_]) [], expr e]
+  Just type_ -> single pos type_ +++ expr e
 
 catch :: CatchClause SourcePos -> ErasedEnvTree
 catch (CatchClause _ _ s) = stmt s

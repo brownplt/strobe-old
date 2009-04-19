@@ -39,15 +39,15 @@ instance PrettyPrintable TypeConstraint where
   pp (TCSubtype t1 t2) = pp t1 <+> text "<:" <+> pp t2
 
 instance PrettyPrintable (Type a) where
-  pp (TFunc _ this args vararg ret lp) = 
+  pp (TFunc (this:args) vararg ret lp) = 
     parens $ ppThis <+> (commaSep args) <> ppVararg <+> text "->" <+> 
              pp ret where
       ppVararg = case vararg of
         Nothing -> empty
         Just t  -> comma <+> pp t <> text "..."
-      ppThis = case this of
-        Nothing -> empty
-        Just t -> pp t <> (text "|")
+      ppThis = brackets (pp this)
+  pp (TRec id t) = text "rec" <+> text id <+> text "." <+> pp t
+  pp (TFunc [] _ _ _) = error "CATASTROPHIC FAILURE: function without this"
   pp (TObject _ fields) = braces $ (hsep $ punctuate comma $ 
     map (\(id,t) -> (text id <+> text "::" <+> pp t)) fields)
   pp (TUnion types) = text "U" <> (parens $ hsep $ punctuate comma (map pp types))

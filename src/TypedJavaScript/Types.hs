@@ -10,6 +10,7 @@ module TypedJavaScript.Types
   , inferLit, refined
   , deconstrFnType
   , applyType
+  , unRec
   , (<:)
   , unionType, unionTypeVP, equalityvp
   , restrict, remove, gammaPlus, gammaMinus
@@ -56,12 +57,17 @@ deconstrFnType :: Type SourcePos
 deconstrFnType (TRefined main refined) = deconstrFnType refined
 deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
   deconstrFnType (substType id t t')
-deconstrFnType (TFunc _ _ args _ result latentP) = 
+deconstrFnType (TFunc args _ result latentP) = 
   Just ([],[],args,result,latentP)
-deconstrFnType (TForall ids constraints (TFunc _ _ args _ result latentP)) = 
+deconstrFnType (TForall ids constraints (TFunc args _ result latentP)) = 
   Just (ids,constraints,args,result,latentP)
 deconstrFnType _ = Nothing
 
+unRec :: Type SourcePos -> Type SourcePos
+unRec t@(TRec id t') = case t' of
+  TId _ _ -> t' -- avoids infinite recursion
+  otherwise -> unRec (substType id t t') -- handles rec x . rec y . ...
+unRec t = t
 
 -- |This is _not_ capture-free.
 substType :: String -> Type SourcePos -> Type SourcePos -> Type SourcePos
@@ -78,15 +84,13 @@ substType var sub (TUnion ts) =
 substType var sub (TId p var')
   | var == var' = sub
   | otherwise =  TId p var'
-substType var sub (TFunc p Nothing args vararg ret latentP) =
-  TFunc p Nothing (map (substType var sub) args)
+substType var sub (TFunc args vararg ret latentP) =
+  TFunc (map (substType var sub) args)
         (liftM (substType var sub) vararg)
         (substType var sub ret)
         latentP
 substType var sub (TObject p fields) =
   TObject p (map (\(v,t) -> (v,substType var sub t)) fields)
-substType _ _ (TFunc _ (Just _) _ _ _ _) = 
-  error "cannot substitute into functions with this-types"
 substType _ _ (TRefined _ _) = error "substType TRefined NYI"
 
 applyType :: Monad m => Type SourcePos -> [Type SourcePos] -> m (Type SourcePos) -- TODO: ensure constraints
@@ -127,6 +131,48 @@ anyM f a (b:bs) = case f a b of
   Nothing -> anyM f a bs
   Just a  -> return a
 
+{-
+eq :: Set (Type SourcePos, Type SourcePos)
+   -> (Type SourcePos, Type SourcePos)
+   -> Maybe (Set (Type SourcePos, Type SourcePos))
+eq rel (t1, t2)
+  | (t1, t2) `S.member` rel = return rel
+  | otherwise case (t1, t2) of
+    (TId _ x, TId _ y) 
+      | x == y   -> return rel
+      | otherwise -> fail $ printf "%s is not a subtype of %s" x y
+    (TRefined declared1 refined1, TRefined declared2 refined2) -> do
+      rel <- eq (S.insert (t1, t2) rel) refined1 refined2
+      eq rel declared1 declared2
+    (TApp _ c1 args1, TApp _ c2 args2) -> do
+      assert (length args1 == length args2)
+      rel <- eq (S.insert (t1, t2) rel) c1 c2
+      foldM eq rel (zip arg1 args2)
+    (TFunc req2 Nothing ret2 lp2, TFunc req1 Nothing ret1 lp1) -> do
+      assert (length req2 == length req1)
+      assert (lp1 == lp2)
+      rel <- eq (S.insert (t1, t2) rel) (ret2, ret1)
+      foldM eq rel (zip req1 req2)
+    (TForall ids1 tcs1 t1, TForall ids2 tcs2 t2) -> do
+      assert (ids1 == ids2)
+      assert (tcs1 == tcs2)
+      eq (S.insert (t1, t2) rel) (t1, t2)
+    (TObject _ props1, TObject _ props2) -> do
+      let prop rel ((id1, t1), (id2, t2)) = do
+            assert (id1 == id2)
+            eq rel (t1, t2)
+      foldM prop (S.insert (t1, t2) rel) (zip props1 prop2)
+    (TUnion ts1, t2) -> do
+      foldM (\rel t1 -> st rel (t1, t2)) rel ts1 -- all
+    (t1, TUnion ts2) -> do
+      anyM (\rel t2 -> st rel (t1, t2)) rel ts2
+    (t1, TRec v t2') -> do
+      st (S.insert (t1, t2) rel) (t1, substType v t2 t2')
+    (TRec v t1', t2) -> do
+      st (S.insert (t1, t2) rel) (substType v t1 t1', t2)
+    otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
+-}
+
 -- based on TAPL p.305
 st :: Set (Type SourcePos, Type SourcePos)
    -> (Type SourcePos, Type SourcePos)
@@ -152,7 +198,7 @@ st rel (t1, t2)
       return rel
       -- rel <- st (S.insert (t1, t2) rel) (c1, c2)
       -- foldM st rel (zip args1 args2) 
-    (TFunc _ _ req2 Nothing ret2 lp2, TFunc _ _ req1 Nothing ret1 lp1) -> do
+    (TFunc req2 Nothing ret2 lp2, TFunc req1 Nothing ret1 lp1) -> do
       assert (length req2 == length req1)
       assert (lp1 == lp2 || lp1 == LPNone)
       rel <- st (S.insert (t1, t2) rel) (ret2, ret1)
@@ -165,9 +211,7 @@ st rel (t1, t2)
       -- All of props2 must be in props1
       let prop rel (id2, t2) = do
             t1 <- lookup id2 props1
-            case (t1, t2) of
-              (TObject _ _, TObject _ _) -> st rel (t1, t2)
-              otherwise -> assert (t1 == t2) >> return rel
+            st rel (t1, t2)
       foldM prop (S.insert (t1, t2) rel) props2
     (TUnion ts1, t2) -> do
       foldM (\rel t1 -> st rel (t1, t2)) rel ts1 -- all

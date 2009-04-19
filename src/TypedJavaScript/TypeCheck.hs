@@ -209,7 +209,7 @@ stmt env ee rettype node s = do
           -- Variable is in scope but is yet to be defined.
           fail $ printf "at %s: can't assign to obj %s; has no type yet"
                    (show p) obj
-        Just (Just (t, vp)) -> case refined t of
+        Just (Just (t, vp)) -> case unRec (refined t) of
           TObject _ props -> case lookup prop props of
             Nothing -> 
               typeError p (printf "object does not have the property %s" prop)
@@ -223,9 +223,9 @@ stmt env ee rettype node s = do
     CallStmt (_,p) r_v f_v args_v -> do
         (f, f_vp) <- forceEnvLookup p env f_v
         actualsWithVP' <- mapM (forceEnvLookup p env) args_v
-        let (actuals', actuals_vps) = unzip actualsWithVP'
+        let (this:arguments:actuals', actuals_vps) = unzip actualsWithVP'
         --actuals_vps contains VP, including VPId for the var name itself.
-        let actuals = tail (tail actuals') -- drop this, arguments for now
+        let actuals = this:actuals'
         case deconstrFnType f of
           Nothing -> typeError p ("expected function; received " ++ show f)
           Just ([], [], formals, r, latentPred) -> do
@@ -325,7 +325,7 @@ expr env ee e = case e of
       _      -> return (t, VPMulti [VPId id, vp])
   DotRef (_, loc) e p -> do
     (t', _) <- expr env ee e
-    let t = refined t'
+    let t = unRec (refined t')
     case t of
       TObject _ props -> case lookup p props of
         Just t' -> return (t', VPNone)
@@ -382,7 +382,7 @@ expr env ee e = case e of
     Nothing -> catastrophe p "function lit is not in the erased environment"
     Just [t] -> case deconstrFnType t of
       Just (_, _, argTypes, _, _) 
-        | length argTypes == (length args - 2) -> 
+        | length argTypes == length args - 1 -> 
             return (t, VPLit (FuncLit p (error "dont look in VP Funclit args")
                                         (error "dont look in VP Funclit lcls")
                                         (error "dont look in VP Funclit body"))
@@ -477,9 +477,9 @@ uneraseEnv env ee (FuncLit (_, pos) args locals _) = (env', rettype) where
            | otherwise -> Just t
   functype = head $ ee ! pos
   Just (_, cs, types, rettype, lp) = deconstrFnType functype
-  -- undefined for this, arguments
-  args' = args -- if null args then args else (tail $ tail args)
-  argtypes = zip (map fst args') (map Just (undefined:undefined:types))
+  -- undefined for arguments
+  (this:types') = types
+  argtypes = zip (map fst args) (map Just (this:undefined:types'))
   localtypes = map (\(name,(_, pos)) -> (name, liftM head (lookupEE pos name))) 
                    locals
   --the only typed things here are args and explicitly typed locals, both
@@ -527,7 +527,7 @@ typeCheck prog = do
   -- These "erased environments" are returned in a tree with the same shape as
   -- 'intraprocs' above.
   let envs = buildErasedEnvTree prog
-  
+
   -- load the global environment from "core.js"
   dir <- getDataDir
   toplevels' <- parseFromFile (parseToplevels) (dir </> "core.tjs")

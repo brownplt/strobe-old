@@ -7,7 +7,7 @@ module TypedJavaScript.Contracts
   , getContractsLib
   ) where
 
-import Text.ParserCombinators.Parsec.Pos (SourcePos, initialPos)
+import TypedJavaScript.Prelude
 import qualified Data.Map as M
 import System.FilePath
 
@@ -21,8 +21,8 @@ import qualified BrownPLT.JavaScript as JavaScript
 
 -- |'toContract' assumes that the supplied type is closed and well-formed.
 toContract :: Type SourcePos -> Contract
-toContract (TFunc pos Nothing reqargs maybeVararg result _) =
-  FunctionContract pos (map toContract reqargs) varargCtc (toContract result)
+toContract (TFunc (this:reqargs) maybeVararg result _) =
+  FunctionContract noPos (map toContract reqargs) varargCtc (toContract result)
     where varargCtc = case maybeVararg of
                         Nothing -> Nothing
                         Just vararg -> Just (toContract vararg)
@@ -45,7 +45,7 @@ toContract x = error $ "toContract does not handle " ++ show x
 toInterface :: Env
             -> [InterfaceItem]
 toInterface env = map toExport (M.toList env) where
-  toExport (v,t) = InterfaceExport v (initialPos "TypedJavaScript.Contracts")
+  toExport (v,t) = InterfaceExport v noPos
                                    (toContract' t)
   toContract' Nothing = error "Contracts.hs : export without type"
   toContract' (Just (type_, vp)) = toContract type_

@@ -68,6 +68,8 @@ typeConstraint = do
  type ::= identifier
         | 'literal
         | type?
+        | '[' type ']' type [,*] -> type?     ; explicit this
+        | '[' type ']' type [,+] ... -> type? ; explicit this
         | type [,*] -> type?
         | type [,+] ... -> type?
         | constr<type [,*]>
@@ -81,6 +83,8 @@ Disambiguation:
  type ::= forall identifier+ . type_fn
         | forall identifier+ : typeConstraint+ . type
         | rec identifier . type
+        | '[' type ']' type' [,*] -> type?
+        | '[' type ']' type' [,+] ... -> type?
         | type_fn
 
  type_fn ::= type' [,*] -> type?
@@ -116,21 +120,38 @@ type_ = do
         reservedOp "."
         t <- type_
         return (TRec id t)
-  forall <|> rec <|> type_fn
+  let explicitThis = do
+        thisType <- brackets type_
+        ts <- type_' `sepBy` comma
+        let vararity = do
+              reservedOp "..."
+              reservedOp "->"
+              r <- type_ <|> (return Types.undefType)
+              return (TFunc (thisType:(L.init ts)) (Just $L.last ts) r (LPNone))
+        let func = do
+              reservedOp "->"
+              r <- type_ <|> (return Types.undefType)
+              return (TFunc (thisType:ts) Nothing r (LPNone))
+        case ts of
+          []  -> func -- function of zero arguments
+          [t] -> vararity <|> func <|> (return t)
+          ts  -> vararity <|> func
+  forall <|> rec <|> explicitThis <|> type_fn
 
 type_fn :: CharParser st (Type SourcePos)
 type_fn = do
   p <- getPosition
+  let globalThis = TObject p [] -- TODO: make this the global this
   ts <- type_' `sepBy` comma
   let vararity = do
         reservedOp "..."
         reservedOp "->"
         r <- type_ <|> (return Types.undefType)
-        return (TFunc p Nothing (L.init ts) (Just $L.last ts) r (LPNone))
+        return (TFunc (globalThis:(L.init ts)) (Just $L.last ts) r LPNone)
   let func = do
         reservedOp "->"
         r <- type_ <|> (return Types.undefType)
-        return (TFunc p Nothing ts Nothing r (LPNone))
+        return (TFunc (globalThis:ts) Nothing r LPNone)
         --Nonte: latent predicates really aren't part of the syntax,
         --but the parser has to deal with them. type checker should fill
         --them in properly.
