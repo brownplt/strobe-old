@@ -313,6 +313,15 @@ stmt env ee rettype node s = do
     ContinueStmt _ _ -> noop
     SwitchStmt _ e cases default_ -> error "switch stmt NYI"
 
+-- in pJS, string, int, etc. can all be used as objects.
+-- but they're not objects; they get converted.
+-- this function does this conversion
+dotrefContext :: Type SourcePos -> Type SourcePos
+dotrefContext (TId p "string") =
+  --TODO: move this into uh... core.tjs
+  TObject p [("length", TId p "int")]
+dotrefContext t = t
+
 expr :: Env -- ^the environment in which to type-check this expression
      -> ErasedEnv
      -> Expr (Int,SourcePos)
@@ -325,7 +334,7 @@ expr env ee e = case e of
       _      -> return (t, VPMulti [VPId id, vp])
   DotRef (_, loc) e p -> do
     (t', _) <- expr env ee e
-    let t = unRec (refined t')
+    let t = dotrefContext $ unRec (refined t')
     case t of
       TObject _ props -> case lookup p props of
         Just t' -> return (t', VPNone)
@@ -508,6 +517,59 @@ typeCheckProgram env (Node ee subEes, Node (_, lit, gr) subGraphs) = do
   mapM_ (typeCheckProgram env') (zip subEes subGraphs)
   return topLevelEnv
 
+-- |Take a type environment and a type, and return a type with all the
+-- |aliases resolved (e.g. TId "DOMString" --> TId "string").
+-- |Fail if the TId is not in the environment.
+resolveAliases :: (Monad m) => (Map String (Type SourcePos)) 
+                  -> (Type SourcePos) -> m (Type SourcePos)
+resolveAliases tenv t@(TId pos i)
+ | i == "string"    = return t
+ | i == "int"       = return t
+ | i == "double"    = return t
+ | i == "bool"      = return t
+ | i == "Array"     = return t -- TODO: handle 'generics' properly
+ | i == "undefined" = return t
+ | otherwise        = case M.lookup i tenv of
+     Nothing -> fail $ printf "at %s: type %s is unbound." (show pos) (show t)
+     Just x -> return x
+resolveAliases tenv (TRec s t) = do
+  --TODO: is this right? I temporarily insert 's' into the tenv so it gets
+  -- left alone.
+  t' <- resolveAliases (M.insert s (TId noPos s) tenv) t
+  return (TRec s t')
+resolveAliases tenv (TFunc req var ret lp) = do
+  req' <- mapM (resolveAliases tenv) req
+  var' <- case var of
+    Nothing -> return Nothing
+    Just blah -> do
+      res <- resolveAliases tenv blah
+      return (Just res)
+  ret' <- resolveAliases tenv ret
+  return (TFunc req' var' ret' lp)
+resolveAliases tenv (TObject pos fields) = do
+  fields' <- mapM (\(s, t) -> do
+                     t' <- resolveAliases tenv t
+                     return (s, t')) fields
+  return (TObject pos fields')
+resolveAliases tenv (TApp pos tapp ts) = do
+  tapp' <- resolveAliases tenv tapp
+  ts' <- mapM (resolveAliases tenv) ts
+  return (TApp pos tapp' ts')
+resolveAliases tenv (TUnion ts) = do
+  ts' <- mapM (resolveAliases tenv) ts
+  return (TUnion ts')
+resolveAliases tenv (TRefined t1 t2) = fail "What is TRefined doing in alias?"
+  
+
+{-
+  | TApp a (Type a) [Type a]
+  | TUnion [Type a]
+  | TForall [String] [TypeConstraint] (Type a)
+  -- | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
+  --the first type, 'refined' to the 2nd
+  | TRefined (Type a) (Type a) 
+-}
+
 -- |Type-check a Typed JavaScript program.  
 typeCheck :: [TJS.Statement SourcePos] -> IO Env
 typeCheck prog = do
@@ -532,18 +594,32 @@ typeCheck prog = do
   dir <- getDataDir
   toplevels' <- parseFromFile (parseToplevels) (dir </> "core.tjs")
   toplevels <- case toplevels' of
-    Left err -> fail $ "PARSD ERROR ON CORE.TJS: " ++ show err
+    Left err -> fail $ "PARSE ERROR ON CORE.TJS: " ++ show err
     Right tls -> return tls
-  
-  -- (varenv, typeenv)
-  let tl2env (TJS.ExternalStmt _ (TJS.Id _ s) t) = 
+
+{-  let tl2env (TJS.ExternalStmt _ (TJS.Id _ s) t) = 
         (M.singleton s (Just (t, VPId s)), M.empty)
       tl2env (TJS.TypeStmt _ (TJS.Id _ s) t) =  
-        (M.empty, M.singleton s t)
-
+        (M.empty, M.singleton s t) -}
+  
+  let procTLs :: (Monad m) => [TJS.ToplevelStatement SourcePos]
+                 -> (Env, Map String (Type SourcePos))
+                 -> m (Env, Map String (Type SourcePos))
+      procTLs [] results = return results
+      procTLs ((TJS.ExternalStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
+        t' <- resolveAliases tenv t
+        procTLs rest (M.insertWithKey 
+                        (\k n o -> error $ "already in venv: " ++ show k)
+                        s (Just (t', VPId s)) venv, tenv)
+      procTLs ((TJS.TypeStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
+        t' <- resolveAliases tenv t
+        procTLs rest (venv, M.insertWithKey
+                              (\k n o -> error $ "already in tenv: " ++ show k)
+                              s t' tenv)
+        
   --TODO: pass typeenv in the state monad
-  let globalVarEnv = M.unions $ 
-        (map fst (map tl2env toplevels)) ++ 
+  (globalVarEnv, globalTypeEnv) <- procTLs toplevels (M.empty, M.empty)
+  let globalVarEn'v = M.unions $ [globalVarEnv] ++ 
         [M.fromList [("this", Just (TObject noPos [], VPId "this"))]]
   
   (env, state) <- runStateT (typeCheckProgram globalVarEnv (envs, intraprocs)) 
