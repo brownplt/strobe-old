@@ -42,6 +42,7 @@ data Type a
   -- | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
   --the first type, 'refined' to the 2nd
   | TRefined (Type a) (Type a) 
+  | TExtend (Type a) (Type a)
   
   deriving (Ord)
 

@@ -166,7 +166,11 @@ type_' = do
   let nullable = do
         reservedOp "?"
         return (TUnion [t, Types.undefType])
-  nullable <|> (return t) <?> "possibly nullable type"
+  let extended = do
+        parens $ reservedOp "<-"
+        rt <- type_
+        return (TExtend t rt)
+  nullable <|> extended <|> (return t) <?> "possibly nullable type"
 
 type_'' :: CharParser st (Type SourcePos)
 type_'' =

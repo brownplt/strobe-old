@@ -20,7 +20,663 @@ external undefined :: undefined;
 
 //etc... these aren't important. add as they become necessary in examples.
 
-//TODO: DOM stuff. Add those to another file, once these types of
-//  files can be parsed.
+//created by me:
+type DOMString :: string;
+type long :: int;
 
+type DOMException :: {code :: int};
 
+//rest of dom LVL 1 auto generated from
+// http://www.w3.org/TR/REC-DOM-Level-1/idl-definitions.html
+//using python script.
+
+external INDEX_SIZE_ERR :: int;
+external DOMSTRING_SIZE_ERR :: int;
+external HIERARCHY_REQUEST_ERR :: int;
+external WRONG_DOCUMENT_ERR :: int;
+external INVALID_CHARACTER_ERR :: int;
+external NO_DATA_ALLOWED_ERR :: int;
+external NO_MODIFICATION_ALLOWED_ERR :: int;
+external NOT_FOUND_ERR :: int;
+external NOT_SUPPORTED_ERR :: int;
+external INUSE_ATTRIBUTE_ERR :: int;
+external INDEX_SIZE_ERR :: int;
+external DOMSTRING_SIZE_ERR :: int;
+external HIERARCHY_REQUEST_ERR :: int;
+external WRONG_DOCUMENT_ERR :: int;
+external INVALID_CHARACTER_ERR :: int;
+external NO_DATA_ALLOWED_ERR :: int;
+external NO_MODIFICATION_ALLOWED_ERR :: int;
+external NOT_FOUND_ERR :: int;
+external NOT_SUPPORTED_ERR :: int;
+external INUSE_ATTRIBUTE_ERR :: int;
+type DOMImplementation :: {
+    hasFeature :: (DOMString, DOMString -> bool)
+};
+
+type DocumentFragment :: Node (<-) {
+
+};
+
+type Document :: Node (<-) {
+    doctype :: DocumentType,
+    implementation :: DOMImplementation,
+    documentElement :: Element,
+    createElement :: (DOMString -> Element),
+    createDocumentFragment :: ( -> DocumentFragment),
+    createTextNode :: (DOMString -> Text),
+    createComment :: (DOMString -> Comment),
+    createCDATASection :: (DOMString -> CDATASection),
+    createProcessingInstruction :: (DOMString, DOMString -> ProcessingInstruction),
+    createAttribute :: (DOMString -> Attr),
+    createEntityReference :: (DOMString -> EntityReference),
+    getElementsByTagName :: (DOMString -> NodeList)
+};
+
+type Node :: {
+    ELEMENT_NODE :: int,
+    ATTRIBUTE_NODE :: int,
+    TEXT_NODE :: int,
+    CDATA_SECTION_NODE :: int,
+    ENTITY_REFERENCE_NODE :: int,
+    ENTITY_NODE :: int,
+    PROCESSING_INSTRUCTION_NODE :: int,
+    COMMENT_NODE :: int,
+    DOCUMENT_NODE :: int,
+    DOCUMENT_TYPE_NODE :: int,
+    DOCUMENT_FRAGMENT_NODE :: int,
+    NOTATION_NODE :: int,
+    nodeName :: DOMString,
+    nodeValue :: DOMString,
+    nodeType :: int,
+    parentNode :: Node,
+    childNodes :: NodeList,
+    firstChild :: Node,
+    lastChild :: Node,
+    previousSibling :: Node,
+    nextSibling :: Node,
+    attributes :: NamedNodeMap,
+    ownerDocument :: Document,
+    insertBefore :: (Node, Node -> Node),
+    replaceChild :: (Node, Node -> Node),
+    removeChild :: (Node -> Node),
+    appendChild :: (Node -> Node),
+    hasChildNodes :: ( -> bool),
+    cloneNode :: (bool -> Node)
+};
+
+type NodeList :: {
+    item :: (int -> Node),
+    length :: int
+};
+
+type NamedNodeMap :: {
+    getNamedItem :: (DOMString -> Node),
+    setNamedItem :: (Node -> Node),
+    removeNamedItem :: (DOMString -> Node),
+    item :: (int -> Node),
+    length :: int
+};
+
+type CharacterData :: Node (<-) {
+    data :: DOMString,
+    length :: int,
+    substringData :: (int, int -> DOMString),
+    appendData :: (DOMString -> undefined),
+    insertData :: (int, DOMString -> undefined),
+    deleteData :: (int, int -> undefined),
+    replaceData :: (int, int, DOMString -> undefined)
+};
+
+type Attr :: Node (<-) {
+    name :: DOMString,
+    specified :: bool,
+    value :: DOMString
+};
+
+type Element :: Node (<-) {
+    tagName :: DOMString,
+    getAttribute :: (DOMString -> DOMString),
+    setAttribute :: (DOMString, DOMString -> undefined),
+    removeAttribute :: (DOMString -> undefined),
+    getAttributeNode :: (DOMString -> Attr),
+    setAttributeNode :: (Attr -> Attr),
+    removeAttributeNode :: (Attr -> Attr),
+    getElementsByTagName :: (DOMString -> NodeList),
+    normalize :: ( -> undefined)
+};
+
+type Text :: CharacterData (<-) {
+    splitText :: (int -> Text)
+};
+
+type Comment :: CharacterData (<-) {
+
+};
+
+type CDATASection :: Text (<-) {
+
+};
+
+type DocumentType :: Node (<-) {
+    name :: DOMString,
+    entities :: NamedNodeMap,
+    notations :: NamedNodeMap
+};
+
+type Notation :: Node (<-) {
+    publicId :: DOMString,
+    systemId :: DOMString
+};
+
+type Entity :: Node (<-) {
+    publicId :: DOMString,
+    systemId :: DOMString,
+    notationName :: DOMString
+};
+
+type EntityReference :: Node (<-) {
+
+};
+
+type ProcessingInstruction :: Node (<-) {
+    target :: DOMString,
+    data :: DOMString
+};
+
+type HTMLCollection :: {
+    length :: int,
+    item :: (int -> Node),
+    namedItem :: (DOMString -> Node)
+};
+
+type HTMLDocument :: Document (<-) {
+    title :: DOMString,
+    referrer :: DOMString,
+    domain :: DOMString,
+    URL :: DOMString,
+    body :: HTMLElement,
+    images :: HTMLCollection,
+    applets :: HTMLCollection,
+    links :: HTMLCollection,
+    forms :: HTMLCollection,
+    anchors :: HTMLCollection,
+    cookie :: DOMString,
+    open :: ( -> undefined),
+    close :: ( -> undefined),
+    write :: (DOMString -> undefined),
+    writeln :: (DOMString -> undefined),
+    getElementById :: (DOMString -> Element),
+    getElementsByName :: (DOMString -> NodeList)
+};
+
+type HTMLElement :: Element (<-) {
+    id :: DOMString,
+    title :: DOMString,
+    lang :: DOMString,
+    dir :: DOMString,
+    className :: DOMString
+};
+
+type HTMLHtmlElement :: HTMLElement (<-) {
+    version :: DOMString
+};
+
+type HTMLHeadElement :: HTMLElement (<-) {
+    profile :: DOMString
+};
+
+type HTMLLinkElement :: HTMLElement (<-) {
+    disabled :: bool,
+    charset :: DOMString,
+    href :: DOMString,
+    hreflang :: DOMString,
+    media :: DOMString,
+    rel :: DOMString,
+    rev :: DOMString,
+    target :: DOMString,
+    type :: DOMString
+};
+
+type HTMLTitleElement :: HTMLElement (<-) {
+    text :: DOMString
+};
+
+type HTMLMetaElement :: HTMLElement (<-) {
+    content :: DOMString,
+    httpEquiv :: DOMString,
+    name :: DOMString,
+    scheme :: DOMString
+};
+
+type HTMLBaseElement :: HTMLElement (<-) {
+    href :: DOMString,
+    target :: DOMString
+};
+
+type HTMLIsIndexElement :: HTMLElement (<-) {
+    form :: HTMLFormElement,
+    prompt :: DOMString
+};
+
+type HTMLStyleElement :: HTMLElement (<-) {
+    disabled :: bool,
+    media :: DOMString,
+    type :: DOMString
+};
+
+type HTMLBodyElement :: HTMLElement (<-) {
+    aLink :: DOMString,
+    background :: DOMString,
+    bgColor :: DOMString,
+    link :: DOMString,
+    text :: DOMString,
+    vLink :: DOMString
+};
+
+type HTMLFormElement :: HTMLElement (<-) {
+    elements :: HTMLCollection,
+    length :: long,
+    name :: DOMString,
+    acceptCharset :: DOMString,
+    action :: DOMString,
+    enctype :: DOMString,
+    method :: DOMString,
+    target :: DOMString,
+    submit :: ( -> undefined),
+    reset :: ( -> undefined)
+};
+
+type HTMLSelectElement :: HTMLElement (<-) {
+    type :: DOMString,
+    selectedIndex :: long,
+    value :: DOMString,
+    length :: long,
+    form :: HTMLFormElement,
+    options :: HTMLCollection,
+    disabled :: bool,
+    multiple :: bool,
+    name :: DOMString,
+    size :: long,
+    tabIndex :: long,
+    add :: (HTMLElement, HTMLElement -> undefined),
+    remove :: (long -> undefined),
+    blur :: ( -> undefined),
+    focus :: ( -> undefined)
+};
+
+type HTMLOptGroupElement :: HTMLElement (<-) {
+    disabled :: bool,
+    label :: DOMString
+};
+
+type HTMLOptionElement :: HTMLElement (<-) {
+    form :: HTMLFormElement,
+    defaultSelected :: bool,
+    text :: DOMString,
+    index :: long,
+    disabled :: bool,
+    label :: DOMString,
+    selected :: bool,
+    value :: DOMString
+};
+
+type HTMLInputElement :: HTMLElement (<-) {
+    defaultValue :: DOMString,
+    defaultChecked :: bool,
+    form :: HTMLFormElement,
+    accept :: DOMString,
+    accessKey :: DOMString,
+    align :: DOMString,
+    alt :: DOMString,
+    checked :: bool,
+    disabled :: bool,
+    maxLength :: long,
+    name :: DOMString,
+    readOnly :: bool,
+    size :: DOMString,
+    src :: DOMString,
+    tabIndex :: long,
+    type :: DOMString,
+    useMap :: DOMString,
+    value :: DOMString,
+    blur :: ( -> undefined),
+    focus :: ( -> undefined),
+    select :: ( -> undefined),
+    click :: ( -> undefined)
+};
+
+type HTMLTextAreaElement :: HTMLElement (<-) {
+    defaultValue :: DOMString,
+    form :: HTMLFormElement,
+    accessKey :: DOMString,
+    cols :: long,
+    disabled :: bool,
+    name :: DOMString,
+    readOnly :: bool,
+    rows :: long,
+    tabIndex :: long,
+    type :: DOMString,
+    value :: DOMString,
+    blur :: ( -> undefined),
+    focus :: ( -> undefined),
+    select :: ( -> undefined)
+};
+
+type HTMLButtonElement :: HTMLElement (<-) {
+    form :: HTMLFormElement,
+    accessKey :: DOMString,
+    disabled :: bool,
+    name :: DOMString,
+    tabIndex :: long,
+    type :: DOMString,
+    value :: DOMString
+};
+
+type HTMLLabelElement :: HTMLElement (<-) {
+    form :: HTMLFormElement,
+    accessKey :: DOMString,
+    htmlFor :: DOMString
+};
+
+type HTMLFieldSetElement :: HTMLElement (<-) {
+    form :: HTMLFormElement
+};
+
+type HTMLLegendElement :: HTMLElement (<-) {
+    form :: HTMLFormElement,
+    accessKey :: DOMString,
+    align :: DOMString
+};
+
+type HTMLUListElement :: HTMLElement (<-) {
+    compact :: bool,
+    type :: DOMString
+};
+
+type HTMLOListElement :: HTMLElement (<-) {
+    compact :: bool,
+    start :: long,
+    type :: DOMString
+};
+
+type HTMLDListElement :: HTMLElement (<-) {
+    compact :: bool
+};
+
+type HTMLDirectoryElement :: HTMLElement (<-) {
+    compact :: bool
+};
+
+type HTMLMenuElement :: HTMLElement (<-) {
+    compact :: bool
+};
+
+type HTMLLIElement :: HTMLElement (<-) {
+    type :: DOMString,
+    value :: long
+};
+
+type HTMLBlockquoteElement :: HTMLElement (<-) {
+    cite :: DOMString
+};
+
+type HTMLDivElement :: HTMLElement (<-) {
+    align :: DOMString
+};
+
+type HTMLParagraphElement :: HTMLElement (<-) {
+    align :: DOMString
+};
+
+type HTMLHeadingElement :: HTMLElement (<-) {
+    align :: DOMString
+};
+
+type HTMLQuoteElement :: HTMLElement (<-) {
+    cite :: DOMString
+};
+
+type HTMLPreElement :: HTMLElement (<-) {
+    width :: long
+};
+
+type HTMLBRElement :: HTMLElement (<-) {
+    clear :: DOMString
+};
+
+type HTMLBaseFontElement :: HTMLElement (<-) {
+    color :: DOMString,
+    face :: DOMString,
+    size :: DOMString
+};
+
+type HTMLFontElement :: HTMLElement (<-) {
+    color :: DOMString,
+    face :: DOMString,
+    size :: DOMString
+};
+
+type HTMLHRElement :: HTMLElement (<-) {
+    align :: DOMString,
+    noShade :: bool,
+    size :: DOMString,
+    width :: DOMString
+};
+
+type HTMLModElement :: HTMLElement (<-) {
+    cite :: DOMString,
+    dateTime :: DOMString
+};
+
+type HTMLAnchorElement :: HTMLElement (<-) {
+    accessKey :: DOMString,
+    charset :: DOMString,
+    coords :: DOMString,
+    href :: DOMString,
+    hreflang :: DOMString,
+    name :: DOMString,
+    rel :: DOMString,
+    rev :: DOMString,
+    shape :: DOMString,
+    tabIndex :: long,
+    target :: DOMString,
+    type :: DOMString,
+    blur :: ( -> undefined),
+    focus :: ( -> undefined)
+};
+
+type HTMLImageElement :: HTMLElement (<-) {
+    lowSrc :: DOMString,
+    name :: DOMString,
+    align :: DOMString,
+    alt :: DOMString,
+    border :: DOMString,
+    height :: DOMString,
+    hspace :: DOMString,
+    isMap :: bool,
+    longDesc :: DOMString,
+    src :: DOMString,
+    useMap :: DOMString,
+    vspace :: DOMString,
+    width :: DOMString
+};
+
+type HTMLObjectElement :: HTMLElement (<-) {
+    form :: HTMLFormElement,
+    code :: DOMString,
+    align :: DOMString,
+    archive :: DOMString,
+    border :: DOMString,
+    codeBase :: DOMString,
+    codeType :: DOMString,
+    data :: DOMString,
+    declare :: bool,
+    height :: DOMString,
+    hspace :: DOMString,
+    name :: DOMString,
+    standby :: DOMString,
+    tabIndex :: long,
+    type :: DOMString,
+    useMap :: DOMString,
+    vspace :: DOMString,
+    width :: DOMString
+};
+
+type HTMLParamElement :: HTMLElement (<-) {
+    name :: DOMString,
+    type :: DOMString,
+    value :: DOMString,
+    valueType :: DOMString
+};
+
+type HTMLAppletElement :: HTMLElement (<-) {
+    align :: DOMString,
+    alt :: DOMString,
+    archive :: DOMString,
+    code :: DOMString,
+    codeBase :: DOMString,
+    height :: DOMString,
+    hspace :: DOMString,
+    name :: DOMString,
+    object :: DOMString,
+    vspace :: DOMString,
+    width :: DOMString
+};
+
+type HTMLMapElement :: HTMLElement (<-) {
+    areas :: HTMLCollection,
+    name :: DOMString
+};
+
+type HTMLAreaElement :: HTMLElement (<-) {
+    accessKey :: DOMString,
+    alt :: DOMString,
+    coords :: DOMString,
+    href :: DOMString,
+    noHref :: bool,
+    shape :: DOMString,
+    tabIndex :: long,
+    target :: DOMString
+};
+
+type HTMLScriptElement :: HTMLElement (<-) {
+    text :: DOMString,
+    htmlFor :: DOMString,
+    event :: DOMString,
+    charset :: DOMString,
+    defer :: bool,
+    src :: DOMString,
+    type :: DOMString
+};
+
+type HTMLTableElement :: HTMLElement (<-) {
+    caption :: HTMLTableCaptionElement,
+    tHead :: HTMLTableSectionElement,
+    tFoot :: HTMLTableSectionElement,
+    rows :: HTMLCollection,
+    tBodies :: HTMLCollection,
+    align :: DOMString,
+    bgColor :: DOMString,
+    border :: DOMString,
+    cellPadding :: DOMString,
+    cellSpacing :: DOMString,
+    frame :: DOMString,
+    rules :: DOMString,
+    summary :: DOMString,
+    width :: DOMString,
+    createTHead :: ( -> HTMLElement),
+    deleteTHead :: ( -> undefined),
+    createTFoot :: ( -> HTMLElement),
+    deleteTFoot :: ( -> undefined),
+    createCaption :: ( -> HTMLElement),
+    deleteCaption :: ( -> undefined),
+    insertRow :: (long -> HTMLElement),
+    deleteRow :: (long -> undefined)
+};
+
+type HTMLTableCaptionElement :: HTMLElement (<-) {
+    align :: DOMString
+};
+
+type HTMLTableColElement :: HTMLElement (<-) {
+    align :: DOMString,
+    ch :: DOMString,
+    chOff :: DOMString,
+    span :: long,
+    vAlign :: DOMString,
+    width :: DOMString
+};
+
+type HTMLTableSectionElement :: HTMLElement (<-) {
+    align :: DOMString,
+    ch :: DOMString,
+    chOff :: DOMString,
+    vAlign :: DOMString,
+    rows :: HTMLCollection,
+    insertRow :: (long -> HTMLElement),
+    deleteRow :: (long -> undefined)
+};
+
+type HTMLTableRowElement :: HTMLElement (<-) {
+    rowIndex :: long,
+    sectionRowIndex :: long,
+    cells :: HTMLCollection,
+    align :: DOMString,
+    bgColor :: DOMString,
+    ch :: DOMString,
+    chOff :: DOMString,
+    vAlign :: DOMString,
+    insertCell :: (long -> HTMLElement),
+    deleteCell :: (long -> undefined)
+};
+
+type HTMLTableCellElement :: HTMLElement (<-) {
+    cellIndex :: long,
+    abbr :: DOMString,
+    align :: DOMString,
+    axis :: DOMString,
+    bgColor :: DOMString,
+    ch :: DOMString,
+    chOff :: DOMString,
+    colSpan :: long,
+    headers :: DOMString,
+    height :: DOMString,
+    noWrap :: bool,
+    rowSpan :: long,
+    scope :: DOMString,
+    vAlign :: DOMString,
+    width :: DOMString
+};
+
+type HTMLFrameSetElement :: HTMLElement (<-) {
+    cols :: DOMString,
+    rows :: DOMString
+};
+
+type HTMLFrameElement :: HTMLElement (<-) {
+    frameBorder :: DOMString,
+    longDesc :: DOMString,
+    marginHeight :: DOMString,
+    marginWidth :: DOMString,
+    name :: DOMString,
+    noResize :: bool,
+    scrolling :: DOMString,
+    src :: DOMString
+};
+
+type HTMLIFrameElement :: HTMLElement (<-) {
+    align :: DOMString,
+    frameBorder :: DOMString,
+    height :: DOMString,
+    longDesc :: DOMString,
+    marginHeight :: DOMString,
+    marginWidth :: DOMString,
+    name :: DOMString,
+    scrolling :: DOMString,
+    src :: DOMString,
+    width :: DOMString
+};
+
+//added by me:
+external document :: HTMLDocument;
