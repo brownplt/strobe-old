@@ -328,7 +328,8 @@ gammaPlus env (VPType t v) =  case M.lookup v env of
   Nothing -> env
   Just Nothing -> env
   Just (Just (t', vp_t)) -> M.insert v (Just (restrict t' t, vp_t)) env
---gammaPlus g (VPId x) = error "Gamma + VPId NYI" 
+-- if (x), when true, removes all things from x that are like "undefined"
+--gammaPlus g (VPId x) = gammaMinus g (VPType (TId noPos "undefined") x)
 gammaPlus g (VPNot vp) = gammaMinus g vp
 gammaPlus g (VPMulti vs) = foldl gammaPlus g vs
 gammaPlus g _ = g
@@ -338,6 +339,8 @@ gammaMinus env (VPType t v) = case M.lookup v env of
   Nothing -> env
   Just Nothing -> env
   Just (Just (t', vp_t)) -> M.insert v (Just (remove t' t, vp_t)) env
+-- if (x), when false, leaves only things in x that are like "undefined"
+--gammaMinus g (VPId x) = gammaPlus g (VPType (TId noPos "undefined") x)
 gammaMinus g (VPNot vp) = gammaPlus g vp
 gammaMinus g (VPMulti vs) = foldl gammaMinus g vs
 gammaMinus g _ = g

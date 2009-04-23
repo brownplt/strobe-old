@@ -17,9 +17,40 @@ type RegExp :: {global :: bool,
                 test :: (string -> bool)};
 //all this is missing is what to do when you say "new RegExp".
 
+type String :: rec self . {length :: int,
+                match :: ([self] string -> Array<string>?)};
+
+/*
+type String :: {length :: int,
+                charAt :: ,
+                charCodeAt :: ,
+                concat :: ,
+                indexOf:: ,
+                lastIndexOf :: ,
+                localCompare :: ,
+                match :: ,
+                replace :: ,
+                search :: ,
+                slice :: ,
+                split :: ,
+                substr :: ,
+                substring :: ,
+                toLowerCase :: ,
+                toUpperCase :: ,
+*/
+
 //'static' methods of Date:
 external Date :: {parse :: (string -> int),
                   UTC :: (int, int, int?, int?, int?, int?, int? -> int)};
+type Date :: rec self . {getDay :: ([self] -> int),
+                         getMonth :: ([self] -> int),
+                         getYear :: ([self] -> int),
+                         getFullYear :: ([self] -> int),
+                         getHours :: ([self] -> int),
+                         getMinutes :: ([self] -> int),
+                         getDate :: ([self] -> int),
+                        };
+
 external decodeURI :: (string -> string);
 
 external undefined :: undefined;

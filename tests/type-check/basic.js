@@ -32,7 +32,7 @@ true && x @@ fails;
 4 * "3" @@ fails;
 5 + 4 :: double; //should be 'int'
 4 * 3 :: double;
-5 && 6 @@ fails; //need booleans
+//5 && 6 @@ fails; //we no longer require bools
 4 / "13" @@ fails;
 4 + (function(x) :: (double ->) { return; }) @@ fails;
 true && (3 || false) @@ fails;
@@ -75,7 +75,7 @@ x @@ fails; //unbound ID
 0 == 0 ? 9 + 10 : 10 == 0 :: U(bool, int);
 0 == 0 ? 10 == 0 : 9 + 10 :: U(bool, int);
 0 == 0 ? true : 9 - 30 :: U(bool, int);
-20 + 9 ? 10 + 9 : 9 - 30 @@ fails;
+//20 + 9 ? 10 + 9 : 9 - 30 @@ fails; //no longer require bools
 (4 == 0) == 0 ? 9 + 10 : 9 - 30 :: double;
 (function (a) :: (double -> bool) {
    return a == 0; })(4 == 0) ? 9 + 10 : 9 - 30 @@ fails;

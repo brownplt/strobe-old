@@ -1,40 +1,54 @@
-var sessionId :: string = "";
+var sessionId :: string?;
 
 function saveSessionId() :: (->) {
   //match string used to be 'session\=\"(.*\"'
   var match = document.cookie.match('session=\"(.*)\"');
-  if (match) { sessionId = match[1]; }
+  if (typeof match != "undefined") { //(match) {
+    sessionId = match[1]; }
 }
 
 function isLoggedIn() :: (-> bool) {
-  if (sessionId != "") { return true; }
+  //if (sessionId) { return true; }
+  if (typeof sessionId != "undefined") { return true; }
   else {
     var match = document.cookie.match('session=\"(.*)\"');
-    sessionId = match && match[1];
+    //sessionId = match && match[1];
+    if (typeof match != "undefined"){  //(match) {
+      sessionId = match[1];
+    }
+    else
+      sessionId = undefined;
     return !!sessionId;
   }
 }
-/*
-Date.shortMonths = ["Jan","Feb","Mar","Apr","May","Jun","Jul",
-  "Aug","Sep","Oct","Nov","Dec"];
 
-Date.prototype.formatRelative = function() {
-  var now = new Date();
+/*var Date_shortMonths = ["Jan","Feb","Mar","Apr","May","Jun","Jul",
+  "Aug","Sep","Oct","Nov","Dec"];*/
 
-  if (this.getDay() == now.getDay() && this.getMonth() == now.getMonth() &&
-      this.getFullYear() == now.getFullYear()) {
-    return (this.getHours() + (this.getMinutes() <= 9 ? ":0" : ":") +
-            this.getMinutes());
+var Date_shortMonths :: Array<string> = ["Jan","Feb","Mar","Apr","May",
+  "Jun","Jul", "Aug","Sep","Oct","Nov","Dec"];
+
+//TODO: fix op precedence (== lower than &&)
+//TODO: make if(x) work when x is not a bool.
+var Date_prototype_formatRelative = function(thisd) :: (Date -> string) {
+  //var now = new Date();
+  var now :: Date?; //hack to not require a constructor for Date
+  if (typeof now == "undefined") return "";
+
+  if ((thisd.getDay() == now.getDay())&&(thisd.getMonth() == now.getMonth()) &&
+      (thisd.getFullYear() == now.getFullYear())) {
+    return (thisd.getHours() + (thisd.getMinutes() <= 9 ? ":0" : ":") +
+            thisd.getMinutes());
   }
-  else if (this.getFullYear() == now.getFullYear()) {
-    return (this.getDate() + " " + Date.shortMonths[this.getMonth()]);
+  else if (thisd.getFullYear() == now.getFullYear()) {
+    return (thisd.getDate() + " " + Date_shortMonths[thisd.getMonth()]);
   }
   else {
-    return (this.getDate() + " " + Date.shortMonths[this.getMonth()] + " "
-            + (this.getFullYear() % 100));
+    return (thisd.getDate() + " " + Date_shortMonths[thisd.getMonth()] + " "
+            + (thisd.getFullYear() % 100));
   }
 };
-
+/*
 var LINK = function(elt) {
   return A({className: "links", href: 'javascript:undefined'},elt);
 };

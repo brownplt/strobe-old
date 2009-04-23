@@ -27,7 +27,8 @@ import System.FilePath
 
 data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,
-  stateEnvs :: Map Int Env
+  stateEnvs :: Map Int Env,
+  typeEnv :: Map String (Type SourcePos)
 }
 
 
@@ -170,6 +171,8 @@ stmt :: Env -- ^the environment in which to type-check this statement
      -> Stmt (Int, SourcePos)
      -> TypeCheck [(G.Node, Env)]
 stmt env ee rettype node s = do
+  state <- get
+  let tenv = typeEnv state
   succs <- stmtSuccs s
   -- statements that do not affect the incoming environment are "no-ops"
   let noop = return (zip (map fst succs) (repeat env))
@@ -180,6 +183,7 @@ stmt env ee rettype node s = do
     EmptyStmt _ -> noop
     AssignStmt (_,p) v e -> do
       --TODO: distinguish TRefined from Type.
+      --TODO: make this do a gammaPlus instead of all this.
       (te,e_vp) <- expr env ee e
       case M.lookup v env of        
         Nothing -> --unbound id
@@ -223,7 +227,11 @@ stmt env ee rettype node s = do
     CallStmt (_,p) r_v f_v args_v -> do
         (f, f_vp) <- forceEnvLookup p env f_v
         actualsWithVP' <- mapM (forceEnvLookup p env) args_v
-        let (this:arguments:actuals', actuals_vps) = unzip actualsWithVP'
+        let (this':arguments:actuals', actuals_vps) = unzip actualsWithVP'
+        this <- dotrefContext this' --motivation: if 'this' is a
+                                    --string, int, etc, it is automatically
+                                    --converted to an object.
+         
         --actuals_vps contains VP, including VPId for the var name itself.
         let actuals = this:actuals'
         case deconstrFnType f of
@@ -316,32 +324,48 @@ stmt env ee rettype node s = do
 -- in pJS, string, int, etc. can all be used as objects.
 -- but they're not objects; they get converted.
 -- this function does this conversion
-dotrefContext :: Type SourcePos -> Type SourcePos
-dotrefContext (TId p "string") =
-  --TODO: move this into uh... core.tjs
-  TObject p [("length", TId p "int")]
-dotrefContext t = t
+dotrefContext :: Type SourcePos -> TypeCheck (Type SourcePos)
+dotrefContext (TId p "string") = do
+  state <- get
+  let tenv = typeEnv state
+  sobj <- resolveAliases tenv (TId p "String")
+  return sobj
+dotrefContext t = return t
 
 expr :: Env -- ^the environment in which to type-check this expression
      -> ErasedEnv
      -> Expr (Int,SourcePos)
      -> TypeCheck (Type SourcePos, VP) 
-expr env ee e = case e of 
+expr env ee e = do 
+ state <- get
+ let tenv = typeEnv state
+ case e of 
   VarRef (_,p) id -> do
     (t, vp) <- forceEnvLookup p env id
     case vp of
       VPNone -> return (t, VPId id)
       _      -> return (t, VPMulti [VPId id, vp])
   DotRef (_, loc) e p -> do
-    (t', _) <- expr env ee e
-    let t = dotrefContext $ unRec (refined t')
+    --I'm uneasy about needing all of the following 3 lines
+    (t'', _) <- expr env ee e
+    t' <- dotrefContext (unRec (refined t''))
+    let t = unRec t'
     case t of
       TObject _ props -> case lookup p props of
         Just t' -> return (t', VPNone)
         Nothing -> typeError loc (printf "expected object with field %s" p)
       otherwise -> typeError loc (printf "expected object, received %s"
                                          (show t))
-  BracketRef{} -> fail "bracketref NYI"
+  BracketRef (_, loc) e ie -> do
+    (t'', _) <- expr env ee e
+    t' <- dotrefContext (unRec (refined t''))
+    let t = unRec t'
+    (it', _) <- expr env ee ie
+    let it = unRec (refined it')
+    assertSubtype loc it (TId loc "int")
+    case t of
+      TApp _ (TId _ "Array") [btype] -> return (btype, VPNone)
+      _ -> fail $ "expected array, got " ++ (show t)
   OpExpr (_,p) f args_e -> do
     args <- mapM (expr env ee) args_e
     operator p f args
@@ -454,7 +478,7 @@ operator loc op argsvp = do
     OpAdd | lhs <: stringType || rhs <: stringType -> return $ novp stringType
           | otherwise -> numeric False False
     PrefixLNot -> do
-      assertSubtype loc lhs boolType
+      --assertSubtype loc lhs boolType
       case lvp of
         VPNot v -> return (boolType, v)
         v -> return (boolType, VPNot v)
@@ -462,7 +486,7 @@ operator loc op argsvp = do
       assertSubtype loc lhs intType
       return $ novp intType
     PrefixMinus -> do
-      assertSubtype loc lhs doubleType -- TODO: more like, asserSub intType
+      assertSubtype loc lhs doubleType 
       return $ novp lhs
     PrefixVoid -> do
       catastrophe loc (printf "void has been removed")
@@ -478,26 +502,45 @@ unionEnv env1 env2 =
   foldl' (\env (id, maybeType) -> M.insertWith unionTypeVP id maybeType env)
          env1 (M.toList env2)
 
-uneraseEnv :: Env -> ErasedEnv -> Lit (Int, SourcePos) -> (Env, Type SourcePos)
-uneraseEnv env ee (FuncLit (_, pos) args locals _) = (env', rettype) where
-  lookupEE pos name = case M.lookup pos ee of
-    Nothing -> Nothing
-    Just t | head name == '@' -> Nothing
-           | otherwise -> Just t
-  functype = head $ ee ! pos
-  Just (_, cs, types, rettype, lp) = deconstrFnType functype
-  -- undefined for arguments
-  (this:types') = types
-  argtypes = zip (map fst args) (map Just (this:undefined:types'))
-  localtypes = map (\(name,(_, pos)) -> (name, liftM head (lookupEE pos name))) 
-                   locals
-  --the only typed things here are args and explicitly typed locals, both
-  --of which have VPId name. if it doesn't have a type, it's an ANF var,
-  --and it will be given one in due time.
-  novp (a,Just t)  = (a, Just (t, VPId a))
-  novp (a,Nothing) = (a, Nothing)
-  env' = M.union (M.fromList (map novp $ argtypes++localtypes)) env 
-uneraseEnv env ee _ = error "coding fail - uneraseEnv given a function-not"
+uneraseEnv :: Env -> Map String (Type SourcePos)
+              -> ErasedEnv -> Lit (Int, SourcePos) 
+              -> TypeCheck (Env, Type SourcePos)
+uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
+  let lookupEE p name = case M.lookup p ee of
+        Nothing -> return Nothing
+        Just t | head name == '@' -> return Nothing
+               | otherwise -> do
+                   --liftIO $ putStrLn $ "Got: " ++ show t
+                   t' <- mapM (resolveAliases tenv) t
+                   --liftIO $ putStrLn $ "Yield: " ++ show t'
+                   return $ Just t'
+      functype = head $ case M.lookup pos ee of
+                          Nothing -> -- fake it. TODO: fix this bug for real.
+                            [(TFunc [TId noPos "undefined"] Nothing 
+                                (TId noPos "undefined") LPNone)]
+                          Just xx -> xx
+
+  let Just (_, cs, types, rettype, lp) = deconstrFnType functype
+      -- undefined for arguments
+  let (this':types'') = types
+  this <- resolveAliases tenv this'
+  types' <- mapM (resolveAliases tenv) types''
+  liftIO $ putStr $ show this' ++ " " ++ show types''
+  liftIO $ putStrLn $ " --> " ++ show this ++ " " ++ show types'
+  argtypes <- return $ zip (map fst args) (map Just (this:undefined:types'))
+  localtypes <- mapM (\(name,(_, pos)) -> do
+                        t <- lookupEE pos name
+                        return (name, liftM head t))
+                     locals
+      --the only typed things here are args and explicitly typed locals, both
+      --of which have VPId name. if it doesn't have a type, it's an ANF var,
+      --and it will be given one in due time.
+  let novp (a,Just t)  = (a, Just (t, VPId a))
+      novp (a,Nothing) = (a, Nothing)
+      env' = M.union (M.fromList (map novp $ argtypes++localtypes)) env 
+  return (env', rettype)
+
+uneraseEnv env tenv ee _ = error "coding fail - uneraseEnv given a function-not"
 
 typeCheckProgram :: Env
                   -> (Tree ErasedEnv, 
@@ -507,7 +550,7 @@ typeCheckProgram env (Node ee subEes, Node (_, lit, gr) subGraphs) = do
   state <- get
   put $ state { stateGraph = gr, stateEnvs = M.empty }
   -- When type-checking the body, we assume the declared types for functions.
-  let (env', rettype) = uneraseEnv env ee lit
+  (env', rettype) <- uneraseEnv env (typeEnv state) ee lit
   topLevelEnv <- body env' ee rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descent into nested functions, we ensure that functions satisfy
   -- their declared types.
@@ -618,11 +661,11 @@ typeCheck prog = do
                               s t' tenv)
         
   --TODO: pass typeenv in the state monad
-  (globalVarEnv, globalTypeEnv) <- procTLs toplevels (M.empty, M.empty)
-  let globalVarEn'v = M.unions $ [globalVarEnv] ++ 
+  (globalVarEnv', globalTypeEnv) <- procTLs toplevels (M.empty, M.empty)
+  let globalVarEnv = M.unions $ [globalVarEnv'] ++ 
         [M.fromList [("this", Just (TObject noPos [], VPId "this"))]]
   
   (env, state) <- runStateT (typeCheckProgram globalVarEnv (envs, intraprocs)) 
-                            (TypeCheckState G.empty M.empty)
+                            (TypeCheckState G.empty M.empty globalTypeEnv)
   return env
 
