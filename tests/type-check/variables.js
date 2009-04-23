@@ -146,6 +146,15 @@ function (x) :: (double -> double) {
   return doit(f);
 } :: (double -> double);
 
+function () :: (->) {
+  var x = 10;
+  function zorro() :: (-> int) { return x; }
+} :: (->);
+function () :: (->) {
+  var x :: int = 10;
+  function zorro() :: (-> int) { return x; }
+} :: (->);
+
 /*
 ;with
 (test (type-of (parse '{with {x : number 100} x})) (t-num))

@@ -525,8 +525,8 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
   let (this':types'') = types
   this <- resolveAliases tenv this'
   types' <- mapM (resolveAliases tenv) types''
-  liftIO $ putStr $ show this' ++ " " ++ show types''
-  liftIO $ putStrLn $ " --> " ++ show this ++ " " ++ show types'
+  --liftIO $ putStr $ show this' ++ " " ++ show types''
+  --liftIO $ putStrLn $ " --> " ++ show this ++ " " ++ show types'
   argtypes <- return $ zip (map fst args) (map Just (this:undefined:types'))
   localtypes <- mapM (\(name,(_, pos)) -> do
                         t <- lookupEE pos name
@@ -572,6 +572,7 @@ resolveAliases tenv t@(TId pos i)
  | i == "bool"      = return t
  | i == "Array"     = return t -- TODO: handle 'generics' properly
  | i == "undefined" = return t
+ | i == "any"       = return t
  | otherwise        = case M.lookup i tenv of
      Nothing -> fail $ printf "at %s: type %s is unbound." (show pos) (show t)
      Just x -> return x
