@@ -105,6 +105,9 @@ instance Eq (Type a) where
     TFunc req2 var2 ret2 lp2 = req1 == req2 && 
                                           var1 == var2 && 
                                           ret1 == ret2 && lp1 == lp2
+  TRec s1 t1 == TRec s2 t2 = s1 == s2 && t1 == t2 --TODO: modulo the names
+  TForall ss1 tcs1 t1 == TForall ss2 tcs2 t2 = 
+    ss1 == ss2 && tcs1 == tcs2 && t1 == t2
   t1 == t2                            = False
 
 instance Eq (LatentPred a) where

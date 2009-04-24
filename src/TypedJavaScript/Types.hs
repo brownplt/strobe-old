@@ -17,6 +17,8 @@ module TypedJavaScript.Types
   ) where
 
 --import qualified BrownPLT.JavaScript.Analysis.ANF as ANF
+import System.IO.Unsafe --unsafePerformIO
+
 import BrownPLT.JavaScript.Analysis.ANF
 import TypedJavaScript.Prelude
 import TypedJavaScript.PrettyPrint()
@@ -173,13 +175,17 @@ eq rel (t1, t2)
     otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
 -}
 
+--how to 'printf':      tmp <- seq (unsafePerformIO $ putStrLn $ "In the trec: " ++ show (t1,t2) ++ " -> " ++ show (t1, substType v t2 t2')) (return rel)
+
 -- based on TAPL p.305
 st :: Set (Type SourcePos, Type SourcePos)
    -> (Type SourcePos, Type SourcePos)
    -> Maybe (Set (Type SourcePos, Type SourcePos))
 st rel (t1, t2)
   | (t1, t2) `S.member` rel = return rel
-  | otherwise = case (t1, t2) of
+  | otherwise = do
+--   seq (unsafePerformIO $ putStrLn $ "omg: " ++ show rel ++ " " ++ show t1 ++ " " ++ show t2) (return rel)
+   case (t1, t2) of
     (TId _ "int", TId _ "double") -> return rel
     (_, TId _ "any") -> return rel
     (TId _ x, TId _ y) 
@@ -213,20 +219,17 @@ st rel (t1, t2)
             t1 <- lookup id2 props1
             st rel (t1, t2)
       foldM prop (S.insert (t1, t2) rel) props2
+    (t1, TRec v t2') -> do
+      rez <- st (S.insert (t1, t2) rel) (t1, substType v t2 t2')
+      return rez
+    (TRec v t1', t2) -> do
+      rez <- st (S.insert (t1, t2) rel) (substType v t1 t1', t2)
+      return rez
     (TUnion ts1, t2) -> do
       foldM (\rel t1 -> st rel (t1, t2)) rel ts1 -- all
     (t1, TUnion ts2) -> do
       anyM (\rel t2 -> st rel (t1, t2)) rel ts2
-    (t1, TRec v t2') -> do
-      st (S.insert (t1, t2) rel) (t1, substType v t2 t2')
-    (TRec v t1', t2) -> do
-      st (S.insert (t1, t2) rel) (substType v t1 t1', t2)
     otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
-    
-
-
-
-
 
 isSubType' :: Type SourcePos -> Type SourcePos -> Bool
 isSubType' t1 t2 = case st S.empty (t1, t2) of

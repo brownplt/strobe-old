@@ -89,12 +89,31 @@ type Node :: rec Node . {
     cloneNode :: (bool -> Node)
 };
 
+type Element :: { //Node (<-) {
+    tagName :: DOMString,
+    getAttribute :: (DOMString -> DOMString),
+    setAttribute :: (DOMString, DOMString -> undefined),
+    removeAttribute :: (DOMString -> undefined),
+    /*getAttributeNode :: (DOMString -> Attr),
+    setAttributeNode :: (Attr -> Attr),
+    removeAttributeNode :: (Attr -> Attr),
+    getElementsByTagName :: (DOMString -> NodeList),*/
+    normalize :: ( -> undefined)
+};
+type HTMLElement :: { //Element (<-) {
+    id :: DOMString,
+    title :: DOMString,
+    lang :: DOMString,
+    dir :: DOMString,
+    className :: DOMString
+};
+
 type Document :: { //Node (<-) {
     /*doctype :: DocumentType,
-    implementation :: DOMImplementation,
+    implementation :: DOMImplementation,*/
     documentElement :: Element,
     createElement :: (DOMString -> Element),
-    createDocumentFragment :: ( -> DocumentFragment),
+    /*createDocumentFragment :: ( -> DocumentFragment),
     createTextNode :: (DOMString -> Text),
     createComment :: (DOMString -> Comment),
     createCDATASection :: (DOMString -> CDATASection),
@@ -109,8 +128,8 @@ type HTMLDocument :: { //Document (<-) {
     referrer :: DOMString,
     domain :: DOMString,
     URL :: DOMString,
-    /*body :: HTMLElement,
-    images :: HTMLCollection,
+    body :: HTMLElement,
+    /*images :: HTMLCollection,
     applets :: HTMLCollection,
     links :: HTMLCollection,
     forms :: HTMLCollection,
@@ -125,3 +144,51 @@ type HTMLDocument :: { //Document (<-) {
 };
 
 external document :: HTMLDocument;
+
+
+
+
+//stuff from flapjax, temporarily added here to make testfest work
+type FlapjaxElement :: {};
+external makeFJE :: (-> FlapjaxElement); //total hax
+/*external A :: ({className :: string, href :: string}, HTMLElement ->
+               FlapjaxElement);*/
+external A :: (U(HTMLElement, string)... ->
+               FlapjaxElement);
+external DIV :: (U(HTMLElement, string)... ->
+                 FlapjaxElement);
+type Pulse :: {stamp :: int, value :: {}}; //value should be parametrized
+type SendT :: (Pulse -> );
+type UpdaterT :: (SendT, Pulse -> );
+type EventStream :: rec self . {updater :: UpdaterT,
+                     sendsTo :: Array<self>,
+                     rank :: int,
+                     //lift_e :: (forall a b . ((a -> b) -> self)),
+                     lift_e :: (({session :: string} -> ) -> self),
+                     };
+external createNode :: (Array<EventStream>, UpdaterT -> EventStream);
+
+//external internal_e :: (Array<EventStream>? -> EventStream);
+type EventStreamPlusSend :: rec self . {updater :: UpdaterT,
+                     sendsTo :: Array<self>,
+                     rank :: int,
+                     //lift_e :: (forall a b . ((a -> b) -> self)),
+                     lift_e :: ([self] ({session :: string} -> ) -> self),
+                     sendEvent :: ([self] {} ->), //{} here should be 'value'
+                     };
+external receiver_e :: (-> EventStreamPlusSend);
+
+//AJAX
+type XMLHttpRequest :: rec self . {readyState :: int,
+                        responseText :: DOMString,
+                        responseXML :: Document,
+                        status :: int,
+                        statusText :: DOMString,
+                        abort :: ([self] ->),
+                        //more stuff goes here
+};
+
+//Prototype
+external String_prototype_evalJSON :: (string, bool -> {}); //TODO: blah eval!!!
+
+

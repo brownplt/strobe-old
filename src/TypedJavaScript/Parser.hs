@@ -185,7 +185,7 @@ type_'' =
       noDupFields fields
         | length (L.nub $ map fst fields) == length fields = return fields
         | otherwise = fail "duplicate fields in an object type specification"
-    in (parens type_) <|> union <|> object <|> constrOrId
+    in (parens type_) <|> (try union) <|> object <|> constrOrId
 
 
 toANFLit :: Expression SourcePos -> ANF.Lit SourcePos

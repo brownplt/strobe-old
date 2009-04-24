@@ -146,6 +146,7 @@ function (x) :: (double -> double) {
   return doit(f);
 } :: (double -> double);
 
+//variable interaction w/ nested functions, woooooo.
 function () :: (->) {
   var x = 10;
   function zorro() :: (-> int) { return x; }
@@ -154,6 +155,16 @@ function () :: (->) {
   var x :: int = 10;
   function zorro() :: (-> int) { return x; }
 } :: (->);
+function () :: (->) {
+  function zorro() :: (-> int) { return x; }
+  zorro();
+  var x = 10;
+} @@ fails;
+function () :: (->) {
+  function zorro() :: (-> int) { return x; }
+  zorro();
+  var x :: int = 10;
+} @@ fails;
 
 /*
 ;with
