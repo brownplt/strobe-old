@@ -690,7 +690,7 @@ funcApp e = (parens $ withPos cstr (parseExpression `sepBy` comma)) <?> "(functi
 parameterizedFuncApp e = do
   reservedOp "@" 
   p <- getPosition
-  types <- brackets $ type_ `sepBy` comma
+  types <- brackets $ (parens type_) `sepBy` comma
   args <- parens $ parseExpression `sepBy` comma
   return (CallExpr p e types args)
 

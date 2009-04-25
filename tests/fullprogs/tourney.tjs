@@ -58,9 +58,9 @@ var LINK = function(elt) :: (U(HTMLElement, string) -> FlapjaxElement) {
 var isSuccess = function(v) :: forall a. {success :: a} -> a
                   { return v.success; };
 
-function server_e(url,valueE) :: (string, EventStream -> EventStreamPlusSend) {
+function server_e(url,valueE) :: (string, EventStream -> EventStream) {
   //var response_e = receiver_e();
-  var response_e :: EventStreamPlusSend = receiver_e();
+  var response_e :: EventStream = receiver_e();
 
   var onSuccess = function(transport) :: (XMLHttpRequest ->){
     saveSessionId();
@@ -82,21 +82,22 @@ function server_e(url,valueE) :: (string, EventStream -> EventStreamPlusSend) {
       one_e(true),200);*/
   };
 
-  valueE.lift_e(function(val) :: ({session :: string} -> undefined) {
-    // if (sessionId) { ... }
-    if (typeof sessionId != "undefined") { val.session = sessionId; }
+  valueE.lift_e@[({session :: string}), (undefined)](
+    function(val) :: ({session :: string} -> undefined) {
+      // if (sessionId) { ... }
+      if (typeof sessionId != "undefined") { val.session = sessionId; }
 
-    /*new Ajax.Request(url,
-      { method: 'post'
-      , parameters: val
-      , onSuccess: onSuccess
-      , onFailure: onFailure
-      });*/
+      /*new Ajax.Request(url,
+        { method: 'post'
+        , parameters: val
+        , onSuccess: onSuccess
+        , onFailure: onFailure
+        });*/
   });
 
   return response_e;
 };
-/*
+
 // buttonBar :: buttons * buttons * button
 // -> { elem: element, clickE: EventStream buttons }
 // button = String
@@ -104,59 +105,72 @@ function server_e(url,valueE) :: (string, EventStream -> EventStreamPlusSend) {
 //
 // You must ensure that the button names are unique, or all hell will
 // break loose.
-function buttonBar(buttons,rightButtons,initial) {
 
-  rightButtons = rightButtons || [ ];
-  var last = false;
+function buttonBar(buttons,rightButtons,initial) :: (
+  Array<string>, Array<string>, string -> { elem :: HTMLElement,
+                                            clickE :: EventStream}) {
 
-  var clickEs = [ ];
-  var targetEs = [ ];
+  //rightButtons = rightButtons || [ ];
+  if (typeof rightButtons == "undefined")
+    rightButtons = [""]; //TODO: fix once array lits work.
+  var last :: HTMLElement? = undefined;
 
-  var left = [ ];
-  var right = [ ];
+  var clickEs = [ES]; //ES is something that is EventStream, since [] no work
+  var targetEs :: Array<EventStream> = [ES];
 
-  left.push({className: 'buttonBar'});
+  var left = [HE];
+  var right = [HE];
 
-  buttons.each(function(button) {
-    var elem = DIV({className: 'button'},button.toString());
+  //left.push({className: 'buttonBar'}); //pending object-like arrays
+  //push@[HTMLElement](left, {className : 'buttonBar'}); //pending dicts
+
+  //buttons.each(
+  //function(button) :: (string ->){
+  function tmp1(button) :: (string ->){
+    var elem = HE; //DIV({className: 'button'},button.toString());
     var e = clicks_e(elem);
-    targetEs.push(e);
-    clickEs.push(e.constant_e(button));
-    left.push(elem);
+    //targetEs.push(e);
+    e.constant_e(button); //clickEs.push(e.constant_e(button));
+    //left.push(elem);
     if (button == initial) {
       last = elem;
-       elem.setStyle({ backgroundColor: '#ffff99', color: '#000000' });
+      elem.setStyle({ backgroundColor: '#ffff99', color: '#000000' });
     }
-  });
+  }//);
 
-  right.push({className: 'right'});
+  //right.push({className: 'right'});
 
-
-  rightButtons.each(function(button) {
-    var elem = DIV({className: 'button'},button);
+ // rightButtons.each(
+  //function (button) :: (string ->){
+  function tmp2(button) :: (string ->){
+    var elem = HE; //DIV({className: 'button'},button);
     var e = clicks_e(elem);
-    targetEs.push(e);
-    clickEs.push(e.constant_e(button));
-    right.push(elem);
+    //targetEs.push(e);
+    e.constant_e(button); //clickEs.push(e.constant_e(button));
+    //right.push(elem);
     if (button == initial) {
       last = elem;
-       elem.setStyle({ backgroundColor: '#ffff99', color: '#000000' });
+      elem.setStyle({ backgroundColor: '#ffff99', color: '#000000' });
     }
-  });
+  }//);
 
-  left.push(DIV.apply(this,right));
+  //left.push(DIV.apply(this,right));
 
-  var clickE = merge_e.apply(this,clickEs);
-  var targetE = merge_e.apply(this,targetEs);
+  //pending var args and apply working:
+  //var clickE = merge_e.apply(this,clickEs);
+  //var targetE = merge_e.apply(this,targetEs);
+  var clickE = merge_e(clickEs); //TODO: add 'this' in here, too.
+  var targetE = merge_e(targetEs);
 
-  targetE.lift_e(function(target) {
-    if (last) { last.setStyle({ backgroundColor: '', color: '' }); }
-    last = target;
-    last.setStyle({ backgroundColor: '#ffff99', color: '#000000' });
-  });
+  //pending parapoly working:
+  //targetE.lift_e(function(target) :: (HTMLElement->) {
+  //  if (last) { last.setStyle({ backgroundColor: '', color: '' }); }
+  //  last = target;
+  //  last.setStyle({ backgroundColor: '#ffff99', color: '#000000' });
+  //});
 
   return { clickE: clickE
-         , elem: DIV.apply(this,left) };
+         , elem: HE }; //DIV.apply(this,left) };
 };
 
 // panelB :: EventStream String * { String : Elem or (-> Elem) } * Elem
@@ -168,51 +182,82 @@ function buttonBar(buttons,rightButtons,initial) {
 //
 // Use a thunk in the dictionary to perform any setup when a panel is swapped
 // into the view, even if the layout is static. It's amazing!
-function panelB(panelE,panelDict,initialPanel) {
+function panelB(panelE,panelDict,initialPanel) :: (
+  EventStream, {name :: U(HTMLElement, (-> HTMLElement))}, HTMLElement ->
+    Behavior) {
+  /*//no longer necessary!
   if (!(initialPanel instanceof HTMLElement)) {
     return "error calling panelB: intialPanel is not an HTML element";
-  }
+  }*/
 
-  return panelE.lift_e(function(name) {
+  function tmp(name) :: (string -> HTMLElement) {
+    var val = panelDict.name; //panelDict[name]; //pending dicts
+    if (typeof(val) == "function") { return val(); }
+    //else if (val instanceof HTMLElement) { return val; }
+    //else { return false; // panelE violated the contract, fail silently
+    else { return val; } //no other choices. yay for static typing.
+  };
+  function tmp2(val) :: (any -> bool) {
+    return true; //val instanceof HTMLElement; //pending insteanceof
+  };
+  return panelE.lift_e@[(string),(HTMLElement)](tmp)
+    .filter_e(tmp2)
+    .startsWith@[(HTMLElement)](initialPanel);
+
+  /*return panelE.lift_e(function(name) {
     var val = panelDict[name];
     if (typeof(val) == "function") { return val(); }
     else if (val instanceof HTMLElement) { return val; }
     else { return false; // panelE violated the contract, fail silently
     }
   }).filter_e(function(val) { return val instanceof HTMLElement; })
-  .startsWith(initialPanel);
+  .startsWith(initialPanel);*/
 };
 
 
-function modal(content,hideShowE,zIndex) {
-  var whiteout = DIV({ style: { position: 'absolute',
+function modal(content,hideShowE,zIndex) :: (
+  HTMLElement, EventStream, int? -> EventStream) {
+  var whiteout :: HTMLElement = HE; /*DIV({ style: { position: 'absolute',
                                 height: '100%',
                                 width: '100%',
                                 left: '0px',
                                 top: '0px',
                                 zIndex: 100,
-                                backgroundColor: 'black' }});
+                                backgroundColor: 'black' }});*/ //pending dicts
   whiteout.setOpacity(0.3);
   document.body.appendChild(whiteout);
-
-  var win = DIV( { style: { position: 'absolute'
+  //remove next 5 lines after we can do if (zIndex)
+  var _zIndex = 101;
+  if (typeof zIndex != "undefined") {
+    if (zIndex != 0)
+      _zIndex = zIndex;
+  }
+  var win :: HTMLElement = HE; /*DIV( { style: { position: 'absolute'
                           , left: '25%'
                           , minWidth: '400px'
                           , top: '10%'
-                          , zIndex: zIndex || 101
+                          , zIndex: _zIndex // zIndex || 101
                           } }
-               , content);
+               ); //, content); //pending varargs */ //pending dicts
 
   document.body.appendChild(win);
-  var hidden = false;
+  var hidden :: bool = false;
 
-  hideShowE.lift_e(function(val) {
+  function tmp(val) :: (any ->){
     if (!val && !hidden) {
       document.body.removeChild(whiteout);
       document.body.removeChild(win);
       hidden = true;
     }
-  });
+  }
+  hideShowE.lift_e@[(any), (undefined)](tmp);
+  /*hideShowE.lift_e(function(val) {
+    if (!val && !hidden) {
+      document.body.removeChild(whiteout);
+      document.body.removeChild(win);
+      hidden = true;
+    }
+  });*/ //pending fixing function bug
 
   return hideShowE;
-};*/
+};

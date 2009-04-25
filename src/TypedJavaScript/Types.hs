@@ -95,16 +95,18 @@ substType var sub (TObject p fields) =
   TObject p (map (\(v,t) -> (v,substType var sub t)) fields)
 substType _ _ (TRefined _ _) = error "substType TRefined NYI"
 
-applyType :: Monad m => Type SourcePos -> [Type SourcePos] -> m (Type SourcePos) -- TODO: ensure constraints
-applyType (TForall formals constraints body) actuals = do
+applyType :: Monad m => SourcePos -> Type SourcePos -> [Type SourcePos] -> m (Type SourcePos) -- TODO: ensure constraints
+applyType loc (TRefined x y) actuals = applyType loc y actuals
+applyType loc (TForall formals constraints body) actuals = do
   unless (length formals == length actuals) $ do
-    fail $ "quantified type has " ++ show (length formals) ++ " variables " ++
-           "but " ++ show (length actuals) ++ " were supplied"
+    fail $ printf "at %s: quantified type has %s vars but %s were supplied"
+            (show loc) (show (length formals)) (show (length actuals)) 
   return $ foldr (uncurry substType) body (zip formals actuals)
-applyType t [] = return t
-applyType t actuals =
-  fail $ "type " ++ show t ++ " is not quantified, but " ++ 
-         show (length actuals)  ++ " type arguments were supplied"
+applyType loc t [] = return t
+applyType loc t actuals =
+  fail $ printf ("at %s: type %s is not quantified, but %s " ++ 
+                 " type arguments were supplied") (show t)
+                   (show (length actuals))
 
 
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
@@ -369,7 +371,8 @@ equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId _ "string")) = case s of
   "undefined" -> VPType undefType x
   "boolean"   -> VPType (TId p "bool") x
   "string"    -> VPType (TId p "string") x
-  "function"  -> error "vp for typeof x == 'function' nyi"
+  --function taken from TS. TODO: make sure is fine.
+  "function"  -> VPType (TFunc [TUnion []] Nothing (TId noPos "any") LPNone) x
   "object"    -> error "vp for typeof x == 'object' nyi"
   _           -> VPNone
 equalityvp a@(VPLit (StringLit l s) (TId _ "string")) b@(VPTypeof x) = 

@@ -164,10 +164,10 @@ assertSubtype :: MonadIO m
 assertSubtype loc name received expected = case received <: expected of
   True -> return ()
   False -> do
-    liftIO $ putStrLn $ printf "%s == %s: %s" (show received) (show expected)
-                         (show (received == expected))
-    liftIO $ putStrLn $ printf "%s <: %s: %s" (show received) (show expected)
-                         (show (received <: expected))
+    --liftIO $ putStrLn $ printf "%s == %s: %s" (show received) (show expected)
+    --                     (show (received == expected))
+    --liftIO $ putStrLn $ printf "%s <: %s: %s" (show received) (show expected)
+    --                     (show (received <: expected))
     subtypeError loc name expected received
 
 stmt :: Env -- ^the environment in which to type-check this statement
@@ -231,7 +231,15 @@ stmt env ee rettype node s = do
     DeleteStmt _ r del -> fail "delete NYI"
     NewStmt{} -> fail "NewStmt will be removed from ANF"
     CallStmt (_,p) r_v f_v args_v -> do
-        (f, f_vp) <- forceEnvLookup p env f_v
+        (f'', f_vp) <- forceEnvLookup p env f_v
+        let f' = refined f''
+        f <- case f' of
+               TForall{} -> do
+                 case M.lookup p ee of 
+                   Nothing -> fail $ printf "at %s: callstmt not in ee"
+                                       (show p)
+                   Just apps -> applyType p f' apps
+               _ -> return f'
         actualsWithVP' <- mapM (forceEnvLookup p env) args_v
         let (this':arguments:actuals', actuals_vps) = unzip actualsWithVP'
         this <- dotrefContext this' --motivation: if 'this' is a
@@ -292,9 +300,10 @@ stmt env ee rettype node s = do
                                             env
                     return $ zip (map fst succs) (repeat env')
                 | otherwise -> subtypeError p "CallStmt retval" r_vt r
-          Just (typeArgs,_,_,_,_) ->
+          Just (typeArgs,_,_,_,_) -> do
             -- This should not happen:
             -- forall a b c. forall x y z . int -> bool
+            liftIO $ putStrLn $ "typeargs: " ++ show typeArgs
             catastrophe p("application still has uninstantiated type variables:"
                            ++ show typeArgs)               
          
@@ -360,9 +369,14 @@ expr env ee e = do
     case t of
       TObject _ props -> case lookup p props of
         Just t' -> return (t', VPNone)
-        Nothing -> typeError loc (printf "expected object with field %s" p)
+        Nothing -> case p of
+          --TODO: make all objs have these fields: 
+          "toString" -> return (TFunc [TId loc "any"] Nothing (TId loc "string") LPNone, 
+                                VPNone)
+          _ -> typeError loc (printf "expected object with field %s" p)
       otherwise -> typeError loc (printf "expected object, received %s"
                                          (show t))
+                                         
   BracketRef (_, loc) e ie -> do
     (t'', _) <- expr env ee e
     t' <- dotrefContext (unRec (refined t''))
@@ -551,10 +565,11 @@ typeCheckProgram :: Env
                   -> (Tree ErasedEnv, 
                       Tree (Int, Lit (Int,SourcePos), Graph))
                   -> TypeCheck Env
-typeCheckProgram env (Node ee subEes, Node (_, lit, gr) subGraphs) = do
+typeCheckProgram env (Node ee' subEes, Node (_, lit, gr) subGraphs) = do
   state <- get
   put $ state { stateGraph = gr, stateEnvs = M.empty }
   -- When type-checking the body, we assume the declared types for functions.
+  ee <- resolveAliasesEE (typeEnv state) ee'
   (env', rettype) <- uneraseEnv env (typeEnv state) ee lit
   topLevelEnv <- body env' ee rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descent into nested functions, we ensure that functions satisfy
@@ -579,9 +594,10 @@ resolveAliases tenv t@(TId pos i)
  | i == "Array"     = return t -- TODO: handle 'generics' properly
  | i == "undefined" = return t
  | i == "any"       = return t
- | otherwise        = case M.lookup i tenv of
-     Nothing -> fail $ printf "at %s: type %s is unbound." (show pos) (show t) 
-     Just x -> return x
+ | otherwise        = return t {-case M.lookup i tenv of
+     Nothing -> fail $ printf "at %s: type %s is unbound. (env=%s)" 
+                         (show pos) (show t) (show tenv)
+     Just x -> return x -}
 resolveAliases tenv (TRec s t) = do
   --TODO: is this right? I temporarily insert 's' into the tenv so it gets
   -- left alone.
@@ -616,6 +632,18 @@ resolveAliases tenv (TForall ss cs t) = do
 resolveAliases tenv (TRefined t1 t2) = fail "What is TRefined doing in alias?"
   
 resolveAliases tenv t = fail $ "resolveAliases can't handle " ++ show t
+
+resolveAliasesEE :: (MonadIO m) => (Map String (Type SourcePos)) 
+                  -> ErasedEnv -> m ErasedEnv
+resolveAliasesEE tenv ee = do
+  --not sure if there is a more efficient way to do this:
+  let procp (k, v) = do
+        v' <- mapM (resolveAliases tenv) v
+        return (k, v')
+  resl <- mapM procp (M.toList ee)
+  return $ M.fromList resl
+
+--type ErasedEnv = Map SourcePos [Type SourcePos]
 
 {-
   | TApp a (Type a) [Type a]
