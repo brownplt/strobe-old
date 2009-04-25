@@ -792,8 +792,8 @@ parsePrefixedExpr = do
       return (PrefixExpr pos op innerExpr)
 
 exprTable:: [[Operator Char st ParsedExpression]]
-exprTable = 
-  [
+exprTable = --changed precedence as per TDGTJ
+  {-[
    [makePrefixExpr "++" PrefixInc,
     makePostfixExpr "++" PostfixInc],
    [makePrefixExpr "--" PrefixDec,
@@ -812,7 +812,27 @@ exprTable =
    [makeInfixExpr "||" OpLOr],  
    [makeInfixExpr "==" OpEq, makeInfixExpr "!=" OpNEq,
     makeInfixExpr "===" OpStrictEq, makeInfixExpr "!==" OpStrictNEq]
-    ]
+    ]-}
+  [
+   [makePrefixExpr "++" PrefixInc,
+    makePostfixExpr "++" PostfixInc],
+   [makePrefixExpr "--" PrefixDec,
+    makePostfixExpr "--" PostfixDec],
+   [makeInfixExpr "*" OpMul, makeInfixExpr "/" OpDiv, makeInfixExpr "%" OpMod],
+   [makeInfixExpr "+" OpAdd, makeInfixExpr "-" OpSub],
+   [makeInfixExpr "<<" OpLShift, makeInfixExpr ">>" OpSpRShift,
+    makeInfixExpr ">>>" OpZfRShift],
+   [makeInfixExpr "<" OpLT, makeInfixExpr "<=" OpLEq, makeInfixExpr ">" OpGT,
+    makeInfixExpr ">=" OpGEq, 
+    makeInfixExpr "instanceof" OpInstanceof, makeInfixExpr "in" OpIn],
+   [makeInfixExpr "==" OpEq, makeInfixExpr "!=" OpNEq,
+    makeInfixExpr "===" OpStrictEq, makeInfixExpr "!==" OpStrictNEq],
+   [makeInfixExpr "&" OpBAnd], 
+   [makeInfixExpr "^" OpBXor], 
+   [makeInfixExpr "|" OpBOr],
+   [makeInfixExpr "&&" OpLAnd],
+   [makeInfixExpr "||" OpLOr]  
+  ]
   
 parseExpression' = 
   buildExpressionParser exprTable parsePrefixedExpr <?> "simple expression"

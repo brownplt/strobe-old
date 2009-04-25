@@ -55,7 +55,7 @@ var LINK = function(elt) :: (U(HTMLElement, string) -> FlapjaxElement) {
   return makeFJE();
 };
 
-var isSuccess = function(v) :: forall a. {success :: a} -> a
+var isSuccess = function(v) :: {success :: bool} -> bool
                   { return v.success; };
 
 function server_e(url,valueE) :: (string, EventStream -> EventStream) {
@@ -73,7 +73,7 @@ function server_e(url,valueE) :: (string, EventStream -> EventStream) {
     //if (console && console.log) { console.log(transport); }
     var txt = (transport.responseText.length > 0)
               ? transport.responseText : "Session Expired";
-    //pending varargs:
+    //pending dicts and varargs:
     /*modal(DIV({ className: 'shutdown'},
            txt,
             DIV(A({ style: { fontSize: '12px',color: '#ffffff' },
@@ -162,12 +162,14 @@ function buttonBar(buttons,rightButtons,initial) :: (
   var clickE = merge_e(clickEs); //TODO: add 'this' in here, too.
   var targetE = merge_e(targetEs);
 
-  //pending parapoly working:
-  //targetE.lift_e(function(target) :: (HTMLElement->) {
-  //  if (last) { last.setStyle({ backgroundColor: '', color: '' }); }
-  //  last = target;
-  //  last.setStyle({ backgroundColor: '#ffff99', color: '#000000' });
-  //});
+  targetE.lift_e@[(HTMLElement),(undefined)](
+    function(target) :: (HTMLElement->) {
+      if (typeof last != "undefined") { //(last) {
+        last.setStyle({ backgroundColor: '', color: '' });
+      }
+      last = target;
+      last.setStyle({ backgroundColor: '#ffff99', color: '#000000' });
+  });
 
   return { clickE: clickE
          , elem: HE }; //DIV.apply(this,left) };
@@ -201,7 +203,7 @@ function panelB(panelE,panelDict,initialPanel) :: (
     return true; //val instanceof HTMLElement; //pending insteanceof
   };
   return panelE.lift_e@[(string),(HTMLElement)](tmp)
-    .filter_e(tmp2)
+    .filter_e@[(any)](tmp2)
     .startsWith@[(HTMLElement)](initialPanel);
 
   /*return panelE.lift_e(function(name) {

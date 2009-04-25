@@ -594,10 +594,10 @@ resolveAliases tenv t@(TId pos i)
  | i == "Array"     = return t -- TODO: handle 'generics' properly
  | i == "undefined" = return t
  | i == "any"       = return t
- | otherwise        = return t {-case M.lookup i tenv of
-     Nothing -> fail $ printf "at %s: type %s is unbound. (env=%s)" 
-                         (show pos) (show t) (show tenv)
-     Just x -> return x -}
+ | otherwise        = case M.lookup i tenv of
+     Nothing -> return t {-fail $ printf "at %s: type %s is unbound. (env=%s)" 
+                         (show pos) (show t) (show tenv)-}
+     Just x -> return x
 resolveAliases tenv (TRec s t) = do
   --TODO: is this right? I temporarily insert 's' into the tenv so it gets
   -- left alone.
@@ -681,11 +681,6 @@ typeCheck prog = do
     Left err -> fail $ "PARSE ERROR ON CORE.TJS: " ++ show err
     Right tls -> return tls
 
-{-  let tl2env (TJS.ExternalStmt _ (TJS.Id _ s) t) = 
-        (M.singleton s (Just (t, VPId s)), M.empty)
-      tl2env (TJS.TypeStmt _ (TJS.Id _ s) t) =  
-        (M.empty, M.singleton s t) -}
-  
   let procTLs :: (MonadIO m) => [TJS.ToplevelStatement SourcePos]
                  -> (Env, Map String (Type SourcePos))
                  -> m (Env, Map String (Type SourcePos))
