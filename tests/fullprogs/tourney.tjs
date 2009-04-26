@@ -58,6 +58,9 @@ var LINK = function(elt) :: (U(HTMLElement, string) -> FlapjaxElement) {
 var isSuccess = function(v) :: {success :: bool} -> bool
                   { return v.success; };
 
+//the real type of server_e is probably parametrized based on what
+//the response should be. should def. at least take into account
+//the parameter of the 2nd eventstream
 function server_e(url,valueE) :: (string, EventStream -> EventStream) {
   //var response_e = receiver_e();
   var response_e :: EventStream = receiver_e();
@@ -84,8 +87,8 @@ function server_e(url,valueE) :: (string, EventStream -> EventStream) {
 
   valueE.lift_e@[({session :: string}), (undefined)](
     function(val) :: ({session :: string} -> undefined) {
-      // if (sessionId) { ... }
-      if (typeof sessionId != "undefined") { val.session = sessionId; }
+      if (typeof sessionId != "undefined") // (sessionId)
+      { val.session = sessionId; }
 
       /*new Ajax.Request(url,
         { method: 'post'

@@ -386,7 +386,7 @@ expr env ee e = do
     assertSubtype loc "BracketRef" it (TId loc "int")
     case t of
       TApp _ (TId _ "Array") [btype] -> return (btype, VPNone)
-      _ -> fail $ "expected array, got " ++ (show t)
+      _ -> fail $ printf "at %s: expected array, got %s" (show loc) (show t)
   OpExpr (_,p) f args_e -> do
     args <- mapM (expr env ee) args_e
     operator p f args
@@ -434,8 +434,7 @@ expr env ee e = do
     return (t, VPNone)
   Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
     Nothing -> catastrophe p "function lit is not in the erased environment"
-    Just [t'] -> do
-     t <- resolveAliases tenv t'
+    Just [t] -> do
      case deconstrFnType t of
       Just (_, _, argTypes, _, _) 
         | length argTypes == length args - 1 -> 
@@ -584,6 +583,7 @@ typeCheckProgram env (Node ee' subEes, Node (_, lit, gr) subGraphs) = do
 -- |aliases resolved (e.g. TId "DOMString" --> TId "string").
 -- |Fail if the TId is not in the environment.
 -- TODO: add a "reAlias" func to make error messages nicer =).
+-- TODO: this is the func that should handle <- .
 resolveAliases :: (MonadIO m) => (Map String (Type SourcePos)) 
                   -> (Type SourcePos) -> m (Type SourcePos)
 resolveAliases tenv t@(TId pos i)

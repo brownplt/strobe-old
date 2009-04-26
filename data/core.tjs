@@ -132,6 +132,24 @@ type HTMLElement :: rec self .{ //Element (<-) {
 
 };
 
+type HTMLTextAreaElement :: { //HTMLElement (<-) {
+    defaultValue :: DOMString,
+    form :: HTMLFormElement,
+    accessKey :: DOMString,
+    cols :: long,
+    disabled :: bool,
+    name :: DOMString,
+    readOnly :: bool,
+    rows :: long,
+    tabIndex :: long,
+    type :: DOMString,
+    value :: DOMString,
+    blur :: ( -> undefined),
+    focus :: ( -> undefined),
+    select :: ( -> undefined)
+};
+
+
 type Document :: { //Node (<-) {
     /*doctype :: DocumentType,
     implementation :: DOMImplementation,*/
@@ -181,8 +199,8 @@ external makeFJE :: (-> FlapjaxElement); //total hax
                FlapjaxElement);*/
 external A :: (U(HTMLElement, string)... ->
                FlapjaxElement);
-/*external DIV :: (U(HTMLElement, string)... ->
-                 FlapjaxElement);*/
+//the real return types of these are more specific (namely, HTMLDivElement)
+//but <- doesn't work yet, and i don't wanna copy + paste stuff.
 external DIV :: (U(HTMLElement, string) -> //should be varargs
                  HTMLElement);
 external DIV2 :: (U(HTMLElement, string),U(HTMLElement, string) ->
@@ -190,7 +208,9 @@ external DIV2 :: (U(HTMLElement, string),U(HTMLElement, string) ->
 external DIV3 :: (U(HTMLElement, string),U(HTMLElement, string),
                   U(HTMLElement, string) ->
                  HTMLElement);
-external TEXTAREA :: (HTMLElement -> HTMLElement);
+external PRE :: (U(HTMLElement, string) -> HTMLElement);
+
+external TEXTAREA :: (U(HTMLElement, string) -> HTMLElement);
 
 type Pulse :: {stamp :: int, value :: {}}; //value should be parametrized
 type SendT :: (Pulse -> );
@@ -199,7 +219,8 @@ type UpdaterT :: (SendT, Pulse -> );
 type Behavior :: {}; //fill in later
 
 //external internal_e :: (Array<EventStream>? -> EventStream);
-type EventStream :: rec self . {updater :: UpdaterT, //not sure if send here
+
+type EventStream :: rec self . {updater :: UpdaterT,
                      sendsTo :: Array<self>,
                      rank :: int,
                      lift_e :: (forall a b . ((a -> b) -> self)),
@@ -207,16 +228,33 @@ type EventStream :: rec self . {updater :: UpdaterT, //not sure if send here
                      sendEvent :: ([self] {} ->), //{} here should be 'value'
                                 //not sure if sendEvent is in all eventstrems...
                      filter_e :: (forall a. ((a -> bool) -> self)),
-                     startsWith :: (forall a. a -> Behavior)
+                     startsWith :: (forall a. a -> Behavior),
+                     once_e :: ( -> self )
                      };
+//real definition:
+/*type EventStream<a> :: rec self . {updater :: UpdaterT,
+                     sendsTo :: Array<self<a>>,
+                     rank :: int,
+                     lift_e :: (forall b . ((a -> b) -> self<b>)),
+                     constant_e :: (forall b. b -> self<b>),
+                                //not sure if sendEvent is in all eventstrems...
+                     filter_e :: ((a -> bool) -> self<a>),
+                     startsWith :: (a -> Behavior<a>) //docs are wrong?
+                     };*/
+
 external createNode :: (Array<EventStream>, UpdaterT -> EventStream);
 external receiver_e :: (-> EventStream);
 external merge_e :: (Array<EventStream> -> EventStream);
+//real type: (EventStream ... -> EventStream)
 
 external extractEvent_e :: (Behavior, string -> EventStream);
 
 external insertDomE :: (EventStream, U(string, HTMLElement), string? ->
                         EventStream); //bug in api docs: return type not given
+
+external one_e :: any -> EventStream;
+//real type:
+//external one_e :: forall a. a -> EventStream<a>;
 
 //AJAX
 type XMLHttpRequest :: rec self . {readyState :: int,
@@ -232,13 +270,16 @@ type XMLHttpRequest :: rec self . {readyState :: int,
 external String_prototype_evalJSON :: (string, bool -> {}); //TODO: blah eval!!!
 external $F :: (HTMLElement -> U(string, Array<string>));
 external $Fs :: (HTMLElement -> string); //guaranteed one-string version of $F
+external Object_toJSON :: (any -> string?);
+external Object_toJSON2 :: (any -> string); //the always-ret-val version
 
 //prototype:
 external Array_each :: forall a. Array<a>, (a -> ) ->;
 
-//hax until [] works:
+//hax until [] works, also, placeholderse until DIV etc. work.
 external ES :: EventStream;
 external HE :: HTMLElement;
+external HTAE :: HTMLTextAreaElement;
 
 //hax until modules work. this is defined in index.html, but
 //tourney.tjs uses it:
@@ -254,6 +295,7 @@ external isSuccess :: {success :: bool} -> bool;
 
 //types that tourney uses in particular. move to top of that file
 //once they can be parsed up there
+//gotten from either the .tjs, or from the haskell source (Data.hs)
 type AsgnT :: {
   id :: string,
   desc :: string,
@@ -267,9 +309,28 @@ type AsgnT :: {
   testlang :: string};
 type TestInfoT :: {
   time :: int,
+  userid :: string,
+  asgnid :: string,
+  body :: string,
   status :: {
     stat :: string,
     message :: string}};
+type TestStatusT :: {
+  id :: string,
+  status :: string,
+  userid :: string,
+  asgnid :: string,
+  singlesuite :: string
+};
+
+type TestTuple :: {
+  $0 :: string, //id
+  $1 :: TestInfoT};
+
+/*type ResponseT :: {
+  success :: bool,
+  result :: //arbitrary object!
+};*/
 
 /*maybe testinfot is really:
  * type TestInfoT :: {
