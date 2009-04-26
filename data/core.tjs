@@ -149,6 +149,30 @@ type HTMLTextAreaElement :: { //HTMLElement (<-) {
     select :: ( -> undefined)
 };
 
+type HTMLInputElement :: { //HTMLElement (<-) {
+    defaultValue :: DOMString,
+    defaultChecked :: bool,
+    form :: HTMLFormElement,
+    accept :: DOMString,
+    accessKey :: DOMString,
+    align :: DOMString,
+    alt :: DOMString,
+    checked :: bool,
+    disabled :: bool,
+    maxLength :: long,
+    name :: DOMString,
+    readOnly :: bool,
+    size :: DOMString,
+    src :: DOMString,
+    tabIndex :: long,
+    type :: DOMString,
+    useMap :: DOMString,
+    value :: DOMString,
+    blur :: ( -> undefined),
+    focus :: ( -> undefined),
+    select :: ( -> undefined),
+    click :: ( -> undefined)
+};
 
 type Document :: { //Node (<-) {
     /*doctype :: DocumentType,
@@ -201,6 +225,7 @@ external A :: (U(HTMLElement, string)... ->
                FlapjaxElement);
 //the real return types of these are more specific (namely, HTMLDivElement)
 //but <- doesn't work yet, and i don't wanna copy + paste stuff.
+external DIV0 :: ( -> HTMLElement);
 external DIV :: (U(HTMLElement, string) -> //should be varargs
                  HTMLElement);
 external DIV2 :: (U(HTMLElement, string),U(HTMLElement, string) ->
@@ -251,6 +276,7 @@ external extractEvent_e :: (Behavior, string -> EventStream);
 
 external insertDomE :: (EventStream, U(string, HTMLElement), string? ->
                         EventStream); //bug in api docs: return type not given
+external insertDomB :: (Behavior, U(HTMLElement, string), string? -> );
 
 external one_e :: any -> EventStream;
 //real type:
@@ -280,6 +306,7 @@ external Array_each :: forall a. Array<a>, (a -> ) ->;
 external ES :: EventStream;
 external HE :: HTMLElement;
 external HTAE :: HTMLTextAreaElement;
+external HIE :: HTMLInputElement;
 
 //hax until modules work. this is defined in index.html, but
 //tourney.tjs uses it:
@@ -289,6 +316,13 @@ external server_e :: (string, EventStream -> EventStream);
 external LINK :: U(HTMLElement, string) -> HTMLElement;
 external modal :: (
   HTMLElement, EventStream, int? -> EventStream);
+external buttonBar :: (
+  Array<string>, Array<string>, string -> { elem :: HTMLElement,
+                                            clickE :: EventStream});
+external panelB :: (
+  EventStream, {name :: U(HTMLElement, (-> HTMLElement))}, HTMLElement ->
+    Behavior);
+
 
 external Date_prototype_formatRelative :: (Date -> string);
 external isSuccess :: {success :: bool} -> bool;
