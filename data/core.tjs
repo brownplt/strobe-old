@@ -65,6 +65,11 @@ external undefined :: undefined;
 external push :: forall a . Array<a>, a ->;
 external sort :: forall a . Array<a>, (a, a -> int) -> Array<a>;
 external Array_length :: forall a. Array<a> -> int;
+external unshift :: forall a. Array<a>, a -> int; //should be varargs
+
+//prototype:
+external Array_each :: forall a. Array<a>, (a -> ) ->;
+
 
 //DOM stuff:
 type DOMString :: string;
@@ -243,6 +248,8 @@ type UpdaterT :: (SendT, Pulse -> );
 
 type Behavior :: {}; //fill in later
 
+external map :: forall a b. ((a -> b), Array<a> -> Array<b>);
+
 //external internal_e :: (Array<EventStream>? -> EventStream);
 
 type EventStream :: rec self . {updater :: UpdaterT,
@@ -298,9 +305,6 @@ external $F :: (HTMLElement -> U(string, Array<string>));
 external $Fs :: (HTMLElement -> string); //guaranteed one-string version of $F
 external Object_toJSON :: (any -> string?);
 external Object_toJSON2 :: (any -> string); //the always-ret-val version
-
-//prototype:
-external Array_each :: forall a. Array<a>, (a -> ) ->;
 
 //hax until [] works, also, placeholderse until DIV etc. work.
 external ES :: EventStream;

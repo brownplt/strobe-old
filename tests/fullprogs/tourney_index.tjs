@@ -780,23 +780,27 @@ function makeAssignmentPanel(asgn) :: (AsgnT -> HTMLElement) {
 
 function SUBTEXT(t) :: (U(HTMLElement, string) -> HTMLElement) {
   return HE; }; //DIV({className: 'subtext'},t); };
-/*
-function newPLAIAsgn() {
-  var shortName = INPUT({type: 'text'});
-  var longName = INPUT({type: 'text'});
-  var interface = TEXTAREA({ rows: '5', style: { width: '100%'} });
-  var gold = TEXTAREA({rows: '10', style: { width: '100%'} });
-  var msg =  DIV({className: 'error'});
+
+function newPLAIAsgn() :: (-> HTMLElement) {
+  var shortName :: HTMLElement = HE;//INPUT({type: 'text'});
+  var longName :: HTMLElement = HE;//INPUT({type: 'text'});
+  var interface :: HTMLTextAreaElement = HTAE;
+    //TEXTAREA({ rows: '5', style: { width: '100%'} });
+  var gold :: HTMLTextAreaElement = HTAE;
+    //TEXTAREA({rows: '10', style: { width: '100%'} });
+  var msg :: HTMLElement =  HE;//DIV({className: 'error'});
 
   var createAsgn = LINK('Create Assignment');
 
-  var asgnE = clicks_e(createAsgn).lift_e(function() {
-    var cmd = '%p/plai-test.ss -ar -i "' + $F(interface) + '" %s %t';
+  var asgnE = clicks_e(createAsgn)
+   .lift_e@[(HTMLElement), ({gold::string,asgn::string})](
+   function(_) :: (HTMLElement -> {gold :: string, asgn :: string}) {
+    var cmd = '%p/plai-test.ss -ar -i "' + $Fs(HE/*interface*/) + '" %s %t';
     return {
-      gold: $F(gold),
+      gold: $Fs(HE), //gold),
       'asgn':
-        Object.toJSON({ id: $F(shortName)
-        , desc: $F(longName)
+        Object_toJSON2({ id: $F(shortName)
+        , desc: $Fs(longName)
         , enabled: false
         , endtime: 0 // we don't do this yet
         , singletestsuite: true
@@ -810,7 +814,8 @@ function newPLAIAsgn() {
   });
 
   var responseE = server_e('/api/newasgn',asgnE);
-  responseE.lift_e(function(r) {
+  responseE.lift_e@[({success::bool,value::string}),(undefined)](
+    function(r) :: ({success :: bool, value :: string} -> ){
     if (r.success) {
       report(msg,'Assignment created.  Refresh the page to work with it.');
     }
@@ -819,7 +824,7 @@ function newPLAIAsgn() {
     }
   });
 
-  return DIV({className: 'form'},
+  return HE;/*DIV({className: 'form'},
     P("Use this page to create an assignment based on #lang plai."),
     P("Short name: ",shortName,
       SUBTEXT("This is the title displayed along the top of the window.")),
@@ -838,10 +843,12 @@ function newPLAIAsgn() {
         num? num-n set-num-n! add add?  add-lhs add-rhs set-add-lhs! \
         set-add-rhs! sub sub? sub-lhs sub-rhs  set-sub-lhs! set-sub-rhs")),
     msg,
-    P(createAsgn));
+    P(createAsgn));*/
 };
 
-function newGCAsgn() {
+
+function newGCAsgn() :: (-> HTMLElement) {
+  return HE;/* //this looks just like the previous one, so, omitting, for now
   var shortName = INPUT({type: 'text'});
   var longName = INPUT({type: 'text'});
   var gold = TEXTAREA({rows: '10', style: { width: '100%'} });
@@ -892,10 +899,11 @@ function newGCAsgn() {
         to the parser), this solution must correctly handle such cases so that \
         we can reject submitted tests that violate input assumptions.")),
     msg,
-    P(createAsgn));
+    P(createAsgn));*/
 };
 
-function newCustomAsgn() {
+function newCustomAsgn() :: (-> HTMLElement) {
+  return HE; /*
   var shortName = INPUT({type: 'text'});
   var longName = INPUT({type: 'text'});
   var singleSuite = INPUT({type: 'checkbox', checked: 'true'});
@@ -974,10 +982,10 @@ function newCustomAsgn() {
       SUBTEXT("Same as above, but for test suites.")),
     msg,
     P(LINK("Click here to view 23 more optional fields")),
-    P(createAsgn));
+    P(createAsgn));*/
 };
-*/
-/*
+
+
 function newAsgn() :: (-> HTMLElement) {
   //remove the "" from the 2nd array in the next call, once [] works:
   var buttons = buttonBar(['PLAI','GC','Custom'],[""],'PLAI');
@@ -988,41 +996,45 @@ function newAsgn() :: (-> HTMLElement) {
     , 'GC': newGCAsgn
     , 'Custom': newCustomAsgn
     };
+  var haxpanes = { name : newPLAIAsgn };
 
   var result = HE; //DIV({className: 'innerPane'},
    //DIV({className: 'title'},buttons.elem),
     //content);
 
-  insertDomB(panelB(buttons.clickE,panes,newPLAIAsgn()),content);
+  insertDomB(panelB(buttons.clickE,haxpanes,newPLAIAsgn()),content);
 
   return result;
-}*/
-/*
+}
+
 
 // There is just one settings pane, but we guard it in a lambda so that
 // Flapjax can initialize first.
-function makeSettingsPane() {
+function makeSettingsPane() :: (-> HTMLElement) {
 
-  var msg =  DIV({className: 'error'});
-  var existingPass = INPUT({type: 'password'});
-  var newPass = INPUT({type: 'password'});
-  var repeatPass = INPUT({type: 'password'});
+  var msg :: HTMLElement =  HE; //DIV({className: 'error'});
+  var existingPass :: HTMLElement = HE; //INPUT({type: 'password'});
+  var newPass :: HTMLElement = HE; //INPUT({type: 'password'});
+  var repeatPass :: HTMLElement = HE; //INPUT({type: 'password'});
   var setPass = LINK('Change Password');
 
-  var maybeChangeE = clicks_e(setPass).lift_e(function() {
-    if ($F(newPass) != $F(repeatPass)) {
+  var maybeChangeE = clicks_e(setPass)
+    .lift_e@[(EventStream), (({newpass::string,oldpass::string})?)](
+      function(_) :: (EventStream -> ({newpass::string,oldpass::string})?) {
+    if ($Fs(newPass) != $Fs(repeatPass)) {
       report(msg,'The passwords you entered do not match');
-      return false;
+      return undefined; //false;
     }
     else {
       report(msg,'Please wait ...');
-      return { newpass: $F(newPass), oldpass: $F(existingPass) }
+      return { newpass: $Fs(newPass), oldpass: $Fs(existingPass) }
     }
   });
 
-  var responseE = server_e('/api/changepass',maybeChangeE.filter_e(isTrue));
+  var responseE = server_e('/api/changepass',maybeChangeE.filter_e@[(any)](isTrue));
 
-  responseE.lift_e(function(r) {
+  responseE.lift_e@[({success::bool,value::string}),(undefined)](
+    function(r) :: ({success :: bool, value :: string} -> ){
     if (r.success) {
       report(msg,'Password changed.');
     }
@@ -1031,75 +1043,88 @@ function makeSettingsPane() {
     }
   });
 
-  return DIV({className: 'innerPane'},
+  return HE; /*DIV({className: 'innerPane'},
     DIV({className: 'title'},'Change Password'),
     DIV({className: 'form'},
       msg,
       TABLE(TR(TD('Current Password: '),TD(existingPass)),
             TR(TD('New Password: '),TD(newPass)),
             TR(TD('Repeat New Password: '),TD(repeatPass))),
-      setPass));
+      setPass));*/
 };
 
 
-function assignmentPane(nextE) {
-  var pane = DIV();
+function assignmentPane(nextE) :: EventStream -> HTMLElement {
+  var pane :: HTMLElement = DIV0();
   var asgnE = server_e(isAdmin ? '/api/allasgns' : '/api/assignments',
                        one_e({ }));
 
-
-
-  asgnE.lift_e(function(result) {
+  //if value is of the wrong type here, we'll have to blame the server
+  //code for giving us the wrong thing.
+  asgnE.lift_e@[({success::bool,value::Array<AsgnT>}),(undefined)](
+   function(result) :: ({success::bool, value::Array<AsgnT>}->) {
     if (result.success) {
       var asgns = { };
 
-      result.value.each(function(asgn) {
+      Array_each@[(AsgnT)](
+        result.value,
+        function(asgn) :: (AsgnT ->) {
+          //asgns[asgn.id] = makeAssignmentPanel(asgn);
+        });
+      /*result.value.each(function(asgn) {
         asgns[asgn.id] = makeAssignmentPanel(asgn);
-      });
+      });*/
 
-      asgns['Settings'] = makeSettingsPane();
+      //asgns['Settings'] = makeSettingsPane(); //pending dicts
 
       var rhsButtons = ['Settings','Logout'];
 
       if (isAdmin) {
-        rhsButtons.unshift('Create New Assignment');
-        asgns['Create New Assignment'] = newAsgn();
+        unshift@[(string)](rhsButtons, 'Create New Assignment');
+          //rhsButtons.unshift('Create New Assignment');
+        //asgns['Create New Assignment'] = newAsgn();
       }
 
       var buttons = buttonBar(
-        map(function(asgn) { return asgn.id; },result.value),rhsButtons,
-        result.value[0]);
+        map@[(AsgnT),(string)](function(asgn) :: (AsgnT -> string) { return asgn.id; },result.value),rhsButtons,
+        ""+result.value[0]); //js does auto string conversion here?
 
-      var content = DIV();
-      var opsE = buttons.clickE.lift_e(function(val) {
+      var content = DIV0();
+      var opsE = buttons.clickE
+       .lift_e@[(string),(HTMLElement?)](
+       function(val) :: (string -> HTMLElement?) {
         if (val == 'Logout') {
           server_e('/api/logout',one_e({ }));
 
           // We don't really care what the server says.
-          modal(DIV({className: 'shutdown'},
+          modal(HE, /*DIV({className: 'shutdown'},
                     "It's now safe to turn off your computer",
                      DIV(A({ style: { fontSize: '12px',color: '#ffffff' },
                              href: 'javascript:window.location.reload()'},
-                       "Log In Again"))),
+                       "Log In Again"))),*/
             one_e(true));
 
-          return false;
+          return undefined; // false;
         }
-        else { return asgns[val]; }
+        else { return HE; }//asgns[val]; }
       });
 
-      insertDomE(opsE.filter_e(function(v) { return !!v; }), content);
+      insertDomE(opsE.filter_e@[(HTMLElement?)](
+                   function(v) :: HTMLElement? -> bool {
+                     return typeof v != "undefined"; }),  //!!v
+                 content);
 
-      pane.appendChild(DIV({ className: 'asgn'},
-                         DIV({className: 'title'},buttons.elem),content));
+      pane.appendChild(HE); /*DIV({ className: 'asgn'},
+                         DIV({className: 'title'},buttons.elem),content));*/
     }
   });
 
   return pane;
 };
 
-function forgotPane() {
-
+//nothing below this line is any different than what's above it =).
+function forgotPane() :: (-> (any ->)) {
+/* //nothing interesting here
   var username = INPUT({type: 'text'});
   var remind = LINK('Send a reminder');
   var back = LINK('Back');
@@ -1128,14 +1153,14 @@ function forgotPane() {
   });
 
   var showE = receiver_e();
-
-  return function(_) {
-    reminderSent = false;
-    report(msg,false);
-    modal(pane,clicks_e(back).constant_e(false));
+*/
+  return function(_) :: (any ->) {
+    //reminderSent = false;
+    //report(msg,false);
+    //modal(pane,clicks_e(back).constant_e(false));
   };
 };
-
+/*
 function loginPane(nextE) {
   var loginMessage = DIV({className: 'error'},'');
   var usernameField = INPUT({type: 'text', name: 'username'});

@@ -227,7 +227,8 @@ stmt env ee rettype node s = do
               assertSubtype p "DirectPropAssignStmt" t_rhs t'
               noop -- TODO: Affect the VP somehow?
           t' -> typeError p (printf "expected object, received %s" (show t'))
-    IndirectPropAssignStmt _ obj method e -> fail "obj[method] NYI"
+    IndirectPropAssignStmt (_,p) obj method e -> do 
+      fail $ printf "at %s: obj[method] NYI" (show p)
     DeleteStmt _ r del -> fail "delete NYI"
     NewStmt{} -> fail "NewStmt will be removed from ANF"
     CallStmt (_,p) r_v f_v args_v -> do
@@ -309,7 +310,7 @@ stmt env ee rettype node s = do
          
     IfStmt (_, p) e s1 s2 -> do
       (t, vp) <- expr env ee e -- this permits non-boolean tests
-      assertSubtype p "IfStmt" t boolType
+      --assertSubtype p "IfStmt" t boolType
       assert (length succs == 2) "IfStmt should have two successors"
       let occurit (node, Nothing) = error "ifstmt's branches should have lits!"
           occurit (node, Just (BoolLit _ True)) = (node, gammaPlus env vp)
@@ -654,9 +655,10 @@ resolveAliasesEE tenv ee = do
   | TRefined (Type a) (Type a) 
 -}
 
--- |Type-check a Typed JavaScript program.  
-typeCheck :: [TJS.Statement SourcePos] -> IO Env
-typeCheck prog = do
+-- convenience function to make testing faster
+typeCheckWithGlobals :: Env -> Map String (Type SourcePos) -> 
+                        [TJS.Statement SourcePos] -> IO Env
+typeCheckWithGlobals venv tenv prog = do
   -- Build intraprocedural graphs for all functions and the top-level.
   -- These graphs are returned in a tree that mirrors the nesting structure
   -- of the program.  The graphs are for untyped JavaScript in ANF.  This
@@ -673,7 +675,17 @@ typeCheck prog = do
   -- These "erased environments" are returned in a tree with the same shape as
   -- 'intraprocs' above.
   let envs = buildErasedEnvTree prog
+        
+  -- add this:
+  let venv' = M.unions $ [venv] ++ 
+        [M.fromList [("this", Just (TObject noPos [], VPId "this"))]]
+  
+  (env, state) <- runStateT (typeCheckProgram venv' (envs, intraprocs)) 
+                            (TypeCheckState G.empty M.empty tenv)
+  return env
 
+loadCoreEnv :: IO (Env, Map String (Type SourcePos))
+loadCoreEnv = do
   -- load the global environment from "core.js"
   dir <- getDataDir
   toplevels' <- parseFromFile (parseToplevels) (dir </> "core.tjs")
@@ -695,13 +707,11 @@ typeCheck prog = do
         procTLs rest (venv, M.insertWithKey
                               (\k n o -> error $ "already in tenv: " ++ show k)
                               s t' tenv)
-        
-  --TODO: pass typeenv in the state monad
-  (globalVarEnv', globalTypeEnv) <- procTLs toplevels (M.empty, M.empty)
-  let globalVarEnv = M.unions $ [globalVarEnv'] ++ 
-        [M.fromList [("this", Just (TObject noPos [], VPId "this"))]]
-  
-  (env, state) <- runStateT (typeCheckProgram globalVarEnv (envs, intraprocs)) 
-                            (TypeCheckState G.empty M.empty globalTypeEnv)
-  return env
+  procTLs toplevels (M.empty, M.empty)
+
+-- |Type-check a Typed JavaScript program.  
+typeCheck :: [TJS.Statement SourcePos] -> IO Env
+typeCheck prog = do
+  (venv, tenv) <- loadCoreEnv 
+  typeCheckWithGlobals venv tenv prog
 

@@ -20,29 +20,30 @@ import qualified Data.Map as M
 import TypedJavaScript.Syntax
 import TypedJavaScript.Lexer (semi,reservedOp,reserved)
 import TypedJavaScript.Parser (parseType,parseExpression)
-import TypedJavaScript.TypeCheck (typeCheck)
+import TypedJavaScript.TypeCheck (typeCheck, typeCheckWithGlobals, loadCoreEnv)
 import TypedJavaScript.Types ((<:))
 import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
 
 import Text.ParserCombinators.Parsec.Pos (initialPos, SourcePos)
 
-typeOfExpr :: Expression SourcePos -> IO (Type SourcePos)
-typeOfExpr expr' = do 
+--too lazy to fix the type annotations for these after adding venv, tenv.
+--typeOfExpr :: Expression SourcePos -> IO (Type SourcePos)
+typeOfExpr expr' venv tenv = do 
   let p = initialPos "testcase"
   let stmt = VarDeclStmt p [VarDeclExpr p (Id p "result")
                                          Nothing
                                          expr']
-  env <- typeCheck [stmt]
+  env <- typeCheckWithGlobals venv tenv [stmt]
   case M.lookup "result" env of
     Nothing -> fail $ "catastrophic failure: result unbound in " ++ show env
     Just Nothing -> fail "catastrophic result not found"
     
     Just (Just (t, mvp)) -> return t
 
-assertType :: SourcePos -> Expression SourcePos -> Type SourcePos -> Assertion
-assertType pos expr expectedType = do
-  actualType <- E.try (typeOfExpr expr)
+--assertType :: SourcePos -> Expression SourcePos -> Type SourcePos -> Assertion
+assertType pos expr expectedType venv tenv = do
+  actualType <- E.try (typeOfExpr expr venv tenv)
   case actualType of
     Left (err::(E.SomeException)) -> assertFailure (
       (showSp pos) ++ ": " ++ (show err))
@@ -52,46 +53,46 @@ assertType pos expr expectedType = do
                   (show expectedType)) 
                  (exprType <: expectedType)
 
-assertTypeError :: SourcePos -> Expression SourcePos -> Assertion
-assertTypeError pos expr = do
-  result <- E.try (typeOfExpr expr)
+--assertTypeError :: SourcePos -> Expression SourcePos -> Assertion
+assertTypeError pos expr venv tenv = do
+  result <- E.try (typeOfExpr expr venv tenv)
   case result of
     Left (err::(E.SomeException)) -> return () -- error expected
     Right (exprType) -> assertFailure (
       (showSp pos) ++ ": expected fail, got: " ++ (show $ pp exprType))
 
-assertTypeSuccess :: SourcePos -> Expression SourcePos -> Assertion
-assertTypeSuccess pos expr = do
-  result <- E.try (typeOfExpr expr)
+--assertTypeSuccess :: SourcePos -> Expression SourcePos -> Assertion
+assertTypeSuccess pos expr venv tenv = do
+  result <- E.try (typeOfExpr expr venv tenv)
   case result of
     Left (err::(E.SomeException)) -> assertFailure ((showSp pos) ++ ": expected success, got: " ++ (show $ err)) 
     Right exprType -> return () -- success expected
 
-parseTestCase :: CharParser st Test
-parseTestCase = (do
+--parseTestCase :: CharParser st Test
+parseTestCase venv tenv = (do
   --whiteSpace --TODO: make uncomment work to fix bug
   pos <- getPosition
   expr <- parseExpression
   let typeOK = do
         expectedType <- parseType -- requires a prefixed ::
-        return $ TestCase (assertType pos expr expectedType)
+        return $ TestCase (assertType pos expr expectedType venv tenv)
   let typeError = do
         reservedOp "@@" -- random symbol that is not recognized by the
                         -- expression parser.
         reserved "fails"
-        return $ TestCase (assertTypeError pos expr)
+        return $ TestCase (assertTypeError pos expr venv tenv)
   let typeSuccess = do
         pos <- getPosition
         reservedOp "@@" -- random symbol that is not recognized by the
                         -- expression parser.
         reserved "succeeds"
-        return $ TestCase (assertTypeSuccess pos expr)
+        return $ TestCase (assertTypeSuccess pos expr venv tenv)
    
   typeOK <|> (try typeError) <|> typeSuccess) <|> (do return $ TestCase $ assertEqual "empty test case" True True)
   
-readTestFile :: FilePath -> IO Test
-readTestFile path = do
-  result <- parseFromFile (parseTestCase `endBy` semi) path
+--readTestFile :: FilePath -> IO Test
+readTestFile venv tenv path = do
+  result <- parseFromFile ((parseTestCase venv tenv) `endBy` semi) path
   case result of
     -- Reporting the parse error is deferred until the test is run.
     Left err -> return $ TestCase (assertFailure (show err))
@@ -99,5 +100,6 @@ readTestFile path = do
     
 main = do
   testPaths <- getPathsWithExtension ".js" "type-check"
-  testCases <- mapM readTestFile testPaths
+  (venv, tenv) <- loadCoreEnv
+  testCases <- mapM (readTestFile venv tenv) testPaths
   return (TestList testCases)
