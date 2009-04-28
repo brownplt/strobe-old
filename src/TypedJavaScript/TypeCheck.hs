@@ -175,16 +175,6 @@ assert :: Monad m => Bool -> String -> m ()
 assert True _ = return ()
 assert False msg = fail ("CATASPROPHIC FAILURE: " ++  msg)
 
-assertSubtype :: MonadIO m
-              => SourcePos -> String -> Type -> Type -> m ()
-assertSubtype loc name received expected = case received <: expected of
-  True -> return ()
-  False -> do
-    --liftIO $ putStrLn $ printf "%s == %s: %s" (show received) (show expected)
-    --                     (show (received == expected))
-    --liftIO $ putStrLn $ printf "%s <: %s: %s" (show received) (show expected)
-    --                     (show (received <: expected))
-    subtypeError loc name expected received
 
 stmt :: Env -- ^the environment in which to type-check this statement
      -> ErasedEnv
@@ -222,12 +212,15 @@ stmt env ee cs rettype node s = do
           let env' = M.insert v (Just ((TRefined t te), VPMulti [VPId v, vp]))
                               env
           return $ zip (map fst succs) (repeat env')
-        Just (Just (t, v_vp)) -> do
-          assertSubtype p "AssignStmt" te t
-          -- TODO: remove, from environment, any VP referring to this var!
-          let env' = M.insert v (Just (TRefined t te, VPMulti [VPId v, v_vp])) 
-                              env
-          return $ zip (map fst succs) (repeat env')              
+        Just (Just (t, v_vp)) 
+          | te <: t ->  do
+              -- TODO: remove, from environment, any VP referring to this var!
+              let env' = M.insert v (Just (TRefined t te, 
+                                           VPMulti [VPId v, v_vp])) 
+                                  env
+              return $ zip (map fst succs) (repeat env')
+         | otherwise -> 
+             subtypeError p "AssignStmt" te t
     DirectPropAssignStmt (_,p) obj prop e -> do
       (t_rhs, e_vp) <- expr env ee cs e
       case M.lookup obj env of
@@ -241,9 +234,9 @@ stmt env ee cs rettype node s = do
           TObject props -> case lookup prop props of
             Nothing -> 
               typeError p (printf "object does not have the property %s" prop)
-            Just t' -> do
-              assertSubtype p "DirectPropAssignStmt" t_rhs t'
-              noop -- TODO: Affect the VP somehow?
+            Just t' | t_rhs <: t' -> noop -- TODO: affect the VP somehow?
+                    | otherwise -> 
+                        subtypeError p "assignment to property" t_rhs t'
           t' -> typeError p (printf "expected object, received %s" (show t'))
     IndirectPropAssignStmt (_,p) obj method e -> do 
       fail $ printf "at %s: obj[method] NYI" (show p)
@@ -339,7 +332,6 @@ stmt env ee cs rettype node s = do
                 | otherwise -> subtypeError p "CallStmt retval" r_vt r
     IfStmt (_, p) e s1 s2 -> do
       (t, vp) <- expr env ee cs e -- this permits non-boolean tests
-      --assertSubtype p "IfStmt" t boolType
       assert (length succs == 2) "IfStmt should have two successors"
       let occurit (node, Nothing) = error "ifstmt's branches should have lits!"
           occurit (node, Just (BoolLit _ True)) = (node, gammaPlus env vp)
@@ -354,14 +346,14 @@ stmt env ee cs rettype node s = do
     ThrowStmt _ e -> do
       expr env ee cs e
       noop
-    ReturnStmt (_,p) Nothing -> do
-      assertSubtype p "ReturnStmt undef" undefType rettype
-      noop
+    ReturnStmt (_,p) Nothing 
+      | undefType <: rettype -> noop
+      | otherwise -> subtypeError p "return;" undefType rettype
     ReturnStmt (_,p) (Just e) -> do
       (te, vp) <- expr env ee cs e
-      assertSubtype p "ReturnStmt" te rettype
-      noop
-
+      if (te <: rettype)
+        then noop
+        else subtypeError p "return ...;" te rettype
     LabelledStmt _ _ _ -> noop
     BreakStmt _ _ -> noop
     ContinueStmt _ _ -> noop
@@ -426,13 +418,14 @@ expr env ee cs e = do
     let t = unRec t'
     (it', _) <- expr env ee cs ie
     let it = unRec (refined it')
-    assertSubtype loc "BracketRef" it (TId "int")
+    unless (it <: intType) $ do
+      subtypeError loc "obj[prop]" it intType
     case t of
       TApp (TId "Array") [btype] -> return (btype, VPNone)
       _ -> fail $ printf "at %s: expected array, got %s" (show loc) (show t)
   OpExpr (_,p) f args_e -> do
     args <- mapM (expr env ee cs) args_e
-    operator p f args
+    operator cs p f args
   Lit (StringLit (_,a) s) -> 
     return (TId "string",
             VPLit (StringLit a s) (TId "string"))
@@ -462,9 +455,8 @@ expr env ee cs e = do
           -- the VP is simply dropped, but it is always safe to drop a VP
           (t, vp) <- expr env ee cs e
           case M.lookup propLoc ee of
-            Just [t'] -> do
-              assertSubtype propLoc "ObjectLit" t t'
-              return (s, t')
+            Just [t'] | t <: t' -> return (s, t')
+                      | otherwise -> subtypeError propLoc "{ ... }" t t'
             Nothing -> return (s, t)
             Just ts ->
               catastrophe propLoc (printf "erased-env for property is %s" 
@@ -489,9 +481,13 @@ expr env ee cs e = do
       Nothing -> typeError p "not a function type"
     Just _ -> catastrophe p "many types for function in the erased environment"
   
-operator :: SourcePos -> FOp 
-         -> [(Type, VP)] -> TypeCheck (Type, VP)
-operator loc op argsvp = do
+operator :: [TypeConstraint]
+         -> SourcePos 
+         -> FOp 
+         -> [(Type, VP)] 
+         -> TypeCheck (Type, VP)
+operator cs loc op argsvp = do
+  let t1 <: t2 = isSubType cs t1 t2
   let (args, vps) = unzip argsvp
   -- The ANF transform gaurantees that the number of arguments is correct for
   -- the specified operator.
@@ -507,10 +503,9 @@ operator loc op argsvp = do
           typeError loc (printf "can only compare numbers and strings")
         return $ novp boolType
   let numeric requireInts returnDouble = do
-        assertSubtype loc "numeric op lhs" lhs
-          (if requireInts then intType else doubleType)
-        assertSubtype loc "numeric op rhs" rhs
-          (if requireInts then intType else doubleType)
+        let sup = if requireInts then intType else doubleType
+        unless (lhs <: sup && rhs <: sup) $ do
+          typeError loc (printf "expected arguments of type %s" (show sup))
         if returnDouble
           then return $ novp doubleType
           else return $ novp (if lhs <: intType then rhs else lhs)
@@ -543,16 +538,13 @@ operator loc op argsvp = do
     OpAdd | lhs <: stringType || rhs <: stringType -> return $ novp stringType
           | otherwise -> numeric False False
     PrefixLNot -> do
-      --assertSubtype loc "prefixLNot" lhs boolType
       case lvp of
         VPNot v -> return (boolType, v)
         v -> return (boolType, VPNot v)
-    PrefixBNot -> do
-      assertSubtype loc "PrefixBNot"lhs intType
-      return $ novp intType
-    PrefixMinus -> do
-      assertSubtype loc "PrefixMinus" lhs doubleType 
-      return $ novp lhs
+    PrefixBNot | lhs <: intType -> return (novp intType)
+               | otherwise -> subtypeError loc "!expr" lhs intType
+    PrefixMinus | lhs <: doubleType -> return (novp lhs)
+                | otherwise -> subtypeError loc "-expr" lhs doubleType
     PrefixVoid -> do
       catastrophe loc (printf "void has been removed")
     PrefixTypeof ->

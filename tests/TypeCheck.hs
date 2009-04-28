@@ -21,11 +21,13 @@ import TypedJavaScript.Syntax
 import TypedJavaScript.Lexer (semi,reservedOp,reserved)
 import TypedJavaScript.Parser (parseType,parseExpression)
 import TypedJavaScript.TypeCheck (typeCheck, typeCheckWithGlobals, loadCoreEnv)
-import TypedJavaScript.Types ((<:))
+import TypedJavaScript.Types (isSubType)
 import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
 
 import Text.ParserCombinators.Parsec.Pos (initialPos, SourcePos)
+
+t1 <: t2 = isSubType [] t1 t2
 
 --too lazy to fix the type annotations for these after adding venv, tenv.
 --typeOfExpr :: Expression SourcePos -> IO (Type SourcePos)

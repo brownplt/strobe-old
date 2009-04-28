@@ -11,10 +11,9 @@ module TypedJavaScript.Types
   , deconstrFnType
   , substType 
   , unRec
-  , (<:)
   , isSubType
   , unionType, unionTypeVP, equalityvp
-  , restrict, remove, gammaPlus, gammaMinus
+  , gammaPlus, gammaMinus
   ) where
 
 --import qualified BrownPLT.JavaScript.Analysis.ANF as ANF
@@ -122,8 +121,13 @@ inferLit (TJS.BoolLit p _) = return (TId "bool")
 inferLit expr =
   fail $ "Cannot use as a literal"
 
-x <: y = x <:~ y
-x <:~ y = isSubType' x y
+-- This definition of '(<:)' is for internal use only.  It assumes there are no
+-- additional constraints.  It should not be exported as the type-checker must
+-- check for subtypes in the presence of user-specified constraints.
+--
+-- The functions that use this (gammaPlus, gammaMinux, unionTypeVP) may need
+-- to take an additional list of constraints.
+x <: y = isSubType [] x y
 
 
 assert :: Bool -> Maybe ()
@@ -243,10 +247,6 @@ isSubType cs t1 t2 = result where
   initial = S.fromList (map subtype cs)
   subtype (TCSubtype s t) = (s, t)
 
-isSubType' :: Type -> Type -> Bool
-isSubType' t1 t2 = case st S.empty (t1, t2) of
-  Just _ -> True
-  Nothing -> False
 
 unionType :: Maybe (Type) 
           -> Maybe (Type)
@@ -293,13 +293,12 @@ flattenUnion  t = t
 
 
 -- Helpers for occurrence typing, from TypedScheme paper
--- TODO: should occurrence typing have isSubType', or isSubType ?
 restrict :: (Type) -> (Type) -> (Type)
 restrict (TRefined main ref) t = case restrict ref t of
   TRefined _ reallyrefined -> TRefined main reallyrefined
   reallyrefined -> TRefined main reallyrefined
 restrict s t
- | s <:~ t = s
+ | s <: t = s
  | otherwise = case t of
      --TODO: make sure TRefined-ness deals well with the following case:
      TUnion ts -> flattenUnion $ 
@@ -308,7 +307,7 @@ restrict s t
      --the typed scheme paper
      --TODO: make sure returning a TRefined here is correct
      _ -> let rez = flattenUnion $
-                      TUnion (filter (\hm -> isSubType' hm t)
+                      TUnion (filter (\hm -> hm <: t)
                                      (case s of
                                         TUnion ts -> ts
                                         _ -> [s]))
@@ -321,7 +320,7 @@ remove (TRefined main ref) t = case remove ref t of
   TRefined _ reallyrefined -> TRefined main reallyrefined
   reallyrefined -> TRefined main reallyrefined
 remove s t
- | s <:~ t = TUnion  []
+ | s <: t = TUnion  []
  | otherwise = case t of
      TUnion ts -> flattenUnion $ 
                         TUnion (map (remove s) ts)
@@ -329,7 +328,7 @@ remove s t
      --the typed scheme paper
      _ -> TRefined s $ flattenUnion $ 
             TUnion  
-                   (filter (\hm -> not $ isSubType' hm t)
+                   (filter (\hm -> not $ hm <: t)
                            (case s of
                              TUnion ts -> ts
                              _ -> [s]))
