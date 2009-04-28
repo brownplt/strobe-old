@@ -9,7 +9,7 @@ module TypedJavaScript.Types
   , boolType
   , inferLit, refined
   , deconstrFnType
-  , applyType
+  , substType 
   , unRec
   , (<:)
   , isSubType
@@ -36,27 +36,27 @@ p = initialPos "TypedJavaScript.Types"
 
 --maps names to their type.
 --ANF-generated variables have visible predicates.
-type Env = Map String (Maybe (Type SourcePos, VP))
+type Env = Map String (Maybe (Type, VP))
 
 emptyEnv :: Env
 emptyEnv = M.empty
 
-undefType :: Type SourcePos
-undefType = (TId p "undefined")
+undefType :: Type
+undefType = TId "undefined"
 
-stringType = TId p "string"
+stringType = TId "string"
 
-intType = TId p "int"
+intType = TId "int"
 
-doubleType = TId p "double"
+doubleType = TId "double"
 
-boolType = TId p "bool"
+boolType = TId "bool"
 
 -- |Deconstructs the declared type of a function, returning a list of quantified
 -- variables, the types of each argument, and a return type.  As we enrich the
 -- type-checker to handle more of a function type, include them here.
-deconstrFnType :: Type SourcePos 
-               -> Maybe ([String],[TypeConstraint],[Type SourcePos],Type SourcePos,LatentPred SourcePos)
+deconstrFnType :: Type 
+               -> Maybe ([String], [TypeConstraint], [Type], Type, LatentPred)
 deconstrFnType (TRefined main refined) = deconstrFnType refined
 deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
   deconstrFnType (substType id t t')
@@ -66,37 +66,37 @@ deconstrFnType (TForall ids constraints (TFunc args _ result latentP)) =
   Just (ids,constraints,args,result,latentP)
 deconstrFnType _ = Nothing
 
-unRec :: Type SourcePos -> Type SourcePos
+unRec :: Type -> Type
 unRec t@(TRec id t') = case t' of
-  TId _ _ -> t' -- avoids infinite recursion
+  TId _ -> t' -- avoids infinite recursion
   otherwise -> unRec (substType id t t') -- handles rec x . rec y . ...
 unRec t = t
 
 -- |This is _not_ capture-free.
-substType :: String -> Type SourcePos -> Type SourcePos -> Type SourcePos
+substType :: String -> Type -> Type -> Type
 substType var sub (TRec var' t) 
   | var == var' = error "substType captures"
   | otherwise   = TRec var' (substType var sub t)
 substType var sub (TForall formals constraints body)  -- TODO: Subst into?
   | var `elem` formals = TForall formals constraints body
   | otherwise = TForall formals constraints (substType var sub body)
-substType var sub (TApp p constr args) = 
-  TApp p constr (map (substType var sub) args)
+substType var sub (TApp constr args) = 
+  TApp constr (map (substType var sub) args)
 substType var sub (TUnion ts) = 
   TUnion (map (substType var sub) ts)
-substType var sub (TId p var')
+substType var sub (TId var')
   | var == var' = sub
-  | otherwise =  TId p var'
+  | otherwise =  TId var'
 substType var sub (TFunc args vararg ret latentP) =
   TFunc (map (substType var sub) args)
         (liftM (substType var sub) vararg)
         (substType var sub ret)
         latentP
-substType var sub (TObject p fields) =
-  TObject p (map (\(v,t) -> (v,substType var sub t)) fields)
+substType var sub (TObject fields) =
+  TObject (map (\(v,t) -> (v,substType var sub t)) fields)
 substType _ _ (TRefined _ _) = error "substType TRefined NYI"
 
-applyType :: Monad m => SourcePos -> Type SourcePos -> [Type SourcePos] -> m (Type SourcePos) -- TODO: ensure constraints
+applyType :: Monad m => SourcePos -> Type -> [Type] -> m (Type) -- TODO: ensure constraints
 applyType loc (TRefined x y) actuals = applyType loc y actuals
 applyType loc (TForall formals constraints body) actuals = do
   unless (length formals == length actuals) $ do
@@ -114,11 +114,11 @@ applyType loc t actuals =
 -- expressions in types
 inferLit :: Monad m 
          => TJS.Expression SourcePos
-         -> m (Type SourcePos)
-inferLit (TJS.StringLit p _) = return (TId p "string")
-inferLit (TJS.NumLit p _) = return (TId p "double")
-inferLit (TJS.IntLit p _) = return (TId p "int")
-inferLit (TJS.BoolLit p _) = return (TId p "bool")
+         -> m (Type)
+inferLit (TJS.StringLit p _) = return (TId "string")
+inferLit (TJS.NumLit p _) = return (TId "double")
+inferLit (TJS.IntLit p _) = return (TId "int")
+inferLit (TJS.BoolLit p _) = return (TId "bool")
 inferLit expr =
   fail $ "Cannot use as a literal"
 
@@ -137,19 +137,19 @@ anyM f a (b:bs) = case f a b of
   Just a  -> return a
 
 {-
-eq :: Set (Type SourcePos, Type SourcePos)
-   -> (Type SourcePos, Type SourcePos)
-   -> Maybe (Set (Type SourcePos, Type SourcePos))
+eq :: Set (Type, Type)
+   -> (Type, Type)
+   -> Maybe (Set (Type, Type))
 eq rel (t1, t2)
   | (t1, t2) `S.member` rel = return rel
   | otherwise case (t1, t2) of
-    (TId _ x, TId _ y) 
+    (TId x, TId y) 
       | x == y   -> return rel
       | otherwise -> fail $ printf "%s is not a subtype of %s" x y
     (TRefined declared1 refined1, TRefined declared2 refined2) -> do
       rel <- eq (S.insert (t1, t2) rel) refined1 refined2
       eq rel declared1 declared2
-    (TApp _ c1 args1, TApp _ c2 args2) -> do
+    (TApp c1 args1, TApp c2 args2) -> do
       assert (length args1 == length args2)
       rel <- eq (S.insert (t1, t2) rel) c1 c2
       foldM eq rel (zip arg1 args2)
@@ -181,17 +181,17 @@ eq rel (t1, t2)
 --how to 'printf':      tmp <- seq (unsafePerformIO $ putStrLn $ "In the trec: " ++ show (t1,t2) ++ " -> " ++ show (t1, substType v t2 t2')) (return rel)
 
 -- based on TAPL p.305
-st :: Set (Type SourcePos, Type SourcePos)
-   -> (Type SourcePos, Type SourcePos)
-   -> Maybe (Set (Type SourcePos, Type SourcePos))
+st :: Set (Type, Type)
+   -> (Type, Type)
+   -> Maybe (Set (Type, Type))
 st rel (t1, t2)
   | (t1, t2) `S.member` rel = return rel
   | otherwise = do
 --   seq (unsafePerformIO $ putStrLn $ "omg: " ++ show rel ++ " " ++ show t1 ++ " " ++ show t2) (return rel)
    case (t1, t2) of
-    (TId _ "int", TId _ "double") -> return rel
-    (_, TId _ "any") -> return rel
-    (TId _ x, TId _ y) 
+    (TId "int", TId "double") -> return rel
+    (_, TId "any") -> return rel
+    (TId x, TId y) 
       | x == y   -> return rel
       | otherwise -> fail $ printf "%s is not a subtype of %s" x y
     (TRefined declared1 refined1, TRefined declared2 refined2) ->
@@ -200,7 +200,7 @@ st rel (t1, t2)
       st (S.insert (t1, t2) rel) (refined, other)
     (other, TRefined declared refined) -> 
       st (S.insert (t1, t2) rel) (other, declared)
-    (TApp _ c1 args1, TApp _ c2 args2) -> do
+    (TApp c1 args1, TApp c2 args2) -> do
       assert (length args1 == length args2)
       assert (c1 == c2)
       assert (args1 == args2)
@@ -216,7 +216,7 @@ st rel (t1, t2)
       assert (ids1 == ids2)
       assert (tcs1 == tcs2)
       st (S.insert (t1, t2) rel) (t1, t2)
-    (TObject _ props1, TObject _ props2) -> do
+    (TObject props1, TObject props2) -> do
       -- All of props2 must be in props1
       let prop rel (id2, t2) = do
             t1 <- lookup id2 props1
@@ -234,7 +234,7 @@ st rel (t1, t2)
       anyM (\rel t2 -> st rel (t1, t2)) rel ts2
     otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
 
-isSubType :: [TypeConstraint] -> Type SourcePos -> Type SourcePos
+isSubType :: [TypeConstraint] -> Type -> Type
           -> Bool
 isSubType cs t1 t2 = result where
   result = case st initial (t1, t2) of
@@ -243,14 +243,14 @@ isSubType cs t1 t2 = result where
   initial = S.fromList (map subtype cs)
   subtype (TCSubtype s t) = (s, t)
 
-isSubType' :: Type SourcePos -> Type SourcePos -> Bool
+isSubType' :: Type -> Type -> Bool
 isSubType' t1 t2 = case st S.empty (t1, t2) of
   Just _ -> True
   Nothing -> False
 
-unionType :: Maybe (Type SourcePos) 
-          -> Maybe (Type SourcePos)
-          -> Maybe (Type SourcePos)
+unionType :: Maybe (Type) 
+          -> Maybe (Type)
+          -> Maybe (Type)
 unionType Nothing Nothing = error "unionType called with 2 Nothings"
 unionType Nothing (Just t) = Just $ TUnion [undefType, t]
 unionType (Just t) Nothing = Just $ TUnion [t, undefType]
@@ -270,9 +270,9 @@ takeEquals (VPType t1 id1) (VPType t2 id2) =
   if id1 == id2 then (VPType (TUnion [t1, t2]) id1) else VPNone
 takeEquals v1 v2 = if v1 == v2 then v1 else VPNone
 
-unionTypeVP :: Maybe (Type SourcePos, VP)
-            -> Maybe (Type SourcePos, VP)
-            -> Maybe (Type SourcePos, VP)
+unionTypeVP :: Maybe (Type, VP)
+            -> Maybe (Type, VP)
+            -> Maybe (Type, VP)
 unionTypeVP Nothing Nothing = Nothing
 unionTypeVP Nothing (Just (t, v)) = Just (TUnion [undefType, t], VPNone)
 unionTypeVP (Just (t, v)) Nothing = Just (TUnion [t, undefType], VPNone)
@@ -280,7 +280,7 @@ unionTypeVP (Just (t1, vp1)) (Just (t2, vp2)) =
   case unionType (Just t1) (Just t2) of
     Nothing -> Nothing
     Just t  -> Just (t, takeEquals vp1 vp2)
-flattenUnion :: (Type SourcePos) -> (Type SourcePos)
+flattenUnion :: (Type) -> (Type)
 flattenUnion (TUnion ts) = 
 	case (foldl (\res t -> case t of 
                        TUnion tocomb -> res ++ tocomb
@@ -294,7 +294,7 @@ flattenUnion  t = t
 
 -- Helpers for occurrence typing, from TypedScheme paper
 -- TODO: should occurrence typing have isSubType', or isSubType ?
-restrict :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
+restrict :: (Type) -> (Type) -> (Type)
 restrict (TRefined main ref) t = case restrict ref t of
   TRefined _ reallyrefined -> TRefined main reallyrefined
   reallyrefined -> TRefined main reallyrefined
@@ -316,7 +316,7 @@ restrict s t
                 TUnion [] -> TRefined s t
                 _ -> TRefined s rez
 
-remove :: (Type SourcePos) -> (Type SourcePos) -> (Type SourcePos)
+remove :: (Type) -> (Type) -> (Type)
 remove (TRefined main ref) t = case remove ref t of
   TRefined _ reallyrefined -> TRefined main reallyrefined
   reallyrefined -> TRefined main reallyrefined
@@ -376,16 +376,16 @@ asBool l = case l of
 equalityvp :: VP -> VP -> VP
 -- x == 4
 -- typeof x == "number"
-equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId _ "string")) = case s of
-  "number"    -> VPType (TId p "double") x
+equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId "string")) = case s of
+  "number"    -> VPType (TId "double") x
   "undefined" -> VPType undefType x
-  "boolean"   -> VPType (TId p "bool") x
-  "string"    -> VPType (TId p "string") x
+  "boolean"   -> VPType (TId "bool") x
+  "string"    -> VPType (TId "string") x
   --function taken from TS. TODO: make sure is fine.
-  "function"  -> VPType (TFunc [TUnion []] Nothing (TId noPos "any") LPNone) x
+  "function"  -> VPType (TFunc [TUnion []] Nothing (TId "any") LPNone) x
   "object"    -> error "vp for typeof x == 'object' nyi"
   _           -> VPNone
-equalityvp a@(VPLit (StringLit l s) (TId _ "string")) b@(VPTypeof x) = 
+equalityvp a@(VPLit (StringLit l s) (TId "string")) b@(VPTypeof x) = 
   equalityvp b a
 
 -- yay for cartesian product.

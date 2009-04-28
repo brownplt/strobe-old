@@ -25,42 +25,41 @@ unId (Id _ s) = s
 data Id a = Id a String deriving (Ord,Data,Typeable)
 
 data TypeConstraint
-  = TCSubtype (Type SourcePos) (Type SourcePos)
+  = TCSubtype Type Type
   deriving (Eq,Ord)
 
-data Type a 
-  = TObject a [(String, Type a)]
-  | TRec String (Type a)
-  | TFunc [Type a] {- required args -} 
-          (Maybe (Type a)) {- optional var arg -}
-          (Type a) {- ret type -}
-          (LatentPred a) {- latent predicate -} 
-  | TId a String -- an Id defined through a 'type' statement
-  | TApp a (Type a) [Type a]
-  | TUnion [Type a]
-  | TForall [String] [TypeConstraint] (Type a)
-  -- | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
+data Type
+  = TObject [(String, Type)]
+  | TRec String Type
+  | TFunc [Type] {- required args -} 
+          (Maybe Type) {- optional var arg -}
+          Type {- ret type -}
+          LatentPred {- latent predicate -} 
+  | TId String -- an Id defined through a 'type' statement
+  | TApp Type [Type]
+  | TUnion [Type]
+  | TForall [String] [TypeConstraint] Type
+  -- | TIndex Type Type String --obj[x] --> TIndex <obj> <x> "x"
   --the first type, 'refined' to the 2nd
-  | TRefined (Type a) (Type a) 
-  | TExtend (Type a) (Type a)
-  
-  deriving (Ord)
+  | TRefined Type Type
+  | TExtend Type Type
+  deriving (Eq, Ord)
 
 -- the following are constructs which just assign types to IDs, either
 -- in the variable environment (ExternalStmt) or in the type
 -- environment (TypeStmt).
 data ToplevelStatement a 
-  = TypeStmt a (Id a) (Type a)
-  | ExternalStmt a (Id a) (Type a)
+  = TypeStmt a (Id a) Type
+  | ExternalStmt a (Id a) Type
 
 -- hack-ish to avoid parametrizing VP. 
 data VP = VPId String
-        | VPType (Type SourcePos) String
+        | VPType Type String
         | VPNone
         --TODO: Justify the following VPs:
         | VPTypeof String
         | VPNot VP
-        | VPLit (Lit SourcePos) (Type SourcePos)
+        | VPLit (Lit SourcePos) Type
         | VPMulti [VP]
     deriving (Ord, Eq)
 
@@ -80,40 +79,12 @@ data VP = VPId String
 --  becomes:
 -- VPType (TId "double") "x"
 
-data LatentPred a = LPType (Type a) | LPNone
-    deriving (Ord)
+data LatentPred = LPType Type | LPNone
+    deriving (Eq, Ord)
 
 --equalities:
 instance Eq (Id a) where
   Id _ s1 == Id _ s2 = s1 == s2
-
-
-instance Eq (Type a) where
-  TObject _ props1 == TObject _ props2 = 
-    (hasall props1 props2) && (hasall props2 props1) where
-      hasall p1 p2 = all
-        (\(o2id, o2proptype) -> maybe
-          False ((==) o2proptype) (lookup o2id p1))
-        p2
-     -- all id (zipWith (==) props props2)
-  TUnion types1 == TUnion types2 =
-    (hasall types1 types2) && (hasall types2 types1) where
-      hasall t1s t2s = all (\t2 -> any ((==) t2) t1s) t2s
-  TId _ s == TId _ s2                 = s == s2
-  TApp _ c1 v1 == TApp _ c2 v2        = c1 == c2 && v1 == v2
-  TFunc req1 var1 ret1 lp1 ==
-    TFunc req2 var2 ret2 lp2 = req1 == req2 && 
-                                          var1 == var2 && 
-                                          ret1 == ret2 && lp1 == lp2
-  TRec s1 t1 == TRec s2 t2 = s1 == s2 && t1 == t2 --TODO: modulo the names
-  TForall ss1 tcs1 t1 == TForall ss2 tcs2 t2 = 
-    ss1 == ss2 && tcs1 == tcs2 && t1 == t2
-  t1 == t2                            = False
-
-instance Eq (LatentPred a) where
-  LPType t1    == LPType t2     = t1 == t2
-  LPNone       == LPNone        = True
-  l1           == l2            = False
 
 --property within an object literal
 --TODO: remove PropString?
@@ -138,7 +109,7 @@ data Expression a
   | BoolLit a Bool
   | NullLit a
   | ArrayLit a [Expression a]
-  | ObjectLit a [(Prop a, Maybe (Type a), Expression a)] --optional type annotations on object literals
+  | ObjectLit a [(Prop a, Maybe Type, Expression a)] --optional type annotations on object literals
   | ThisRef a
   | VarRef a (Id a)
   | DotRef a (Expression a) (Id a)
@@ -151,9 +122,9 @@ data Expression a
   | AssignExpr a AssignOp (Expression a) (Expression a)
   | ParenExpr a (Expression a)
   | ListExpr a [Expression a] -- expressions separated by ',' 
-  | CallExpr a (Expression a) [Type a] [Expression a]
+  | CallExpr a (Expression a) [Type] [Expression a]
   | FuncExpr a [Id a] {- arg names -} 
-               (Type a)
+               Type
                (Statement a)    {- body -}
   deriving (Eq,Ord)
 
@@ -167,8 +138,8 @@ data CatchClause a
   deriving (Eq,Ord)
 
 data VarDecl a 
-  = VarDecl a (Id a) (Type a)
-  | VarDeclExpr a (Id a) (Maybe (Type a)) (Expression a)
+  = VarDecl a (Id a) Type
+  | VarDeclExpr a (Id a) (Maybe Type) (Expression a)
   deriving (Eq,Ord)
   
 data ForInit a
@@ -210,11 +181,11 @@ data Statement a
   | VarDeclStmt a [VarDecl a]
   -- FunctionStatements turn into expressions with an assignment. 
   -- TODO: add generics to functions/constructors?
-  -- | FunctionStmt a (Id a) {-name-} [(Id a, Type a)] {-args-} (Maybe (Type a)) {-ret type-}  (Statement a) {-body-}
+  -- | FunctionStmt a (Id a) {-name-} [(Id a, Type)] {-args-} (Maybe Type) {-ret type-}  (Statement a) {-body-}
 {-  | ConstructorStmt a (Id a) {-name-} 
-                      [(Id a, Type a)] {- required args -}
-                      [(Id a, Type a)] {- optional args -}
-                      (Maybe (Id a, Type a)) {- optional var arg -}
+                      [(Id a, Type)] {- required args -}
+                      [(Id a, Type)] {- optional args -}
+                      (Maybe (Id a, Type)) {- optional var arg -}
                       (Statement a) {-body-} -}
   deriving (Eq,Ord)  
   

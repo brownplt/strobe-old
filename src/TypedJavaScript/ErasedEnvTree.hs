@@ -11,15 +11,16 @@ import qualified Data.Map as M
 
 type ErasedEnvTree = Tree ErasedEnv
 
-type ErasedEnv = Map SourcePos [Type SourcePos]
+type ErasedEnv = Map SourcePos [Type]
+
 
 empty :: ErasedEnvTree
 empty = Node M.empty []
 
-single :: SourcePos -> Type SourcePos -> ErasedEnvTree
+single :: SourcePos -> Type -> ErasedEnvTree
 single loc type_ = multi loc [type_]
 
-multi :: SourcePos -> [Type SourcePos] -> ErasedEnvTree
+multi :: SourcePos -> [Type] -> ErasedEnvTree
 multi loc types = Node (M.singleton loc types) []
 
 nest :: ErasedEnvTree -> ErasedEnvTree
@@ -44,7 +45,7 @@ proploc (PropId pos _) = pos
 proploc (PropString pos _) = pos
 proploc (PropNum pos _) = pos
 
-prop :: (Prop SourcePos, Maybe (Type SourcePos), Expression SourcePos)
+prop :: (Prop SourcePos, Maybe (Type), Expression SourcePos)
      -> ErasedEnvTree
 prop (prop, mtype, e) = case mtype of
   Nothing -> expr e -- If there is no type annotation, we add nothing

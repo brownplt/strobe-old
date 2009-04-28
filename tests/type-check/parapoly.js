@@ -55,11 +55,12 @@ function() :: (->) {
 
 } @@ succeeds;
 
+
 function() :: (->) {
   var sel = function(o) :: forall a : a <: { x :: int } . a -> int {
     return o.x; };
 
-  sel@[({y :: int})]({ x: 700, y: 900 });
+  sel@[({y :: int})]({ y: 900 });
 
 } @@ fails;
 

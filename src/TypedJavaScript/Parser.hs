@@ -35,9 +35,9 @@ import qualified Data.List as L
 -- We parameterize the parse tree over source-locations.
 type ParsedStatement = Statement SourcePos
 type ParsedExpression = Expression SourcePos
-type ParsedType = Type SourcePos
+type ParsedType = Type
 type ParsedToplevel = ToplevelStatement SourcePos
-type MaybeParsedType = Maybe (Type SourcePos)
+type MaybeParsedType = Maybe (Type)
 
 -- These parsers can store some arbitrary state
 type StatementParser state = CharParser state ParsedStatement
@@ -57,8 +57,7 @@ identifier =
  -}
 typeConstraint :: CharParser st TypeConstraint
 typeConstraint = do
-  p <- getPosition
-  t1 <- (Lexer.identifier >>= \x -> return (TId p x)) <|> (parens type_)
+  t1 <- (Lexer.identifier >>= \x -> return (TId x)) <|> (parens type_)
   reservedOp "<:"
   t2 <- type_
   return (TCSubtype t1 t2)
@@ -102,7 +101,7 @@ Disambiguation:
 
  -} 
 
-type_ :: CharParser st (Type SourcePos)
+type_ :: CharParser st (Type)
 type_ = do
   let forall = do
         p <- getPosition
@@ -138,10 +137,10 @@ type_ = do
           ts  -> vararity <|> func
   forall <|> rec <|> explicitThis <|> type_fn
 
-type_fn :: CharParser st (Type SourcePos)
+type_fn :: CharParser st (Type)
 type_fn = do
   p <- getPosition
-  let globalThis = TObject p [] -- TODO: make this the global this
+  let globalThis = TObject [] -- TODO: make this the global this
   ts <- type_' `sepBy` comma
   let vararity = do
         reservedOp "..."
@@ -160,7 +159,7 @@ type_fn = do
     [t] -> vararity <|> func <|> (return t)
     ts  -> vararity <|> func
 
-type_' :: CharParser st (Type SourcePos)
+type_' :: CharParser st (Type)
 type_' = do
   t <- type_''
   let nullable = do
@@ -172,16 +171,15 @@ type_' = do
         return (TExtend t rt)
   nullable <|> extended <|> (return t) <?> "possibly nullable type"
 
-type_'' :: CharParser st (Type SourcePos)
+type_'' :: CharParser st (Type)
 type_'' =
   let union = do 
         reservedOp "U";
         liftM TUnion (parens (type_'' `sepEndBy` comma))
       object = do
-        p <- getPosition
         fields <- braces $ field `sepEndBy` comma
         fields' <- noDupFields fields
-        return (TObject p fields')
+        return (TObject fields')
       noDupFields fields
         | length (L.nub $ map fst fields) == length fields = return fields
         | otherwise = fail "duplicate fields in an object type specification"
@@ -195,16 +193,15 @@ toANFLit (IntLit p n) = ANF.IntLit p n
 toANFLit (BoolLit p b) = ANF.BoolLit p b
 toANFLit e = error $ "toANFLit: cannot use " ++ show e ++ " as a literal type"
 
-constrOrId :: CharParser st (Type SourcePos)
+constrOrId :: CharParser st (Type)
 constrOrId = do
-  p <- getPosition
   id <- (identifier >>= \(Id _ id) -> return id)
   let constr = do
         args <- (angles $ type_' `sepBy` comma) <?> "type application"
-        return (TApp p (TId p id) args)
-  constr <|> (return (TId p id))
+        return (TApp (TId id) args)
+  constr <|> (return (TId id))
 
-field :: CharParser st (String, Type SourcePos)
+field :: CharParser st (String, Type)
 field = do
   id <- Lexer.identifier
   reservedOp "::"

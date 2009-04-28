@@ -17,7 +17,7 @@ ypp :: PrettyPrintable a => Maybe a -> Doc
 ypp Nothing = empty
 ypp (Just v) = pp v
 
-ppt :: Maybe (Type a) -> Doc
+ppt :: Maybe (Type) -> Doc
 ppt (Just t) = text "::" <+> pp t
 ppt Nothing = empty
 
@@ -38,7 +38,10 @@ commaSep = hsep.(punctuate comma).(map pp)
 instance PrettyPrintable TypeConstraint where
   pp (TCSubtype t1 t2) = pp t1 <+> text "<:" <+> pp t2
 
-instance PrettyPrintable (Type a) where
+instance Show TypeConstraint where
+  show = render.pp
+
+instance PrettyPrintable (Type) where
   pp (TFunc (this:args) vararg ret lp) = 
     parens $ ppThis <+> (commaSep args) <> ppVararg <+> text "->" <+> 
              pp ret where
@@ -48,11 +51,11 @@ instance PrettyPrintable (Type a) where
       ppThis = brackets (pp this)
   pp (TRec id t) = text "rec" <+> text id <+> text "." <+> pp t
   pp (TFunc [] _ _ _) = error "CATASTROPHIC FAILURE: function without this"
-  pp (TObject _ fields) = braces $ (hsep $ punctuate comma $ 
+  pp (TObject fields) = braces $ (hsep $ punctuate comma $ 
     map (\(id,t) -> (text id <+> text "::" <+> pp t)) fields)
   pp (TUnion types) = text "U" <> (parens $ hsep $ punctuate comma (map pp types))
-  pp (TId _ id) = text id
-  pp (TApp _ constr args) = 
+  pp (TId id) = text id
+  pp (TApp constr args) = 
     pp constr <> text "<" <> (hsep $ punctuate comma $ map pp args) <> text ">"
   pp (TForall ids constraints t) =
     text "forall" <+> (hsep $ punctuate comma $ map text ids) <+> text ":" <+>
@@ -321,7 +324,7 @@ instance Show (ForInInit a) where
   show t = show $ pp t
 instance Show (Statement a) where
   show t = show $ pp t
-instance Show (Type a) where
+instance Show (Type) where
   show t = show $ pp t
 
 instance Show (ToplevelStatement a) where

@@ -29,7 +29,7 @@ import System.FilePath
 data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,
   stateEnvs :: Map Int Env,
-  typeEnv :: Map String (Type SourcePos)
+  typeEnv :: Map String (Type)
 }
 
 
@@ -88,7 +88,7 @@ assertReturn loc (Just s) =
 body :: Env
      -> ErasedEnv
      -> [TypeConstraint]
-     -> Type SourcePos
+     -> Type
      -> G.Node
      -> G.Node
      -> TypeCheck Env
@@ -116,7 +116,7 @@ stmtForBody :: Env -- ^environment of the enclosing function for a nested
                    -- function
             -> ErasedEnv
             -> [TypeConstraint]
-            -> Type SourcePos
+            -> Type
             -> G.Node
             -> TypeCheck ()
 stmtForBody enclosingEnv erasedEnv constraints rettype node = do
@@ -129,8 +129,8 @@ stmtForBody enclosingEnv erasedEnv constraints rettype node = do
 
 subtypeError :: Monad m
              => SourcePos -> String
-             -> Type SourcePos -- ^expected
-             -> Type SourcePos -- ^received
+             -> Type -- ^expected
+             -> Type -- ^received
              -> m a
 subtypeError loc func expected received =
   fail $ printf "%s: at %s: expected subtype of %s, received %s" 
@@ -150,8 +150,20 @@ catastrophe :: Monad m
 catastrophe loc msg =
   fail $ printf "CATASTROPHIC FAILURE: %s (at %s)" msg (show loc)
 
+-- |Lookup a list of types in an erased-environment.  Signals a catastrophe if
+-- no such list exists.
+--
+-- This is to typecheck 'CallStmt'.
+forceLookupMultiErasedEnv :: Monad m 
+                          => ErasedEnv -> SourcePos 
+                          -> m [Type]
+forceLookupMultiErasedEnv ee p = case M.lookup p ee of
+  Nothing -> catastrophe p "expected a list of types in the erased environment"
+  Just ts -> return ts
+
+
 forceEnvLookup :: Monad m
-               => SourcePos -> Env -> Id -> m (Type SourcePos, VP)
+               => SourcePos -> Env -> Id -> m (Type, VP)
 forceEnvLookup loc env name = case M.lookup name env of
   Nothing -> 
     fail $ printf "at %s: identifier %s is unbound" (show loc) name
@@ -164,7 +176,7 @@ assert True _ = return ()
 assert False msg = fail ("CATASPROPHIC FAILURE: " ++  msg)
 
 assertSubtype :: MonadIO m
-              => SourcePos -> String -> Type SourcePos -> Type SourcePos -> m ()
+              => SourcePos -> String -> Type -> Type -> m ()
 assertSubtype loc name received expected = case received <: expected of
   True -> return ()
   False -> do
@@ -177,7 +189,7 @@ assertSubtype loc name received expected = case received <: expected of
 stmt :: Env -- ^the environment in which to type-check this statement
      -> ErasedEnv
      -> [TypeConstraint]
-     -> Type SourcePos
+     -> Type
      -> G.Node -- ^the node representing this statement in the graph
      -> Stmt (Int, SourcePos)
      -> TypeCheck [(G.Node, Env)]
@@ -226,7 +238,7 @@ stmt env ee cs rettype node s = do
           fail $ printf "at %s: can't assign to obj %s; has no type yet"
                    (show p) obj
         Just (Just (t, vp)) -> case unRec (refined t) of
-          TObject _ props -> case lookup prop props of
+          TObject props -> case lookup prop props of
             Nothing -> 
               typeError p (printf "object does not have the property %s" prop)
             Just t' -> do
@@ -239,14 +251,10 @@ stmt env ee cs rettype node s = do
     NewStmt{} -> fail "NewStmt will be removed from ANF"
     CallStmt (_,p) r_v f_v args_v -> do
         (f'', f_vp) <- forceEnvLookup p env f_v
-        let f' = refined f''
-        f <- case f' of
-               TForall{} -> do
-                 case M.lookup p ee of 
-                   Nothing -> fail $ printf "at %s: callstmt not in ee"
-                                       (show p)
-                   Just apps -> applyType p f' apps
-               _ -> return f'
+        -- explicitly instantiated type-variables when calling polymorphic
+        -- functions
+        insts <- forceLookupMultiErasedEnv ee p
+        let f = refined f''
         actualsWithVP' <- mapM (forceEnvLookup p env) args_v
         let (this':arguments:actuals', actuals_vps) = unzip actualsWithVP'
         this <- dotrefContext this' --motivation: if 'this' is a
@@ -257,14 +265,36 @@ stmt env ee cs rettype node s = do
         let actuals = this:actuals'
         case deconstrFnType f of
           Nothing -> typeError p ("expected function; received " ++ show f)
-          Just ([], [], formals, r, latentPred) -> do
+          Just (vs, cs', formals, r, latentPred) -> do
+            
+            let t1 <: t2 = isSubType (cs' ++ cs) t1 t2
+
+            unless (length vs == length insts) $ do
+              typeError p (printf "expected %d type argument(s), received %d"
+                                  (length vs) (length insts))
+
+            let checkTypeArg (v, t) 
+                  | (TId v) <: t = return ()
+                  | otherwise = do
+                      typeError p 
+                        (printf "supplied type-parameter, %s for %s is invalid"
+                                (show t) v)
+            mapM_ checkTypeArg (zip vs insts)
+            
+            let substVar (v, t) t' = substType v t t'
+            let apply t = foldr  substVar t (zip vs insts)
+            r <- return (apply r)
+            formals <- return (map apply formals)
+            
+
+
             let (supplied, missing) = splitAt (length actuals) formals
             unless (length formals >= length actuals) $ do
               typeError p (printf "function expects %d arguments, but %d \
                                   \were supplied" (length formals)
                                   (length actuals))
             let checkArg (actual,formal) = do
-                  unless (actual <: formal) $
+                  unless (actual <: formal) $ do
                     subtypeError p "CallStmt" formal actual
             mapM_ checkArg (zip actuals supplied)
             let checkMissingArg actual = do
@@ -307,13 +337,6 @@ stmt env ee cs rettype node s = do
                                             env
                     return $ zip (map fst succs) (repeat env')
                 | otherwise -> subtypeError p "CallStmt retval" r_vt r
-          Just (typeArgs,_,_,_,_) -> do
-            -- This should not happen:
-            -- forall a b c. forall x y z . int -> bool
-            liftIO $ putStrLn $ "typeargs: " ++ show typeArgs
-            catastrophe p("application still has uninstantiated type variables:"
-                           ++ show typeArgs)               
-         
     IfStmt (_, p) e s1 s2 -> do
       (t, vp) <- expr env ee cs e -- this permits non-boolean tests
       --assertSubtype p "IfStmt" t boolType
@@ -347,19 +370,19 @@ stmt env ee cs rettype node s = do
 -- in pJS, string, int, etc. can all be used as objects.
 -- but they're not objects; they get converted.
 -- this function does this conversion
-dotrefContext :: Type SourcePos -> TypeCheck (Type SourcePos)
-dotrefContext (TId p "string") = do
+dotrefContext :: Type -> TypeCheck (Type)
+dotrefContext (TId "string") = do
   state <- get
   let tenv = typeEnv state
-  sobj <- resolveAliases tenv (TId p "String")
+  sobj <- resolveAliases tenv (TId "String")
   return sobj
 dotrefContext t = return t
 
 
-lookupConstraint :: Type SourcePos -> [TypeConstraint] -> Type SourcePos
+lookupConstraint :: Type -> [TypeConstraint] -> Type
 lookupConstraint t [] = t
-lookupConstraint t@(TId _ x) (tc:tcs) = case tc of
-  TCSubtype (TId _ y) t | x == y -> t
+lookupConstraint t@(TId x) (tc:tcs) = case tc of
+  TCSubtype (TId y) t | x == y -> t
   otherwise -> lookupConstraint t tcs
 lookupConstraint t _ = t
   
@@ -368,7 +391,7 @@ expr :: Env -- ^the environment in which to type-check this expression
      -> ErasedEnv
      -> [TypeConstraint]
      -> Expr (Int,SourcePos)
-     -> TypeCheck (Type SourcePos, VP) 
+     -> TypeCheck (Type, VP) 
 expr env ee cs e = do 
  let t1 <: t2 = isSubType cs t1 t2
  let unConstraint t = lookupConstraint t cs
@@ -386,11 +409,12 @@ expr env ee cs e = do
     t' <- dotrefContext (unRec (refined t''))
     let t = unConstraint (unRec t')
     case t of
-      TObject _ props -> case lookup p props of
+      TObject props -> case lookup p props of
         Just t' -> return (t', VPNone)
         Nothing -> case p of
           --TODO: make all objs have these fields: 
-          "toString" -> return (TFunc [TId loc "any"] Nothing (TId loc "string") LPNone, 
+          "toString" -> return (TFunc [TId "any"] Nothing (TId "string") 
+                                      LPNone,
                                 VPNone)
           _ -> typeError loc (printf "expected object with field %s" p)
       otherwise -> typeError loc (printf "expected object, received %s"
@@ -402,23 +426,23 @@ expr env ee cs e = do
     let t = unRec t'
     (it', _) <- expr env ee cs ie
     let it = unRec (refined it')
-    assertSubtype loc "BracketRef" it (TId loc "int")
+    assertSubtype loc "BracketRef" it (TId "int")
     case t of
-      TApp _ (TId _ "Array") [btype] -> return (btype, VPNone)
+      TApp (TId "Array") [btype] -> return (btype, VPNone)
       _ -> fail $ printf "at %s: expected array, got %s" (show loc) (show t)
   OpExpr (_,p) f args_e -> do
     args <- mapM (expr env ee cs) args_e
     operator p f args
   Lit (StringLit (_,a) s) -> 
-    return (TId a "string",
-            VPLit (StringLit a s) (TId a "string"))
+    return (TId "string",
+            VPLit (StringLit a s) (TId "string"))
   Lit (RegexpLit _ _ _ _) -> fail "regexp NYI"
   Lit (NumLit (_,a) n) ->
-    return (TId a "double", 
-            VPLit (NumLit a n) (TId a "double"))
+    return (TId "double", 
+            VPLit (NumLit a n) (TId "double"))
   Lit (IntLit (_,a) n) -> 
-    return (TId a "int",
-            VPLit (IntLit a n) (TId a "int"))
+    return (TId "int",
+            VPLit (IntLit a n) (TId "int"))
   Lit (BoolLit (_,a) v) ->
     return (boolType,
             VPLit (BoolLit a v) boolType)
@@ -431,8 +455,8 @@ expr env ee cs e = do
                   then head ts
                   else TUnion ts
     let vp = VPLit (ArrayLit p (error "dont look inside VP arraylit"))
-                   (TApp p (TId p "Array") [atype])
-    return (TApp p (TId p "Array") [atype], vp)
+                   (TApp (TId "Array") [atype])
+    return (TApp (TId "Array") [atype], vp)
   Lit (ObjectLit (_, loc) props) -> do
     let prop (Left s, (_, propLoc), e) = do
           -- the VP is simply dropped, but it is always safe to drop a VP
@@ -449,7 +473,7 @@ expr env ee cs e = do
         prop (Right n, (_, propLoc), e) = do
           catastrophe propLoc "object literals with numeric keys NYI"
     propTypes <- mapM prop props
-    let t = TObject loc propTypes
+    let t = TObject propTypes
     return (t, VPNone)
   Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
     Nothing -> catastrophe p "function lit is not in the erased environment"
@@ -466,7 +490,7 @@ expr env ee cs e = do
     Just _ -> catastrophe p "many types for function in the erased environment"
   
 operator :: SourcePos -> FOp 
-         -> [(Type SourcePos, VP)] -> TypeCheck (Type SourcePos, VP)
+         -> [(Type, VP)] -> TypeCheck (Type, VP)
 operator loc op argsvp = do
   let (args, vps) = unzip argsvp
   -- The ANF transform gaurantees that the number of arguments is correct for
@@ -543,9 +567,9 @@ unionEnv env1 env2 =
   foldl' (\env (id, maybeType) -> M.insertWith unionTypeVP id maybeType env)
          env1 (M.toList env2)
 
-uneraseEnv :: Env -> Map String (Type SourcePos)
+uneraseEnv :: Env -> Map String (Type)
               -> ErasedEnv -> Lit (Int, SourcePos) 
-              -> TypeCheck (Env, [TypeConstraint], Type SourcePos)
+              -> TypeCheck (Env, [TypeConstraint], Type)
 uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
   let lookupEE p name = case M.lookup p ee of
         Nothing -> return Nothing
@@ -557,8 +581,8 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
                    return $ Just t'
       functype' = head $ case M.lookup pos ee of
                           Nothing -> -- fake it. TODO: fix this bug for real.
-                            [(TFunc [TId noPos "undefined"] Nothing 
-                                (TId noPos "undefined") LPNone)]
+                            [(TFunc [TId "undefined"] Nothing 
+                                (TId "undefined") LPNone)]
                           Just xx -> xx
   functype <- resolveAliases tenv functype'
   let Just (_, cs, types, rettype, lp) = deconstrFnType functype
@@ -606,9 +630,9 @@ typeCheckProgram env constraints
 -- |Fail if the TId is not in the environment.
 -- TODO: add a "reAlias" func to make error messages nicer =).
 -- TODO: this is the func that should handle <- .
-resolveAliases :: (MonadIO m) => (Map String (Type SourcePos)) 
-                  -> (Type SourcePos) -> m (Type SourcePos)
-resolveAliases tenv t@(TId pos i)
+resolveAliases :: (MonadIO m) => (Map String (Type)) 
+                  -> (Type) -> m (Type)
+resolveAliases tenv t@(TId i)
  | i == "string"    = return t
  | i == "int"       = return t
  | i == "double"    = return t
@@ -623,7 +647,7 @@ resolveAliases tenv t@(TId pos i)
 resolveAliases tenv (TRec s t) = do
   --TODO: is this right? I temporarily insert 's' into the tenv so it gets
   -- left alone.
-  t' <- resolveAliases (M.insert s (TId noPos s) tenv) t
+  t' <- resolveAliases (M.insert s (TId s) tenv) t
   return (TRec s t')
 resolveAliases tenv (TFunc req var ret lp) = do
   req' <- mapM (resolveAliases tenv) req
@@ -634,28 +658,28 @@ resolveAliases tenv (TFunc req var ret lp) = do
       return (Just res)
   ret' <- resolveAliases tenv ret
   return (TFunc req' var' ret' lp)
-resolveAliases tenv (TObject pos fields) = do
+resolveAliases tenv (TObject fields) = do
   fields' <- mapM (\(s, t) -> do
                      t' <- resolveAliases tenv t
                      return (s, t')) fields
-  return (TObject pos fields')
-resolveAliases tenv (TApp pos tapp ts) = do
+  return (TObject fields')
+resolveAliases tenv (TApp tapp ts) = do
   tapp' <- resolveAliases tenv tapp
   ts' <- mapM (resolveAliases tenv) ts
-  return (TApp pos tapp' ts')
+  return (TApp tapp' ts')
 resolveAliases tenv (TUnion ts) = do
   ts' <- mapM (resolveAliases tenv) ts
   return (TUnion ts')
 resolveAliases tenv (TForall ss cs t) = do
   --make the function ignore all types the forall defines
-  t' <- resolveAliases (M.unions $ (map (\k->M.singleton k (TId noPos k)) ss)++
+  t' <- resolveAliases (M.unions $ (map (\k->M.singleton k (TId k)) ss) ++
                                    [tenv]) t
   return (TForall ss cs t')                                   
 resolveAliases tenv (TRefined t1 t2) = fail "What is TRefined doing in alias?"
   
 resolveAliases tenv t = fail $ "resolveAliases can't handle " ++ show t
 
-resolveAliasesEE :: (MonadIO m) => (Map String (Type SourcePos)) 
+resolveAliasesEE :: (MonadIO m) => (Map String (Type)) 
                   -> ErasedEnv -> m ErasedEnv
 resolveAliasesEE tenv ee = do
   --not sure if there is a more efficient way to do this:
@@ -665,19 +689,19 @@ resolveAliasesEE tenv ee = do
   resl <- mapM procp (M.toList ee)
   return $ M.fromList resl
 
---type ErasedEnv = Map SourcePos [Type SourcePos]
+--type ErasedEnv = Map SourcePos [Type]
 
 {-
-  | TApp a (Type a) [Type a]
-  | TUnion [Type a]
-  | TForall [String] [TypeConstraint] (Type a)
-  -- | TIndex (Type a) (Type a) String --obj[x] --> TIndex <obj> <x> "x"
+  | TApp a (Type) [Type]
+  | TUnion [Type]
+  | TForall [String] [TypeConstraint] (Type)
+  -- | TIndex (Type) (Type) String --obj[x] --> TIndex <obj> <x> "x"
   --the first type, 'refined' to the 2nd
-  | TRefined (Type a) (Type a) 
+  | TRefined (Type) (Type) 
 -}
 
 -- convenience function to make testing faster
-typeCheckWithGlobals :: Env -> Map String (Type SourcePos) -> 
+typeCheckWithGlobals :: Env -> Map String (Type) -> 
                         [TJS.Statement SourcePos] -> IO Env
 typeCheckWithGlobals venv tenv prog = do
   -- Build intraprocedural graphs for all functions and the top-level.
@@ -699,13 +723,13 @@ typeCheckWithGlobals venv tenv prog = do
         
   -- add this:
   let venv' = M.unions $ [venv] ++ 
-        [M.fromList [("this", Just (TObject noPos [], VPId "this"))]]
+        [M.fromList [("this", Just (TObject [], VPId "this"))]]
   
   (env, state) <- runStateT (typeCheckProgram venv' [] (envs, intraprocs)) 
                             (TypeCheckState G.empty M.empty tenv)
   return env
 
-loadCoreEnv :: IO (Env, Map String (Type SourcePos))
+loadCoreEnv :: IO (Env, Map String (Type))
 loadCoreEnv = do
   -- load the global environment from "core.js"
   dir <- getDataDir
@@ -715,8 +739,8 @@ loadCoreEnv = do
     Right tls -> return tls
 
   let procTLs :: (MonadIO m) => [TJS.ToplevelStatement SourcePos]
-                 -> (Env, Map String (Type SourcePos))
-                 -> m (Env, Map String (Type SourcePos))
+                 -> (Env, Map String (Type))
+                 -> m (Env, Map String (Type))
       procTLs [] results = return results
       procTLs ((TJS.ExternalStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
         t' <- resolveAliases tenv t
