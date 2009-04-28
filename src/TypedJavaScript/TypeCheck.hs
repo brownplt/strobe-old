@@ -381,7 +381,10 @@ lookupConstraint t [] = t
 lookupConstraint t@(TId x) (tc:tcs) = case tc of
   TCSubtype (TId y) t | x == y -> t
   otherwise -> lookupConstraint t tcs
-lookupConstraint t _ = t
+
+lookupConstraint t (tc:tcs) = case tc of
+  TCSubtype t1 t2 | isSubType [] t t1 -> t2
+                  | otherwise -> lookupConstraint t tcs
   
 
 expr :: Env -- ^the environment in which to type-check this expression
@@ -414,8 +417,8 @@ expr env ee cs e = do
                                       LPNone,
                                 VPNone)
           _ -> typeError loc (printf "expected object with field %s" p)
-      otherwise -> typeError loc (printf "expected object, received %s"
-                                         (show t))
+      otherwise -> typeError loc (printf "expected object, received %s, constraints were %s"
+                                         (show t) (show cs))
                                          
   BracketRef (_, loc) e ie -> do
     (t'', _) <- expr env ee cs e
@@ -617,13 +620,14 @@ typeCheckProgram env constraints
   -- When type-checking the body, we assume the declared types for functions.
   ee <- resolveAliasesEE (typeEnv state) ee'
   (env', cs, rettype) <- uneraseEnv env (typeEnv state) ee lit
-  topLevelEnv <- body env' ee cs rettype (enterNodeOf gr) (exitNodeOf gr)
+  let cs' = cs ++ constraints
+  topLevelEnv <- body env' ee cs' rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descent into nested functions, we ensure that functions satisfy
   -- their declared types.
   -- This handles mutually-recursive functions correctly.  
   unless (length subEes == length subGraphs) $
     fail "erased env and functions have different structures"
-  mapM_ (typeCheckProgram env' (cs ++ constraints)) (zip subEes subGraphs)
+  mapM_ (typeCheckProgram env' cs') (zip subEes subGraphs)
   return topLevelEnv
 
 -- |Take a type environment and a type, and return a type with all the
@@ -701,6 +705,13 @@ resolveAliasesEE tenv ee = do
   | TRefined (Type) (Type) 
 -}
 
+
+basicConstraints :: [TypeConstraint]
+basicConstraints =
+  [ TCSubtype (TApp (TId "Array") [TAny])
+              (TObject [("length", TId "int")])
+  ]
+
 -- convenience function to make testing faster
 typeCheckWithGlobals :: Env -> Map String (Type) -> 
                         [TJS.Statement SourcePos] -> IO Env
@@ -726,7 +737,8 @@ typeCheckWithGlobals venv tenv prog = do
   let venv' = M.unions $ [venv] ++ 
         [M.fromList [("this", Just (TObject [], VPId "this"))]]
   
-  (env, state) <- runStateT (typeCheckProgram venv' [] (envs, intraprocs)) 
+  (env, state) <- runStateT (typeCheckProgram venv' basicConstraints 
+                                              (envs, intraprocs)) 
                             (TypeCheckState G.empty M.empty tenv)
   return env
 

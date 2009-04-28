@@ -30,6 +30,7 @@ data TypeConstraint
 
 data Type
   = TObject [(String, Type)]
+  | TAny
   | TRec String Type
   | TFunc [Type] {- required args -} 
           (Maybe Type) {- optional var arg -}

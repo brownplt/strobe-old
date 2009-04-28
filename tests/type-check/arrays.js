@@ -1,3 +1,9 @@
+function() :: (->) {
+  var x :: Array<int> = [1, 2, 3, 4, 5];
+  var y = x[23];
+  var l = x.length;
+} @@ succeeds;
+
 function (arry) :: (Array<int> -> int) { //TODO: add support for new Array<int>, etc.
   return (5)[13];
 } @@ fails;
@@ -7,6 +13,7 @@ function (arry) :: (Array<int> -> int) {
 function (arry) :: Array<int> -> int {
   return arry[arry[0]];
 } :: (Array<int>->int);
+
 
 //sum:
 function (arry) :: (Array<int> -> int) {
@@ -91,10 +98,9 @@ function () :: (->) {
 function () :: (->) {
   var z :: Array<int> = [1, 3, 5, 19];
 } :: (->);
-//TODO: allow empty array literals at some point
 function () :: (->) {
   var z :: Array<int> = [];
-} @@ fails; 
+} @@ succeeds;
 
 //finding most commen supertypes:
 [1, 2, 3, 4, 5] :: Array<int>;

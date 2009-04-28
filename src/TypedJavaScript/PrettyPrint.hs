@@ -49,6 +49,7 @@ instance PrettyPrintable (Type) where
         Nothing -> empty
         Just t  -> comma <+> pp t <> text "..."
       ppThis = brackets (pp this)
+  pp TAny = text "any"
   pp (TRec id t) = text "rec" <+> text id <+> text "." <+> pp t
   pp (TFunc [] _ _ _) = error "CATASTROPHIC FAILURE: function without this"
   pp (TObject fields) = braces $ (hsep $ punctuate comma $ 

@@ -33,6 +33,10 @@ import qualified TypedJavaScript.Syntax as TJS
 
 p = initialPos "TypedJavaScript.Types"
 
+data Kind 
+  = KindStar
+  | KindConstr [Kind] Kind       
+
 --maps names to their type.
 --ANF-generated variables have visible predicates.
 type Env = Map String (Maybe (Type, VP))
@@ -191,8 +195,8 @@ st :: Set (Type, Type)
 st rel (t1, t2)
   | (t1, t2) `S.member` rel = return rel
   | otherwise = do
---   seq (unsafePerformIO $ putStrLn $ "omg: " ++ show rel ++ " " ++ show t1 ++ " " ++ show t2) (return rel)
    case (t1, t2) of
+    (_, TAny) -> return (S.insert (t1, t2) rel)
     (TId "int", TId "double") -> return rel
     (_, TId "any") -> return rel
     (TId x, TId y) 
@@ -206,11 +210,11 @@ st rel (t1, t2)
       st (S.insert (t1, t2) rel) (other, declared)
     (TApp c1 args1, TApp c2 args2) -> do
       assert (length args1 == length args2)
-      assert (c1 == c2)
-      assert (args1 == args2)
-      return rel
-      -- rel <- st (S.insert (t1, t2) rel) (c1, c2)
-      -- foldM st rel (zip args1 args2) 
+      -- assert (c1 == c2)
+      -- assert (args1 == args2)
+      -- return rel
+      rel <- st (S.insert (t1, t2) rel) (c1, c2)
+      foldM st rel (zip args1 args2) 
     (TFunc req2 Nothing ret2 lp2, TFunc req1 Nothing ret1 lp1) -> do
       assert (length req2 == length req1)
       assert (lp1 == lp2 || lp1 == LPNone)
