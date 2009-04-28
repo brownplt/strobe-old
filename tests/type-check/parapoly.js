@@ -47,4 +47,21 @@ function(obj) :: forall a : a <: { x :: int } . a -> int {
   return obj.x;
 } :: forall a : a <: { x :: int } . a -> int;
 
+function() :: (->) {
+  var sel = function(o) :: forall a : a <: { x :: int } . a -> int {
+    return o.x; };
+
+  sel@[({x :: int})]({ x: 700, y: 900 });
+
+} @@ succeeds;
+
+function() :: (->) {
+  var sel = function(o) :: forall a : a <: { x :: int } . a -> int {
+    return o.x; };
+
+  sel@[({y :: int})]({ x: 700, y: 900 });
+
+} @@ fails;
+
+
 // Test cases of map, filter, etc. are in arrays.js

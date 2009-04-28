@@ -12,6 +12,7 @@ module TypedJavaScript.Types
   , applyType
   , unRec
   , (<:)
+  , isSubType
   , unionType, unionTypeVP, equalityvp
   , restrict, remove, gammaPlus, gammaMinus
   ) where
@@ -232,6 +233,15 @@ st rel (t1, t2)
     (t1, TUnion ts2) -> do
       anyM (\rel t2 -> st rel (t1, t2)) rel ts2
     otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
+
+isSubType :: [TypeConstraint] -> Type SourcePos -> Type SourcePos
+          -> Bool
+isSubType cs t1 t2 = result where
+  result = case st initial (t1, t2) of
+    Just _ -> True
+    Nothing -> False
+  initial = S.fromList (map subtype cs)
+  subtype (TCSubtype s t) = (s, t)
 
 isSubType' :: Type SourcePos -> Type SourcePos -> Bool
 isSubType' t1 t2 = case st S.empty (t1, t2) of

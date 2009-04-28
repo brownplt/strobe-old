@@ -6,7 +6,8 @@ import qualified Data.Set as S
 import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Strict
 import qualified TypedJavaScript.Syntax as TJS
-import TypedJavaScript.Syntax (Type (..), VP (..), LatentPred (..))
+import TypedJavaScript.Syntax (Type (..), TypeConstraint (..), VP (..), 
+  LatentPred (..))
 import TypedJavaScript.Types
 import TypedJavaScript.Graph
 import BrownPLT.JavaScript.Analysis (jsToCore, simplify)
@@ -86,11 +87,12 @@ assertReturn loc (Just s) =
 
 body :: Env
      -> ErasedEnv
+     -> [TypeConstraint]
      -> Type SourcePos
      -> G.Node
      -> G.Node
      -> TypeCheck Env
-body env ee rettype enterNode exitNode = do
+body env ee constraints rettype enterNode exitNode = do
   state <- get
   let gr = stateGraph state
   -- Enter has no predecessors
@@ -103,7 +105,7 @@ body env ee rettype enterNode exitNode = do
 
   let (nodes,removedEdges) = topologicalOrder gr enterNode
 
-  mapM_ (stmtForBody env ee rettype) nodes
+  mapM_ (stmtForBody env ee constraints rettype) nodes
 
   finalLocalEnv <- lookupLocalEnv (exitNodeOf gr)
   return finalLocalEnv
@@ -113,13 +115,15 @@ stmtForBody :: Env -- ^environment of the enclosing function for a nested
                    -- function, or the globals for a top-level statement or
                    -- function
             -> ErasedEnv
+            -> [TypeConstraint]
             -> Type SourcePos
             -> G.Node
             -> TypeCheck ()
-stmtForBody enclosingEnv erasedEnv rettype node = do
+stmtForBody enclosingEnv erasedEnv constraints rettype node = do
   localEnv <- lookupLocalEnv node
   s <- nodeToStmt node
-  succs <- stmt (M.union localEnv enclosingEnv) erasedEnv rettype node s
+  succs <- stmt (M.union localEnv enclosingEnv) erasedEnv constraints rettype 
+                node s
   mapM_ updateLocalEnv succs
     
 
@@ -172,11 +176,13 @@ assertSubtype loc name received expected = case received <: expected of
 
 stmt :: Env -- ^the environment in which to type-check this statement
      -> ErasedEnv
+     -> [TypeConstraint]
      -> Type SourcePos
      -> G.Node -- ^the node representing this statement in the graph
      -> Stmt (Int, SourcePos)
      -> TypeCheck [(G.Node, Env)]
-stmt env ee rettype node s = do
+stmt env ee cs rettype node s = do
+  let t1 <: t2 = isSubType cs t1 t2
   state <- get
   let tenv = typeEnv state
   succs <- stmtSuccs s
@@ -190,7 +196,7 @@ stmt env ee rettype node s = do
     AssignStmt (_,p) v e -> do
       --TODO: distinguish TRefined from Type.
       --TODO: make this do a gammaPlus instead of all this.
-      (te,e_vp) <- expr env ee e
+      (te,e_vp) <- expr env ee cs e
       case M.lookup v env of        
         Nothing -> --unbound id
           fail $ printf "at %s: identifier %s is unbound" (show p) v
@@ -211,7 +217,7 @@ stmt env ee rettype node s = do
                               env
           return $ zip (map fst succs) (repeat env')              
     DirectPropAssignStmt (_,p) obj prop e -> do
-      (t_rhs, e_vp) <- expr env ee e
+      (t_rhs, e_vp) <- expr env ee cs e
       case M.lookup obj env of
         Nothing -> 
           catastrophe p (printf "id %s for an object is unbound" obj)
@@ -309,7 +315,7 @@ stmt env ee rettype node s = do
                            ++ show typeArgs)               
          
     IfStmt (_, p) e s1 s2 -> do
-      (t, vp) <- expr env ee e -- this permits non-boolean tests
+      (t, vp) <- expr env ee cs e -- this permits non-boolean tests
       --assertSubtype p "IfStmt" t boolType
       assert (length succs == 2) "IfStmt should have two successors"
       let occurit (node, Nothing) = error "ifstmt's branches should have lits!"
@@ -318,18 +324,18 @@ stmt env ee rettype node s = do
           occurit _ = error "Ifstmt's branches are wack"
       return $ map occurit succs
     WhileStmt _ e s -> do
-      expr env ee e -- this permits non-boolean tests
+      expr env ee cs e -- this permits non-boolean tests
       noop -- will change for occurrence types
     ForInStmt _ id e s -> fail "ForIn NYI"
     TryStmt _ s id catches finally  -> fail "TryStmt NYI"
     ThrowStmt _ e -> do
-      expr env ee e
+      expr env ee cs e
       noop
     ReturnStmt (_,p) Nothing -> do
       assertSubtype p "ReturnStmt undef" undefType rettype
       noop
     ReturnStmt (_,p) (Just e) -> do
-      (te, vp) <- expr env ee e
+      (te, vp) <- expr env ee cs e
       assertSubtype p "ReturnStmt" te rettype
       noop
 
@@ -349,11 +355,23 @@ dotrefContext (TId p "string") = do
   return sobj
 dotrefContext t = return t
 
+
+lookupConstraint :: Type SourcePos -> [TypeConstraint] -> Type SourcePos
+lookupConstraint t [] = t
+lookupConstraint t@(TId _ x) (tc:tcs) = case tc of
+  TCSubtype (TId _ y) t | x == y -> t
+  otherwise -> lookupConstraint t tcs
+lookupConstraint t _ = t
+  
+
 expr :: Env -- ^the environment in which to type-check this expression
      -> ErasedEnv
+     -> [TypeConstraint]
      -> Expr (Int,SourcePos)
      -> TypeCheck (Type SourcePos, VP) 
-expr env ee e = do 
+expr env ee cs e = do 
+ let t1 <: t2 = isSubType cs t1 t2
+ let unConstraint t = lookupConstraint t cs
  state <- get
  let tenv = typeEnv state
  case e of 
@@ -364,9 +382,9 @@ expr env ee e = do
       _      -> return (t, VPMulti [VPId id, vp])
   DotRef (_, loc) e p -> do
     --I'm uneasy about needing all of the following 3 lines
-    (t'', _) <- expr env ee e
+    (t'', _) <- expr env ee cs e
     t' <- dotrefContext (unRec (refined t''))
-    let t = unRec t'
+    let t = unConstraint (unRec t')
     case t of
       TObject _ props -> case lookup p props of
         Just t' -> return (t', VPNone)
@@ -379,17 +397,17 @@ expr env ee e = do
                                          (show t))
                                          
   BracketRef (_, loc) e ie -> do
-    (t'', _) <- expr env ee e
+    (t'', _) <- expr env ee cs e
     t' <- dotrefContext (unRec (refined t''))
     let t = unRec t'
-    (it', _) <- expr env ee ie
+    (it', _) <- expr env ee cs ie
     let it = unRec (refined it')
     assertSubtype loc "BracketRef" it (TId loc "int")
     case t of
       TApp _ (TId _ "Array") [btype] -> return (btype, VPNone)
       _ -> fail $ printf "at %s: expected array, got %s" (show loc) (show t)
   OpExpr (_,p) f args_e -> do
-    args <- mapM (expr env ee) args_e
+    args <- mapM (expr env ee cs) args_e
     operator p f args
   Lit (StringLit (_,a) s) -> 
     return (TId a "string",
@@ -406,7 +424,7 @@ expr env ee e = do
             VPLit (BoolLit a v) boolType)
   Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
   Lit (ArrayLit (_,p) es) -> do
-    r <- mapM (expr env ee) es
+    r <- mapM (expr env ee cs) es
     let ts = nub (map (refined . fst) r)
     --TODO: does this type make sense?
     let atype = if length ts == 1 
@@ -418,7 +436,7 @@ expr env ee e = do
   Lit (ObjectLit (_, loc) props) -> do
     let prop (Left s, (_, propLoc), e) = do
           -- the VP is simply dropped, but it is always safe to drop a VP
-          (t, vp) <- expr env ee e
+          (t, vp) <- expr env ee cs e
           case M.lookup propLoc ee of
             Just [t'] -> do
               assertSubtype propLoc "ObjectLit" t t'
@@ -527,7 +545,7 @@ unionEnv env1 env2 =
 
 uneraseEnv :: Env -> Map String (Type SourcePos)
               -> ErasedEnv -> Lit (Int, SourcePos) 
-              -> TypeCheck (Env, Type SourcePos)
+              -> TypeCheck (Env, [TypeConstraint], Type SourcePos)
 uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
   let lookupEE p name = case M.lookup p ee of
         Nothing -> return Nothing
@@ -557,27 +575,30 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
   let novp (a,Just t)  = (a, Just (t, VPId a))
       novp (a,Nothing) = (a, Nothing)
       env' = M.union (M.fromList (map novp $ argtypes++localtypes)) env 
-  return (env', rettype)
+  return (env', cs, rettype)
 
 uneraseEnv env tenv ee _ = error "coding fail - uneraseEnv given a function-not"
 
+  
 typeCheckProgram :: Env
-                  -> (Tree ErasedEnv, 
-                      Tree (Int, Lit (Int,SourcePos), Graph))
-                  -> TypeCheck Env
-typeCheckProgram env (Node ee' subEes, Node (_, lit, gr) subGraphs) = do
+                 -> [TypeConstraint]
+                 -> (Tree ErasedEnv, 
+                     Tree (Int, Lit (Int, SourcePos), Graph))
+                 -> TypeCheck Env
+typeCheckProgram env constraints
+                 (Node ee' subEes, Node (_, lit, gr) subGraphs) = do
   state <- get
   put $ state { stateGraph = gr, stateEnvs = M.empty }
   -- When type-checking the body, we assume the declared types for functions.
   ee <- resolveAliasesEE (typeEnv state) ee'
-  (env', rettype) <- uneraseEnv env (typeEnv state) ee lit
-  topLevelEnv <- body env' ee rettype (enterNodeOf gr) (exitNodeOf gr)
+  (env', cs, rettype) <- uneraseEnv env (typeEnv state) ee lit
+  topLevelEnv <- body env' ee cs rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descent into nested functions, we ensure that functions satisfy
   -- their declared types.
   -- This handles mutually-recursive functions correctly.  
   unless (length subEes == length subGraphs) $
     fail "erased env and functions have different structures"
-  mapM_ (typeCheckProgram env') (zip subEes subGraphs)
+  mapM_ (typeCheckProgram env' (cs ++ constraints)) (zip subEes subGraphs)
   return topLevelEnv
 
 -- |Take a type environment and a type, and return a type with all the
@@ -680,7 +701,7 @@ typeCheckWithGlobals venv tenv prog = do
   let venv' = M.unions $ [venv] ++ 
         [M.fromList [("this", Just (TObject noPos [], VPId "this"))]]
   
-  (env, state) <- runStateT (typeCheckProgram venv' (envs, intraprocs)) 
+  (env, state) <- runStateT (typeCheckProgram venv' [] (envs, intraprocs)) 
                             (TypeCheckState G.empty M.empty tenv)
   return env
 
