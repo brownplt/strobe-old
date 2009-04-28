@@ -75,15 +75,6 @@ enterNodeOf gr = fst (G.nodeRange gr)
 exitNodeOf :: Graph -> G.Node
 exitNodeOf gr = snd (G.nodeRange gr)
 
-assertReturn :: Monad m => SourcePos -> Maybe (Stmt (Int, SourcePos)) -> m ()
-assertReturn loc Nothing = 
-  catastrophe loc "predecessor of an Exit node is unlabelled in the control \
-                  \flow graph"
-assertReturn _ (Just (ReturnStmt _ _)) =
-  return ()
-assertReturn loc (Just s) =
-  typeError (snd $ stmtLabel s) "expected return after this statement"
-
 
 body :: Env
      -> ErasedEnv
@@ -93,15 +84,15 @@ body :: Env
      -> G.Node
      -> TypeCheck Env
 body env ee constraints rettype enterNode exitNode = do
+  let t1 <: t2 = isSubType constraints t1 t2
+  -- TODO: ensure that the subgraph is connected, probably in 
+  -- javascript-analysis
   state <- get
   let gr = stateGraph state
   -- Enter has no predecessors
   unless (null $ G.pre gr enterNode) $
     fail $ "Unexpected edges into  " ++ show (G.lab gr enterNode)
-  -- All predecessors of Exit must be ReturnStmt
-  exitStmt <- nodeToStmt exitNode
-  let exitPos = snd (stmtLabel exitStmt)
-  mapM_ (assertReturn exitPos) (map (G.lab gr) (G.pre gr exitNode))
+    
 
   let (nodes,removedEdges) = topologicalOrder gr enterNode
 
@@ -192,7 +183,21 @@ stmt env ee cs rettype node s = do
   let noop = return (zip (map fst succs) (repeat env))
   case s of
     EnterStmt _ -> noop
-    ExitStmt _ -> noop
+    ExitStmt (exitNode, p) -> do
+      -- All predecessors of Exit must be ReturnStmt
+      let gr = stateGraph state
+      let returns = map (G.lab gr) (G.pre gr exitNode)
+      let assertReturn maybeStmt = case maybeStmt of
+            Nothing -> catastrophe p "predecessor of an Exit node is \
+                                       \unlabelled in the CFG"
+            Just (ReturnStmt _ _) -> return ()
+            Just s -> typeError (snd $ stmtLabel s) 
+                                "expected return after this statement"
+      mapM_ assertReturn returns
+      -- when (null returns && not (undefType <: rettype)) $ do
+      --  liftIO $ putStrLn (show returns)
+      --  subtypeError p "no returns" undefType rettype
+      noop
     SeqStmt{} -> noop
     EmptyStmt _ -> noop
     AssignStmt (_,p) v e -> do
@@ -563,8 +568,9 @@ uneraseEnv :: Env -> Map String (Type)
               -> ErasedEnv -> Lit (Int, SourcePos) 
               -> TypeCheck (Env, [TypeConstraint], Type)
 uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
-  unless (map fst args == nub (map fst args)) $ do
-    typeError pos "duplicate argument names"
+  let newNames = map fst (args ++ locals)
+  unless (newNames == nub newNames) $ do
+    typeError pos "duplicate argument/local names"
 
   let lookupEE p name = case M.lookup p ee of
         Nothing -> return Nothing
