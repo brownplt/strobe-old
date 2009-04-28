@@ -1,5 +1,7 @@
 module TypedJavaScript.Types 
   ( Env
+  , Kind (..)
+  , checkKinds
   , emptyEnv
  -- , argEnv
   , undefType
@@ -35,7 +37,49 @@ p = initialPos "TypedJavaScript.Types"
 
 data Kind 
   = KindStar
-  | KindConstr [Kind] Kind       
+  | KindConstr [Kind] Kind
+  deriving (Eq)
+
+assertKinds kinds (t, k) = do
+  k' <- checkKinds kinds t
+  unless (k' == k) $ do
+    fail "kind error"
+
+
+checkKinds :: Monad m => Map String Kind -> Type -> m Kind
+checkKinds kinds t = case t of
+  TApp (TId v) ts -> case M.lookup v kinds of
+    Just (KindConstr ks k) | length ks == length ts -> do
+                               mapM_ (assertKinds kinds) (zip ts ks)
+                               return k
+                           | otherwise -> fail "kind error (arg mismatch)"
+    Just KindStar -> fail "kind error (expected * ... -> *)"
+    Nothing -> fail $ "unbound type " ++ v
+  TId v -> case M.lookup v kinds of
+    Just KindStar -> return KindStar
+    Just (KindConstr _ _) -> fail "kind error (expected *)"
+    Nothing -> fail $ "unbound type " ++ v
+  TObject props -> do
+    mapM_ (assertKinds kinds) (zip (map snd props) (repeat KindStar))
+    return KindStar
+  TAny -> return KindStar
+  TRec _ t -> do
+    assertKinds kinds (t, KindStar)
+    return KindStar
+  TFunc ts Nothing t _ -> do
+    mapM_ (assertKinds kinds) (zip (t:ts) (repeat KindStar))
+    return KindStar
+  TUnion ts -> do
+    mapM_ (assertKinds kinds) (zip ts (repeat KindStar))
+    return KindStar
+  TForall ids cs t -> do -- TODO: check constraints
+    let kinds' = M.union (M.fromList (zip ids (repeat KindStar))) kinds
+    assertKinds kinds' (t, KindStar)
+    return KindStar
+  TRefined t1 t2 -> do
+    assertKinds kinds (t1, KindStar)
+    assertKinds kinds (t2, KindStar)
+    return KindStar
 
 --maps names to their type.
 --ANF-generated variables have visible predicates.

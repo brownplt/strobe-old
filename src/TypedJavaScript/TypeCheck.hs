@@ -29,7 +29,8 @@ import System.FilePath
 data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,
   stateEnvs :: Map Int Env,
-  typeEnv :: Map String (Type)
+  typeEnv :: Map String Type,
+  stateKinds :: Map String Kind
 }
 
 
@@ -739,7 +740,7 @@ typeCheckWithGlobals venv tenv prog = do
   
   (env, state) <- runStateT (typeCheckProgram venv' basicConstraints 
                                               (envs, intraprocs)) 
-                            (TypeCheckState G.empty M.empty tenv)
+                            (TypeCheckState G.empty M.empty tenv M.empty)
   return env
 
 loadCoreEnv :: IO (Env, Map String (Type))
