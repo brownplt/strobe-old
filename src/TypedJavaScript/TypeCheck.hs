@@ -563,6 +563,9 @@ uneraseEnv :: Env -> Map String (Type)
               -> ErasedEnv -> Lit (Int, SourcePos) 
               -> TypeCheck (Env, [TypeConstraint], Type)
 uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
+  unless (map fst args == nub (map fst args)) $ do
+    typeError pos "duplicate argument names"
+
   let lookupEE p name = case M.lookup p ee of
         Nothing -> return Nothing
         Just t | head name == '@' -> return Nothing
