@@ -16,6 +16,7 @@ module TypedJavaScript.Parser
   , ExpressionParser
   , parseAssignExpr
   , parseToplevel, parseToplevels
+  , parseTypedJavaScript
   ) where
 
 import qualified TypedJavaScript.Types as Types
@@ -789,27 +790,7 @@ parsePrefixedExpr = do
       return (PrefixExpr pos op innerExpr)
 
 exprTable:: [[Operator Char st ParsedExpression]]
-exprTable = --changed precedence as per TDGTJ
-  {-[
-   [makePrefixExpr "++" PrefixInc,
-    makePostfixExpr "++" PostfixInc],
-   [makePrefixExpr "--" PrefixDec,
-    makePostfixExpr "--" PostfixDec],
-   [makeInfixExpr "*" OpMul, makeInfixExpr "/" OpDiv, makeInfixExpr "%" OpMod],
-   [makeInfixExpr "+" OpAdd, makeInfixExpr "-" OpSub],
-   [makeInfixExpr "<<" OpLShift, makeInfixExpr ">>" OpSpRShift,
-    makeInfixExpr ">>>" OpZfRShift],
-   [makeInfixExpr "<" OpLT, makeInfixExpr "<=" OpLEq, makeInfixExpr ">" OpGT,
-    makeInfixExpr ">=" OpGEq, 
-    makeInfixExpr "instanceof" OpInstanceof, makeInfixExpr "in" OpIn],
-   [makeInfixExpr "&" OpBAnd], 
-   [makeInfixExpr "^" OpBXor], 
-   [makeInfixExpr "|" OpBOr],
-   [makeInfixExpr "&&" OpLAnd],
-   [makeInfixExpr "||" OpLOr],  
-   [makeInfixExpr "==" OpEq, makeInfixExpr "!=" OpNEq,
-    makeInfixExpr "===" OpStrictEq, makeInfixExpr "!==" OpStrictNEq]
-    ]-}
+exprTable =
   [
    [makePrefixExpr "++" PrefixInc,
     makePostfixExpr "++" PostfixInc],
@@ -926,6 +907,11 @@ parseScriptFromString src script = parse parseScript src script
 
 emptyParsedJavaScript = 
   Script (error "Parser.emptyParsedJavaScript--no annotation") []
+
+parseTypedJavaScript :: String -> String -> [Statement SourcePos]
+parseTypedJavaScript src str = case parse parseScript src str of
+  Left err -> error (show err)
+  Right (Script _ stmts) -> stmts
 
 parseString :: String -> [Statement SourcePos]
 parseString str = case parse parseScript "" str of

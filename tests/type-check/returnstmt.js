@@ -129,7 +129,15 @@ function (x) :: (double -> double) {
   else
     return 3;
   ("hithere"=="" ? 'how' : 'areyou?');
-} :: (double -> double);
+} @@ fails;
+function (x) :: (double -> double) {
+  if (x==3)
+    return 4;
+  else
+    return 3;
+  ("hithere"=="" ? 'how' : 'areyou?');
+  return 2;
+} @@ fails;
 function (x) :: (double -> ) {
   if (x==3)
     return;

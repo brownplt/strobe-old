@@ -33,7 +33,6 @@ data TypeCheckState = TypeCheckState {
 }
 
 
-
 basicKinds :: KindEnv
 basicKinds = M.fromList
   [ ("int", KindStar)
@@ -204,12 +203,13 @@ stmt env ee cs rettype node s = do
             Nothing -> catastrophe p "predecessor of an Exit node is \
                                        \unlabelled in the CFG"
             Just (ReturnStmt _ _) -> return ()
-            Just s -> typeError (snd $ stmtLabel s) 
-                                "expected return after this statement"
+            Just s | undefType <: rettype -> return ()
+                   | otherwise -> typeError (snd $ stmtLabel s) 
+                                    "expected return after this statement"
       mapM_ assertReturn returns
-      -- when (null returns && not (undefType <: rettype)) $ do
-      --  liftIO $ putStrLn (show returns)
-      --  subtypeError p "no returns" undefType rettype
+      when (null returns && not (undefType <: rettype)) $ do
+        liftIO $ putStrLn (show returns)
+        subtypeError p "no returns" undefType rettype
       noop
     SeqStmt{} -> noop
     EmptyStmt _ -> noop
@@ -653,7 +653,8 @@ typeCheckProgram :: Env
                      Tree (Int, Lit (Int, SourcePos), Graph))
                  -> TypeCheck Env
 typeCheckProgram env enclosingKindEnv constraints
-                 (Node ee' subEes, Node (_, lit, gr) subGraphs) = do
+                 (Node ee' subEes, Node (_, lit, gr') subGraphs) = do
+  let gr = G.mkGraph (G.labNodes gr') (G.labEdges gr')
   state <- get
   put $ state { stateGraph = gr, stateEnvs = M.empty }
   -- When type-checking the body, we assume the declared types for functions.

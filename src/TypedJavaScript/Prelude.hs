@@ -34,8 +34,8 @@ import Text.PrettyPrint.HughesPJ
 import Text.Printf
 import Data.Graph.Inductive.PatriciaTree (Gr)
 
-instance Show (Gr a b) where
-  show _ = "#graph#"
+-- instance Show (Gr a b) where
+--   show _ = "#graph#"
 
 noPos :: SourcePos
 noPos = initialPos ""
