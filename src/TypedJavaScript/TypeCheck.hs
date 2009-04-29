@@ -264,8 +264,9 @@ stmt env ee cs rettype node s = do
         let actuals = this:actuals'
         case deconstrFnType f of
           Nothing -> typeError p ("expected function; received " ++ show f)
-          Just (vs, cs', formals, r, latentPred) -> do
-            
+          Just (vs, cs', formals', vararg, r, latentPred) -> do
+--            unless (vararg == Nothing) 
+--              (fail "calling a vararg function NYI")
             let t1 <: t2 = isSubType (cs' ++ cs) t1 t2
 
             unless (length vs == length insts) $ do
@@ -281,14 +282,20 @@ stmt env ee cs rettype node s = do
             mapM_ checkTypeArg (zip vs insts)
             
             let substVar (v, t) t' = substType v t t'
-            let apply t = foldr  substVar t (zip vs insts)
+            let apply t = foldr substVar t (zip vs insts)
             r <- return (apply r)
-            formals <- return (map apply formals)
-            
+            formals' <- return (map apply formals')
 
+            --if we have a vararg, repeat the vararg until we have as
+            --many formals as actuals:
+            let formals = case vararg of
+                            Nothing -> formals'
+                            Just vt -> formals' ++ 
+                              take (length actuals - length formals') 
+                                   (repeat (apply vt))
 
             let (supplied, missing) = splitAt (length actuals) formals
-            unless (length formals >= length actuals) $ do
+            when (length actuals > length formals) $ do
               typeError p (printf "function expects %d arguments, but %d \
                                   \were supplied" (length formals)
                                   (length actuals))
@@ -298,7 +305,8 @@ stmt env ee cs rettype node s = do
             mapM_ checkArg (zip actuals supplied)
             let checkMissingArg actual = do
                   unless (undefType <: actual) $
-                    typeError p "non-null argument not supplied"
+                    typeError p (printf "non-null argument %s not supplied"
+                                        (show actual))
             mapM_ checkMissingArg missing
     
             --if we have a 1-arg func that has a latent pred, applied to a
@@ -480,13 +488,31 @@ expr env ee cs e = do
     Nothing -> catastrophe p "function lit is not in the erased environment"
     Just [t] -> do
      case deconstrFnType t of
-      Just (_, _, argTypes, _, _) 
+      Just (_, _, argTypes, Nothing, _, _) 
+        --argtypes is ("thistype", real args)
+        --args should be is ("this", "arguments", real args)
         | length argTypes == length args - 1 -> 
             return (t, VPLit (FuncLit p (error "dont look in VP Funclit args")
                                         (error "dont look in VP Funclit lcls")
                                         (error "dont look in VP Funclit body"))
                              t)
-        | otherwise -> typeError p "invalid number of arguments"
+        | otherwise -> typeError p $ 
+            printf ("argument number mismatch in funclit: %s args named, but"++
+                    "%s in the type")
+              (show (length args - 2)) (show (length argTypes - 1))
+      Just (_, _, argTypes, Just vararg, _, _)
+        --argtypes is ("thistype", real args)
+        --args should be ("this", "arguments", real args, varargname)
+        | length argTypes == length args - 2 ->
+            return (t, VPLit (FuncLit p (error "dont look in VP Funclit args")
+                                        (error "dont look in VP Funclit lcls")
+                                        (error "dont look in VP Funclit body"))
+                             t)
+        | otherwise -> typeError p $ 
+            printf ("argument number mismatch in funclit: %s args named, but"++
+                    "%s (%s + 1 vararg) in the type")
+              (show (length args - 2)) 
+              (show (length argTypes)) (show (length argTypes - 1))
       Nothing -> typeError p "not a function type"
     Just _ -> catastrophe p "many types for function in the erased environment"
   
@@ -585,14 +611,20 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
                    --liftIO $ putStrLn $ "Yield: " ++ show t'
                    return $ Just t'
       functype' = head $ case M.lookup pos ee of
-                          Nothing -> -- fake it. TODO: fix this bug for real.
+                          --i think we get Nothing for the fake function
+                          --we pretend to wrap everything in when we're
+                          --type-checking. pretend that it exists!
+                          --TODO: make sure this doesn't break other stuff.
+                          Nothing ->
                             [(TFunc [TId "undefined"] Nothing 
                                 (TId "undefined") LPNone)]
                           Just xx -> xx
   functype <- resolveAliases tenv functype'
-  let Just (_, cs, types, rettype, lp) = deconstrFnType functype
+  let Just (_, cs, types, vararg, rettype, lp) = deconstrFnType functype
       -- undefined for arguments
-  let (this:types') = types
+  let (this:types') = types ++ (case vararg of
+        Nothing -> []
+        Just vt -> [TApp (TId "Array") [vt]])
   argtypes <- return $ zip (map fst args) (map Just (this:undefined:types'))
   localtypes <- mapM (\(name,(_, pos)) -> do
                         t <- lookupEE pos name

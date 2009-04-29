@@ -295,6 +295,21 @@ function (x) :: U(int, bool) -> double {
   return 10;
 } @@ fails;
 
+//more soundness tyvm
+function () :: (-> int) {
+  var y :: U(int, string) = 4;
+  (function() :: (->) { y = "HAHAHA"; })();
+  return y;
+} @@ fails;
+//but not too restrictive plz
+function () :: (-> int) {
+  var y :: U(int, string) = 4;
+  var z :: U(int, string) = 19;
+  (function() :: (->) { z = "HAHAHA"; })();
+  return y;
+} :: (-> int);
+
+
 
 
 

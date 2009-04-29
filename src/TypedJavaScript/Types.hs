@@ -103,14 +103,15 @@ boolType = TId "bool"
 -- variables, the types of each argument, and a return type.  As we enrich the
 -- type-checker to handle more of a function type, include them here.
 deconstrFnType :: Type 
-               -> Maybe ([String], [TypeConstraint], [Type], Type, LatentPred)
+               -> Maybe ([String], [TypeConstraint], [Type], Maybe Type, 
+                         Type, LatentPred)
 deconstrFnType (TRefined main refined) = deconstrFnType refined
 deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
   deconstrFnType (substType id t t')
-deconstrFnType (TFunc args _ result latentP) = 
-  Just ([],[],args,result,latentP)
-deconstrFnType (TForall ids constraints (TFunc args _ result latentP)) = 
-  Just (ids,constraints,args,result,latentP)
+deconstrFnType (TFunc args varg result latentP) = 
+  Just ([],[],args,varg,result,latentP)
+deconstrFnType (TForall ids constraints (TFunc args varg result latentP)) = 
+  Just (ids,constraints,args,varg,result,latentP)
 deconstrFnType _ = Nothing
 
 unRec :: Type -> Type
@@ -264,6 +265,12 @@ st rel (t1, t2)
       assert (lp1 == lp2 || lp1 == LPNone)
       rel <- st (S.insert (t1, t2) rel) (ret2, ret1)
       foldM st rel (zip req1 req2)
+    --temporary not-quite-good subtyping for vararity functions:
+    (TFunc req2 (Just v2) ret2 lp2, TFunc req1 (Just v1) ret1 lp1) -> do
+      assert (length req2 == length req1)
+      assert (lp1 == lp2 || lp1 == LPNone)      
+      rel <- st (S.insert (t1, t2) rel) (ret2, ret1)
+      foldM st rel (zip (v1:req1) (v2:req2))
     (TForall ids1 tcs1 t1, TForall ids2 tcs2 t2) -> do
       assert (ids1 == ids2)
       assert (tcs1 == tcs2)

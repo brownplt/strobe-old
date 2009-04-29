@@ -12,6 +12,11 @@ function () :: (-> int) {
     return inner(1,1,1,1,1,12,4342,424,24354,54,4324234,34234,3);
 } :: (-> int);
 
+//arg count mismatches:
+function (hey) :: (int, int... ->) {} @@ fails;
+function () :: (double... ->) {} @@ fails;
+function (a, b, c) :: (int, int... ->) {} @@ fails;
+
 //sum the 'x' values:
 function (withx) :: ({x :: double}... -> double) {
   var rez = 0.0;
@@ -26,13 +31,35 @@ function (withx) :: ({x :: double} -> double) {
   return rez;
 } @@ fails;
 
-//due to object fields being invariant, this next case now fails:
 function () :: (-> double) {
   var ultrarez :: double = 0;
   function sumx(withx) :: ({x :: double}... -> double) {
     var rez = 0.0;
     for (var i=0; i < withx.length; ++i)
       rez += withx[i].x;
+    return rez;
+  };
+
+  ultrarez += sumx();
+  ultrarez += sumx({x: 13.2});
+  ultrarez += sumx({x: 3.2});
+  ultrarez += sumx({x: 1.41}, {x: 3.2}, {x: -43.1e2});
+  //with subtyping:
+  ultrarez += sumx({x: 1.31, y: 41}, {x: 3.2, z: (3 + "string")}, {x: -43e2, ijustdont: "giveadarn"});
+  return ultrarez;
+} :: ( -> double);
+
+//due to object fields being invariant, this next case now fails:
+//maybe {x:13} should be typed as having type double in this case, though?
+function () :: (-> double) {
+  var ultrarez :: double = 0;
+  function sumx(withx) :: ({x :: double}... -> double) {
+    var rez = 0.0;
+    for (var i=0; i < withx.length; ++i)
+    {
+      rez += withx[i].x;
+      withx[i].x = 19.5;
+    }
     return rez;
   };
 
@@ -43,25 +70,6 @@ function () :: (-> double) {
   ultrarez += sumx({x: 1, y: 41}, {x: 3.2, z: (3 + "string")}, {x: -43e2, ijustdont: "giveadarn"});
   return ultrarez;
 } @@ fails;
-
-function () :: (-> double) {
-  var ultrarez :: double = 0;
-  function sumx(withx) :: ({x :: double}... -> double) {
-    var rez = 0.0;
-    for (var i=0; i < withx.length; ++i)
-      rez += withx[i].x;
-    return rez;
-  };
-
-  ultrarez += sumx();
-  ultrarez += sumx({x: 13.1});
-  ultrarez += sumx({x: 3.2});
-  ultrarez += sumx({x: 1.41}, {x: 3.2}, {x: -43.1e2});
-  ultrarez += sumx({x: 1.31, y: 41}, {x: 3.2, z: (3 + "string")}, {x: -43e2, ijustdont: "giveadarn"});
-  return ultrarez;
-} :: ( -> double);
-
-
 
 (function (withx) :: ({x :: double} -> double) {
   var rez = 0.0;
@@ -77,7 +85,6 @@ function () :: (-> double) {
 })({x: 4}, {x: "stringy"}) @@ fails;
 
 //apply a series of math functions to a number
-//TODO: function supertypes
 (function (num, funcs) :: (double, (double -> double)... -> double) {
   for (var i = 0; i < funcs.length; ++i) {
     num = funcs[i](num);
