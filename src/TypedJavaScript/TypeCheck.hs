@@ -388,7 +388,9 @@ stmt env ee cs rettype node s = do
       (te, vp) <- expr env ee cs e
       if (te <: rettype)
         then noop
-        else subtypeError p "return ...;" te rettype
+        else typeError p (printf "function is declared to return %s, but this \
+                                 \statement returns %s" (show rettype) 
+                                 (show te))
     LabelledStmt _ _ _ -> noop
     BreakStmt _ _ -> noop
     ContinueStmt _ _ -> noop
