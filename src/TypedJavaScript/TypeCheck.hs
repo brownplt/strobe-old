@@ -667,7 +667,7 @@ typeCheckProgram env enclosingKindEnv constraints
   -- their declared types.
   -- This handles mutually-recursive functions correctly.  
   unless (length subEes == length subGraphs) $
-    fail "erased env and functions have different structures"
+    fail "CATASTROPHIC FAILURE: erased env and functions have different structures"
   mapM_ (typeCheckProgram env' kindEnv cs') (zip subEes subGraphs)
   return topLevelEnv
 
