@@ -26,13 +26,16 @@ multi loc types = Node (M.singleton loc types) []
 nest :: ErasedEnvTree -> ErasedEnvTree
 nest et = Node M.empty [et]
 
+
 (+++) :: ErasedEnvTree -> ErasedEnvTree -> ErasedEnvTree
-ee1 +++ ee2 = Node (M.union (rootLabel ee1) (rootLabel ee2))
-                   (subForest ee1 ++ subForest ee2)
+ee1 +++ ee2 =
+  -- Using (++) is a bit of a hack.
+  Node (M.union (rootLabel ee1) (rootLabel ee2))
+       (subForest ee1 ++ subForest ee2)
 
 unions :: [ErasedEnvTree] -> ErasedEnvTree
-unions et = Node (M.unions $ map rootLabel et)
-                    (concatMap subForest et)
+unions et = foldr (+++) empty et
+
 
 buildErasedEnvTree :: [Statement SourcePos] -> ErasedEnvTree
 buildErasedEnvTree stmts = complete M.empty $ unions (map stmt stmts) where
@@ -110,8 +113,8 @@ stmt s = case s of
   ContinueStmt{} -> empty
   LabelledStmt _ _ s -> stmt s
   ForInStmt _ i e s -> unions [forininit i, expr e, stmt s]
-  ForStmt _ i me1 me2 s -> unions [forinit i, maybe empty expr me1,
-                                   maybe empty expr me2]
+  ForStmt _ i me1 me2 body ->
+    forinit i +++ maybe empty expr me1 +++ maybe empty expr me2 +++ stmt body
   TryStmt _ s catches fin -> unions [stmt s, unions $ map catch catches,
                                      maybe empty stmt fin]
   ThrowStmt _ e -> expr e
