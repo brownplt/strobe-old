@@ -29,7 +29,6 @@ nest et = Node M.empty [et]
 
 (+++) :: ErasedEnvTree -> ErasedEnvTree -> ErasedEnvTree
 ee1 +++ ee2 =
-  -- Using (++) is a bit of a hack.
   Node (M.union (rootLabel ee1) (rootLabel ee2))
        (subForest ee1 ++ subForest ee2)
 
