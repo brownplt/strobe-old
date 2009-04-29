@@ -255,7 +255,21 @@ stmt env ee cs rettype node s = do
                         subtypeError p "assignment to property" t_rhs t'
           t' -> typeError p (printf "expected object, received %s" (show t'))
     IndirectPropAssignStmt (_,p) obj method e -> do 
-      fail $ printf "at %s: obj[method] NYI" (show p)
+      (t_rhs, _) <- expr env ee cs e
+      case (M.lookup obj env, M.lookup method env) of
+        (Just (Just (refined -> TApp (TId "Array") [t_elem], _)), 
+         Just (Just (t_prop, _)))
+          | t_prop <: intType && t_rhs <: t_elem -> 
+              noop
+          | t_prop <: stringType ->
+              subtypeError p "array insertion" t_rhs t_elem
+          | otherwise -> do
+              subtypeError p "array index not an integer" t_prop intType
+        (Just (Just (TApp (TId "Array") [t_elem], _)), Just Nothing) ->
+          typeError p (printf "index variable %s is undefined" method)
+        z -> do
+          liftIO $ putStrLn (show z)
+          typeError p "error assigning to an array element"
     DeleteStmt _ r del -> fail "delete NYI"
     NewStmt{} -> fail "NewStmt will be removed from ANF"
     CallStmt (_,p) r_v f_v args_v -> do

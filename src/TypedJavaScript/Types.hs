@@ -476,5 +476,6 @@ equalityvp a@(VPMulti{}) b = equalityvp b a
 
 equalityvp _ _ = VPNone
 
+refined :: Type -> Type
 refined (TRefined main ref) = ref
 refined t = t  

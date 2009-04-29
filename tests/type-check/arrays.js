@@ -54,6 +54,11 @@ function (int2bool, arry) :: ((int -> bool), Array<int> -> Array<int>)  {
 
 //Array subtypes:
 function () :: (-> Array<int>) {
+  // According to our defintiions, int <: double.
+
+  // However, it is not the case that the interface for ints has more methods
+  // than double.  This is messed up.
+
   var z :: Array<int> = [1];
   var y :: Array<double> = [2.0];
   // y[0].floor() works

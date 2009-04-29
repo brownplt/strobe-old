@@ -29,5 +29,5 @@ Executable tjs
   ghc-options:
     -fwarn-incomplete-patterns
   Extensions:     
-    Generics Rank2Types MultiParamTypeClasses
+    Generics Rank2Types MultiParamTypeClasses ViewPatterns
     DeriveDataTypeable FlexibleInstances
