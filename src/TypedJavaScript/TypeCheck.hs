@@ -29,9 +29,21 @@ import System.FilePath
 data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,
   stateEnvs :: Map Int Env,
-  typeEnv :: Map String Type,
-  stateKinds :: Map String Kind
+  typeEnv :: Map String Type
 }
+
+
+
+basicKinds :: KindEnv
+basicKinds = M.fromList
+  [ ("int", KindStar)
+  , ("bool", KindStar)
+  , ("string", KindStar)
+  , ("double", KindStar)
+  , ("undefined", KindStar)
+  , ("any", KindStar)
+  , ("Array", KindConstr [KindStar] KindStar)
+  ]
 
 
 type TypeCheck a = StateT TypeCheckState IO a
@@ -589,7 +601,7 @@ unionEnv env1 env2 =
 
 uneraseEnv :: Env -> Map String (Type)
               -> ErasedEnv -> Lit (Int, SourcePos) 
-              -> TypeCheck (Env, [TypeConstraint], Type)
+              -> TypeCheck (Env, [TypeConstraint], Type, Type)
 uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
   let newNames = map fst (args ++ locals)
   unless (newNames == nub newNames) $ do
@@ -629,23 +641,26 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
   let novp (a,Just t)  = (a, Just (t, VPId a))
       novp (a,Nothing) = (a, Nothing)
       env' = M.union (M.fromList (map novp $ argtypes++localtypes)) env 
-  return (env', cs, rettype)
+  return (env', cs, rettype, functype)
 
 uneraseEnv env tenv ee _ = error "coding fail - uneraseEnv given a function-not"
 
   
 typeCheckProgram :: Env
+                 -> KindEnv
                  -> [TypeConstraint]
                  -> (Tree ErasedEnv, 
                      Tree (Int, Lit (Int, SourcePos), Graph))
                  -> TypeCheck Env
-typeCheckProgram env constraints
+typeCheckProgram env enclosingKindEnv constraints
                  (Node ee' subEes, Node (_, lit, gr) subGraphs) = do
   state <- get
   put $ state { stateGraph = gr, stateEnvs = M.empty }
   -- When type-checking the body, we assume the declared types for functions.
   ee <- resolveAliasesEE (typeEnv state) ee'
-  (env', cs, rettype) <- uneraseEnv env (typeEnv state) ee lit
+  (env', cs, rettype, fnType) <- uneraseEnv env (typeEnv state) ee lit
+  let kindEnv = M.union (freeTypeVariables fnType) enclosingKindEnv
+  checkDeclaredKinds kindEnv ee
   let cs' = cs ++ constraints
   topLevelEnv <- body env' ee cs' rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descent into nested functions, we ensure that functions satisfy
@@ -653,7 +668,7 @@ typeCheckProgram env constraints
   -- This handles mutually-recursive functions correctly.  
   unless (length subEes == length subGraphs) $
     fail "erased env and functions have different structures"
-  mapM_ (typeCheckProgram env' cs') (zip subEes subGraphs)
+  mapM_ (typeCheckProgram env' kindEnv cs') (zip subEes subGraphs)
   return topLevelEnv
 
 -- |Take a type environment and a type, and return a type with all the
@@ -718,23 +733,26 @@ resolveAliasesEE tenv ee = do
   resl <- mapM procp (M.toList ee)
   return $ M.fromList resl
 
---type ErasedEnv = Map SourcePos [Type]
-
-{-
-  | TApp a (Type) [Type]
-  | TUnion [Type]
-  | TForall [String] [TypeConstraint] (Type)
-  -- | TIndex (Type) (Type) String --obj[x] --> TIndex <obj> <x> "x"
-  --the first type, 'refined' to the 2nd
-  | TRefined (Type) (Type) 
--}
-
 
 basicConstraints :: [TypeConstraint]
 basicConstraints =
   [ TCSubtype (TApp (TId "Array") [TAny])
               (TObject [("length", TId "int")])
   ]
+
+
+-- |Checks user-specified type annotations for kind-errors.  We assume that
+-- types derived by our type-checker are well-kinded.  Therefore, this is
+-- the only kind-check necessary.
+checkDeclaredKinds :: Monad m => KindEnv -> ErasedEnv -> m ()
+checkDeclaredKinds kinds ee = do
+  let check loc type_ = case checkKinds kinds type_ of
+        Right KindStar -> return ()
+        Right _ -> typeError loc "kind error"
+        Left s -> typeError loc ("kind error: " ++ show s)
+  let checkAt (loc, types) = mapM_ (check loc) types
+  mapM_ checkAt (M.toList ee)
+  
 
 -- convenience function to make testing faster
 typeCheckWithGlobals :: Env -> Map String (Type) -> 
@@ -756,14 +774,14 @@ typeCheckWithGlobals venv tenv prog = do
   -- These "erased environments" are returned in a tree with the same shape as
   -- 'intraprocs' above.
   let envs = buildErasedEnvTree prog
-        
+
   -- add this:
   let venv' = M.unions $ [venv] ++ 
         [M.fromList [("this", Just (TObject [], VPId "this"))]]
   
-  (env, state) <- runStateT (typeCheckProgram venv' basicConstraints 
+  (env, state) <- runStateT (typeCheckProgram venv' basicKinds basicConstraints 
                                               (envs, intraprocs)) 
-                            (TypeCheckState G.empty M.empty tenv M.empty)
+                            (TypeCheckState G.empty M.empty tenv)
   return env
 
 loadCoreEnv :: IO (Env, Map String (Type))

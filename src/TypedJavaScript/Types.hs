@@ -1,6 +1,8 @@
 module TypedJavaScript.Types 
   ( Env
   , Kind (..)
+  , KindEnv
+  , freeTypeVariables
   , checkKinds
   , emptyEnv
  -- , argEnv
@@ -40,34 +42,42 @@ data Kind
   | KindConstr [Kind] Kind
   deriving (Eq)
 
+
+type KindEnv = Map String Kind
+
+
 assertKinds kinds (t, k) = do
   k' <- checkKinds kinds t
   unless (k' == k) $ do
     fail "kind error"
 
 
-checkKinds :: Monad m => Map String Kind -> Type -> m Kind
+checkKinds :: Map String Kind -> Type -> Either String Kind
 checkKinds kinds t = case t of
-  TApp (TId v) ts -> case M.lookup v kinds of
-    Just (KindConstr ks k) | length ks == length ts -> do
-                               mapM_ (assertKinds kinds) (zip ts ks)
-                               return k
-                           | otherwise -> fail "kind error (arg mismatch)"
-    Just KindStar -> fail "kind error (expected * ... -> *)"
-    Nothing -> fail $ "unbound type " ++ v
+  TApp t ts -> do
+    k <- checkKinds kinds t
+    case k of
+      KindConstr ks k 
+        | length ks == length ts -> do
+            mapM_ (assertKinds kinds) (zip ts ks)
+            return k
+        | otherwise -> fail "kind error (arg mismatch)"
+      KindStar -> fail "kind error (expected * ... -> *)"
+  TFunc args optional result _ -> do
+    mapM_ (assertKinds kinds) (zip (result:args) (repeat KindStar))
+    case optional of
+      Nothing -> return ()
+      Just t -> assertKinds kinds (t, KindStar)
+    return KindStar
   TId v -> case M.lookup v kinds of
-    Just KindStar -> return KindStar
-    Just (KindConstr _ _) -> fail "kind error (expected *)"
-    Nothing -> fail $ "unbound type " ++ v
+    Just k -> return k
+    Nothing -> fail $ printf "undeclared type %s" v
   TObject props -> do
     mapM_ (assertKinds kinds) (zip (map snd props) (repeat KindStar))
     return KindStar
   TAny -> return KindStar
-  TRec _ t -> do
-    assertKinds kinds (t, KindStar)
-    return KindStar
-  TFunc ts Nothing t _ -> do
-    mapM_ (assertKinds kinds) (zip (t:ts) (repeat KindStar))
+  TRec id t -> do
+    assertKinds (M.insert id KindStar kinds) (t, KindStar)
     return KindStar
   TUnion ts -> do
     mapM_ (assertKinds kinds) (zip ts (repeat KindStar))
@@ -80,6 +90,23 @@ checkKinds kinds t = case t of
     assertKinds kinds (t1, KindStar)
     assertKinds kinds (t2, KindStar)
     return KindStar
+
+
+freeTypeVariables :: Type -> Map String Kind
+freeTypeVariables t = fv t where
+  -- type variables in the constructor are applied
+  fv (TApp _ ts) = M.unions (map fv ts)
+  fv (TFunc args Nothing r _) = M.unions (map fv (r:args))
+  fv (TFunc args (Just opt) r _) = M.unions (map fv (opt:r:args))
+  fv (TId _) = M.empty
+  fv (TObject props) = M.unions (map (fv.snd) props)
+  fv TAny = M.empty
+  fv (TRec id t) = M.insert id KindStar (fv t)
+  fv (TUnion ts) = M.unions (map fv ts)
+  fv (TForall ids _ t) = M.union (M.fromList (zip ids (repeat KindStar)))
+                                 (fv t)
+  fv (TRefined t1 t2) = M.union (fv t1) (fv t2)
+
 
 --maps names to their type.
 --ANF-generated variables have visible predicates.

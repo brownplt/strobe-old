@@ -52,3 +52,9 @@ everythingBut combine canDescend query term = case canDescend term of
   False -> query term -- does not descend
   True  -> foldl' combine (query term)
                   (gmapQ (everythingBut combine canDescend query) term)
+
+instance Monad (Either String) where
+  return v = Right v
+  fail s = Left s
+  (Left s) >>= _ = Left s
+  (Right v) >>= f = f v

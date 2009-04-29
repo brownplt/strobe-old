@@ -30,4 +30,4 @@ Executable tjs
     -fwarn-incomplete-patterns
   Extensions:     
     Generics Rank2Types MultiParamTypeClasses
-    DeriveDataTypeable 
+    DeriveDataTypeable FlexibleInstances
