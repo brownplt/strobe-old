@@ -388,10 +388,6 @@ remove s t
                              TUnion ts -> ts
                              _ -> [s]))
      
---TODO: in TS, 'false' is false, and everything else is true. the same
---is not true in JS, so we have to think about how to handle gammaPlus
---and gammaMinus with VPIds.
-
 gammaPlus :: Env -> VP -> Env
 gammaPlus env (VPType t v) =  case M.lookup v env of
   Nothing -> env

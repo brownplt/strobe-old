@@ -881,14 +881,14 @@ parseExpression = parseAssignExpr
 
 
 externalStmt = do
-  pos <- getPosition --TODO: is this a good position?
+  pos <- getPosition
   reserved "external"
   id <- identifier
   t <- parseType
   semi
   return (ExternalStmt pos id t)
 typeStmt = do
-  pos <- getPosition --TODO: is this a good position?
+  pos <- getPosition
   reserved "type"
   id <- identifier
   t <- parseType

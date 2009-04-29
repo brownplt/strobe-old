@@ -202,8 +202,6 @@ stmt env ee cs rettype node s = do
     SeqStmt{} -> noop
     EmptyStmt _ -> noop
     AssignStmt (_,p) v e -> do
-      --TODO: distinguish TRefined from Type.
-      --TODO: make this do a gammaPlus instead of all this.
       (te,e_vp) <- expr env ee cs e
       case M.lookup v env of        
         Nothing -> --unbound id
@@ -327,9 +325,6 @@ stmt env ee cs rettype node s = do
               Nothing -> catastrophe p (printf "result %s is unbound" r_v)
               Just Nothing -> do --ANF, or type-infer
                 let env' = M.insert r_v (Just (r, r_vp)) env
-                --TODO: also modify env based on what vars the
-                --function modifies that aren't local to that function
-                --itself.
                 return $ zip (map fst succs) (repeat env')
               Just (Just (TRefined r_vt _, vp))
                 | r <: r_vt -> do
@@ -421,7 +416,6 @@ expr env ee cs e = do
       TObject props -> case lookup p props of
         Just t' -> return (t', VPNone)
         Nothing -> case p of
-          --TODO: make all objs have these fields: 
           "toString" -> return (TFunc [TId "any"] Nothing (TId "string") 
                                       LPNone,
                                 VPNone)
@@ -460,7 +454,6 @@ expr env ee cs e = do
   Lit (ArrayLit (_,p) es) -> do
     r <- mapM (expr env ee cs) es
     let ts = nub (map (refined . fst) r)
-    --TODO: does this type make sense?
     let atype = if length ts == 1 
                   then head ts
                   else TUnion ts
@@ -666,8 +659,6 @@ typeCheckProgram env constraints
 -- |Take a type environment and a type, and return a type with all the
 -- |aliases resolved (e.g. TId "DOMString" --> TId "string").
 -- |Fail if the TId is not in the environment.
--- TODO: add a "reAlias" func to make error messages nicer =).
--- TODO: this is the func that should handle <- .
 resolveAliases :: (MonadIO m) => (Map String (Type)) 
                   -> (Type) -> m (Type)
 resolveAliases tenv t@(TId i)

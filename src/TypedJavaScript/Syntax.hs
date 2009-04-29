@@ -89,8 +89,6 @@ instance Eq (Id a) where
 
 --property within an object literal
 --TODO: remove PropString?
---TODO: would it be possible to write an "extract source pos" generic function
---      that would take any one of these and return its source position?
 data Prop a 
   = PropId a (Id a) | PropString a String | PropNum a Integer
   deriving (Ord)
@@ -106,7 +104,7 @@ data Expression a
   = StringLit a String
   | RegexpLit a String Bool {- global? -} Bool {- case-insensitive? -}
   | NumLit a Double -- pg. 5 of ECMA-262
-  | IntLit a Int    -- int/double distinction. TODO: parse these.
+  | IntLit a Int    -- int/double distinction. 
   | BoolLit a Bool
   | NullLit a
   | ArrayLit a [Expression a]
@@ -181,7 +179,6 @@ data Statement a
   -- | WithStmt a (Expression a) (Statement a)
   | VarDeclStmt a [VarDecl a]
   -- FunctionStatements turn into expressions with an assignment. 
-  -- TODO: add generics to functions/constructors?
   -- | FunctionStmt a (Id a) {-name-} [(Id a, Type)] {-args-} (Maybe Type) {-ret type-}  (Statement a) {-body-}
 {-  | ConstructorStmt a (Id a) {-name-} 
                       [(Id a, Type)] {- required args -}
