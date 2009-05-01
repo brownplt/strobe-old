@@ -20,7 +20,6 @@ module TypedJavaScript.Types
   , gammaPlus, gammaMinus
   ) where
 
---import qualified BrownPLT.JavaScript.Analysis.ANF as ANF
 import System.IO.Unsafe --unsafePerformIO
 
 import BrownPLT.JavaScript.Analysis.ANF
@@ -35,21 +34,33 @@ import TypedJavaScript.Syntax (Type (..), VP (..), Id(..),
 -- but we do need the lits
 import qualified TypedJavaScript.Syntax as TJS
 
-p = initialPos "TypedJavaScript.Types"
 
+-- |Kinds ensure that Array<int, int> and String<int> are illegal.  Our kind
+-- definitions are more general than necessary.
 data Kind 
   = KindStar
   | KindConstr [Kind] Kind
   deriving (Eq)
 
 
+instance Show Kind where
+  show KindStar = "*"
+  show (KindConstr args r) = 
+    concat (intersperse ", " (map show' args)) ++ show r where
+      -- parenthesize arrows on the left
+      show' k = case k of 
+        KindStar -> "*"
+        KindConstr _ _ -> "(" ++ show k ++ ")"
+
+
 type KindEnv = Map String Kind
 
 
+assertKinds :: KindEnv -> (Type, Kind) -> Either String ()
 assertKinds kinds (t, k) = do
   k' <- checkKinds kinds t
   unless (k' == k) $ do
-    fail "kind error"
+    fail (printf "%s has kind %s, expected kind %s" (show t) (show k') (show k))
 
 
 checkKinds :: Map String Kind -> Type -> Either String Kind

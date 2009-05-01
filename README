@@ -1,0 +1,11 @@
+Coding Guidelines
+-----------------
+
+Maximum line length is 80 characters.  Arjun will kill anyone who violates this.
+
+We follow PEP 8 (http://www.python.org/dev/peps/pep-0008/) conventions for
+blank lines:
+
+"Separate top-level function and class [sic.] definitions with two blank lines."
+
+
