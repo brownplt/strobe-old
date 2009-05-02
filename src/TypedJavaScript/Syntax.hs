@@ -26,7 +26,7 @@ data Id a = Id a String deriving (Ord,Data,Typeable)
 
 data TypeConstraint
   = TCSubtype Type Type
-  deriving (Eq,Ord)
+  deriving (Show, Eq,Ord)
 
 data Type
   = TObject [(String, Type)]
@@ -44,7 +44,7 @@ data Type
   --the first type, 'refined' to the 2nd
   | TRefined Type Type
   | TExtend Type Type
-  deriving (Eq, Ord)
+  deriving (Show, Eq, Ord)
 
 -- the following are constructs which just assign types to IDs, either
 -- in the variable environment (ExternalStmt) or in the type
@@ -81,7 +81,7 @@ data VP = VPId String
 -- VPType (TId "double") "x"
 
 data LatentPred = LPType Type | LPNone
-    deriving (Eq, Ord)
+    deriving (Show, Eq, Ord)
 
 --equalities:
 instance Eq (Id a) where

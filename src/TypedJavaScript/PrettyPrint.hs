@@ -17,9 +17,6 @@ ypp :: PrettyPrintable a => Maybe a -> Doc
 ypp Nothing = empty
 ypp (Just v) = pp v
 
-ppt :: Maybe (Type) -> Doc
-ppt (Just t) = text "::" <+> pp t
-ppt Nothing = empty
 
 -- Displays the statement in { ... }, unless it already is in a block.
 inBlock:: (Statement a) -> Doc
@@ -35,44 +32,47 @@ commaSep:: (PrettyPrintable a) => [a] -> Doc
 commaSep = hsep.(punctuate comma).(map pp)
 
 
-instance PrettyPrintable TypeConstraint where
-  pp (TCSubtype t1 t2) = pp t1 <+> text "<:" <+> pp t2
+commas :: [Doc] -> Doc
+commas ds = hsep (punctuate comma ds)
 
-instance Show TypeConstraint where
-  show = render.pp
+typeConstraint :: TypeConstraint -> Doc
+typeConstraint tc = case tc of
+  TCSubtype t1 t2 ->  type_ t1 <+> text "<:" <+> type_ t2
 
-instance PrettyPrintable (Type) where
-  pp (TFunc (this:args) vararg ret lp) = 
-    parens $ ppThis <+> (commaSep args) <> ppVararg <+> text "->" <+> 
-             pp ret where
-      ppVararg = case vararg of
-        Nothing -> empty
-        Just t  -> comma <+> pp t <> text "..."
-      ppThis = brackets (pp this)
-  pp TAny = text "any"
-  pp (TRec id t) = text "rec" <+> text id <+> text "." <+> pp t
-  pp (TFunc [] _ _ _) = error "CATASTROPHIC FAILURE: function without this"
-  pp (TObject fields) = braces $ (hsep $ punctuate comma $ 
-    map (\(id,t) -> (text id <+> text "::" <+> pp t)) fields)
-  pp (TUnion types) = text "U" <> (parens $ hsep $ punctuate comma (map pp types))
-  pp (TId id) = text id
-  pp (TApp constr args) = 
-    pp constr <> text "<" <> (hsep $ punctuate comma $ map pp args) <> text ">"
-  pp (TForall ids constraints t) =
-    text "forall" <+> (hsep $ punctuate comma $ map text ids) <+> text ":" <+>
-    (hsep $ punctuate comma $ map pp constraints) <+> text "." <+> pp t
-{-  pp (TIndex objt keyt keyname) = 
-    text "@TIndex: " <> pp objt <> text " with " <> pp keyt <> text 
-         " called " <> text keyname <> text "@" -}
-  pp (TRefined general refined) =
-    text "@TRefined: (" <> pp general <+> pp refined <> text ")"
+
+type_ :: Type -> Doc
+type_ t = case t of
+  TFunc (this:args) vararg ret _ -> 
+    brackets (type_ this) <+> commas (map arg args) <> varargDoc <+> 
+    text "->" <+> type_ ret
+      where arg t' = case t' of
+              TFunc{} -> parens (type_ t')
+              otherwise -> type_ t'
+            varargDoc = case vararg of
+              Nothing -> empty
+              Just t' -> comma <+> arg t' <+> text "..."
+  TAny -> text "any"
+  TRec id t -> text "rec" <+> text id <+> text "." <+> type_ t
+  TFunc [] _ _ _ -> error "PrettyPrint.hs: function without this"
+  TObject fields -> braces (commas (map field fields))
+    where field (id, t') = text id <+> text "::" <+> type_ t'
+  TUnion ts -> text "U" <+> parens (commas (map type_ ts))
+  TId v -> text "v"
+  TForall ids cs t' ->
+    text "forall" <+> (commas (map text ids)) <+> constraintsDoc <+> 
+    text "." <+> type_ t'
+      where constraintsDoc = case cs of
+              [] -> empty
+              otherwise -> text ":" <+> commas (map typeConstraint cs)
+  TRefined t1 t2 -> text "TRefined" <+> parens (type_ t1) <+> parens (type_ t2)
+
 
 instance PrettyPrintable (Id a) where
   pp (Id _ str) = text str
 
 instance PrettyPrintable (ForInit a) where
   pp NoInit         = empty
-  pp (VarInit vs) = text "var" <+> commaSep vs 
+  pp (VarInit decls) = text "var" <+> commas (map varDecl decls)
   pp (ExprInit e) = pp e
   
 instance PrettyPrintable (ForInInit a) where
@@ -92,14 +92,21 @@ instance PrettyPrintable (CatchClause a) where
     text "catch" <+> (parens.pp) id <+> inBlock stmt
 
 
-instance PrettyPrintable (VarDecl a) where
-  pp (VarDecl _ id t) = pp id <+> ppt (Just t) 
-  pp (VarDeclExpr _ id t expr) =
-    pp id <+> ppt t <+> equals <+> pp expr
+varDecl :: VarDecl a -> Doc
+varDecl decl = case decl of
+  VarDecl _ v t ->
+    pp v <+> text "::" <+> type_ t
+  VarDeclExpr _ v Nothing e ->
+    pp v <+> equals <+> pp e
+  VarDeclExpr _ v (Just t) e ->
+    pp v <+> text "::" <+> type_ t <+> equals <+> pp e
+
 
 instance PrettyPrintable (ToplevelStatement a) where
-  pp (TypeStmt _ id t) = text "type " $+$ (pp id) $+$ text " :: " $+$ (pp t) $+$ text ";"
-  pp (ExternalStmt _ id t) = text "external " $+$ (pp id) $+$ text " :: " $+$ (pp t) $+$ text ";"
+  pp (TypeStmt _ id t) = 
+    text "type " $+$ (pp id) $+$ text " :: " $+$ (type_ t) $+$ text ";"
+  pp (ExternalStmt _ id t) = 
+    text "external " $+$ (pp id) $+$ text " :: " $+$ (type_ t) $+$ text ";"
   
 instance PrettyPrintable (Statement a) where
 --  pp (TypeStmt _ id t) = text "type" <+> pp id <+> ppt (Just t) <> semi
@@ -146,7 +153,7 @@ instance PrettyPrintable (Statement a) where
   pp (ThrowStmt _ expr) =
     text "throw" <+> pp expr <> semi
   pp (VarDeclStmt _ decls) =
-    text "var" <+> commaSep decls <> semi
+    text "var" <+> commas (map varDecl decls) <> semi
 
 --}}}
 
@@ -270,7 +277,7 @@ instance PrettyPrintable (Expression a) where
     braces (hsep (punctuate comma (map pp' xs))) where
       pp' (n,mt,v) = pp n <+> ppMaybe mt <+> colon <+> pp v
       ppMaybe mt = case mt of
-        (Just t) -> text "::" <+> pp t
+        (Just t) -> text "::" <+> type_ t
         Nothing  -> empty
   pp (ThisRef _) = text "this"
   pp (VarRef _ id) = pp id
@@ -296,9 +303,9 @@ instance PrettyPrintable (Expression a) where
   pp (CallExpr _ f [] args) =
     pp f <> (parens.commaSep) args
   pp (CallExpr _ f types args) = 
-    pp f <> text "@" <> (brackets $ commaSep types) <> (parens $ commaSep args)
+    pp f <> text "@" <> (brackets $ commas (map type_ types)) <> (parens $ commaSep args)
   pp (FuncExpr _ args t body) =
-    text "function" <+> (parens.commaSep) args <+> text "::" <+> pp t $$ inBlock body
+    text "function" <+> (parens.commaSep) args <+> text "::" <+> type_ t $$ inBlock body
 
 instance PrettyPrintable (JavaScript a) where
   pp (Script _ stmts) =
@@ -317,14 +324,12 @@ instance Show (CaseClause a) where
 instance Show (CatchClause a) where
   show t = show $ pp t
 instance Show (VarDecl a) where
-  show t = show $ pp t
+  show t = show (varDecl t)
 instance Show (ForInit a) where
   show t = show $ pp t
 instance Show (ForInInit a) where
   show t = show $ pp t
 instance Show (Statement a) where
-  show t = show $ pp t
-instance Show (Type) where
   show t = show $ pp t
 
 instance Show (ToplevelStatement a) where
