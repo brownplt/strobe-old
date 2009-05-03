@@ -28,3 +28,10 @@ data Definition
       interfaceItems :: [Definition]
     }
   deriving (Show)
+
+definitionName :: Definition -> Id
+definitionName def = case def of
+  Const _ id _ -> id
+  Attr _ _ id -> id
+  Method _ id _ -> id
+  Interface id _ _ -> id

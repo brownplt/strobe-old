@@ -121,7 +121,6 @@ interface HTMLDocument : Document {
   void                      close();
   void                      write(in DOMString text);
   void                      writeln(in DOMString text);
-  Element                   getElementById(in DOMString elementId);
   NodeList                  getElementsByName(in DOMString elementName);
 };
 
