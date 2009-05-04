@@ -110,7 +110,7 @@ readTestFile venv tenv path = do
     
 main = do
   testPaths <- getPathsWithExtension ".js" "type-check"
-  (venv, tenv) <- loadCoreEnv
   domTypeEnv <- makeInitialEnv
+  (venv, tenv) <- loadCoreEnv domTypeEnv
   testCases <- mapM (readTestFile venv (M.union domTypeEnv tenv)) testPaths
   return (TestList testCases)

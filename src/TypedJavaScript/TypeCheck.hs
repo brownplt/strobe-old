@@ -811,8 +811,9 @@ typeCheckWithGlobals venv tenv prog = do
                             (TypeCheckState G.empty M.empty tenv)
   return env
 
-loadCoreEnv :: IO (Env, Map String (Type))
-loadCoreEnv = do
+loadCoreEnv :: Map String Type
+            -> IO (Env, Map String Type)
+loadCoreEnv env = do
   -- load the global environment from "core.js"
   dir <- getDataDir
   toplevels' <- parseFromFile (parseToplevels) (dir </> "core.tjs")
@@ -834,12 +835,12 @@ loadCoreEnv = do
         procTLs rest (venv, M.insertWithKey
                               (\k n o -> error $ "already in tenv: " ++ show k)
                               s t' tenv)
-  procTLs toplevels (M.empty, M.empty)
+  procTLs toplevels (M.empty, env)
 
 -- |Type-check a Typed JavaScript program.  
 typeCheck :: [TJS.Statement SourcePos] -> IO Env
 typeCheck prog = do
-  (venv, tenv) <- loadCoreEnv 
   domTypeEnv <- makeInitialEnv
+  (venv, tenv) <- loadCoreEnv domTypeEnv
   typeCheckWithGlobals venv (M.union domTypeEnv tenv) prog
 
