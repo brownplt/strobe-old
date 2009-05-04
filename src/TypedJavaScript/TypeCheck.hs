@@ -690,6 +690,9 @@ typeCheckProgram env enclosingKindEnv constraints
   mapM_ (typeCheckProgram env' kindEnv cs') (zip subEes subGraphs)
   return topLevelEnv
 
+
+             
+
 -- |Take a type environment and a type, and return a type with all the
 -- |aliases resolved (e.g. TId "DOMString" --> TId "string").
 -- |Fail if the TId is not in the environment.
@@ -819,19 +822,19 @@ loadCoreEnv env = do
   
   let procTLs [] results = return results
       procTLs ((TJS.ExternalStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
-        putStrLn $ " Unaliasing: " ++ show t
-        t' <- unaliasType tenv kinds t
+        let t' = t -- t' <- unaliasType tenv kinds t
         procTLs rest (M.insertWithKey 
                         (\k n o -> error $ "already in venv: " ++ show k)
                         s (Just (t', VPId s)) venv, tenv)
       procTLs ((TJS.TypeStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
-        putStrLn $ " Unaliasing: " ++ show t
-        t' <- unaliasType tenv kinds t
+        let t' = t -- t' <- unaliasType tenv kinds t
         procTLs rest (venv, M.insertWithKey
                               (\k n o -> error $ "already in tenv: " ++ show k)
                               s t' tenv)
-  putStrLn "LOADING"
-  procTLs toplevels (M.empty, env)
+  (env, types) <- procTLs toplevels (M.empty, env)
+  case checkTypeEnv kinds types of
+    Left s -> fail s
+    Right () -> return (env, unaliasTypeEnv kinds types)
 
 -- |Type-check a Typed JavaScript program.  
 typeCheck :: [TJS.Statement SourcePos] -> IO Env

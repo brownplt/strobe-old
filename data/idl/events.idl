@@ -127,19 +127,19 @@
 
   // Introduced in DOM Level 2:
   interface UIEvent : Event {
-    readonly attribute views::AbstractView view;
+    readonly attribute AbstractView view;
     readonly attribute long            detail;
     void               initUIEvent(in DOMString typeArg, 
                                    in boolean canBubbleArg, 
                                    in boolean cancelableArg, 
-                                   in views::AbstractView viewArg, 
+                                   in AbstractView viewArg, 
                                    in long detailArg);
     // Introduced in DOM Level 3:
     void               initUIEventNS(in DOMString namespaceURIArg, 
                                      in DOMString typeArg, 
                                      in boolean canBubbleArg, 
                                      in boolean cancelableArg, 
-                                     in views::AbstractView viewArg, 
+                                     in AbstractView viewArg, 
                                      in long detailArg);
   };
 
@@ -149,13 +149,13 @@
     void               initTextEvent(in DOMString typeArg, 
                                      in boolean canBubbleArg, 
                                      in boolean cancelableArg, 
-                                     in views::AbstractView viewArg, 
+                                     in AbstractView viewArg, 
                                      in DOMString dataArg);
     void               initTextEventNS(in DOMString namespaceURIArg, 
                                        in DOMString typeArg, 
                                        in boolean canBubbleArg, 
                                        in boolean cancelableArg, 
-                                       in views::AbstractView viewArg, 
+                                       in AbstractView viewArg, 
                                        in DOMString dataArg);
   };
 
@@ -178,7 +178,7 @@
     void               initKeyboardEvent(in DOMString typeArg, 
                                          in boolean canBubbleArg, 
                                          in boolean cancelableArg, 
-                                         in views::AbstractView viewArg, 
+                                         in AbstractView viewArg, 
                                          in DOMString keyIdentifierArg, 
                                          in unsigned long keyLocationArg, 
                                          in DOMString modifiersListArg);
@@ -186,7 +186,7 @@
                                            in DOMString typeArg, 
                                            in boolean canBubbleArg, 
                                            in boolean cancelableArg, 
-                                           in views::AbstractView viewArg, 
+                                           in AbstractView viewArg, 
                                            in DOMString keyIdentifierArg, 
                                            in unsigned long keyLocationArg, 
                                            in DOMString modifiersListArg);
@@ -207,7 +207,7 @@
     void               initMouseEvent(in DOMString typeArg, 
                                       in boolean canBubbleArg, 
                                       in boolean cancelableArg, 
-                                      in views::AbstractView viewArg, 
+                                      in AbstractView viewArg, 
                                       in long detailArg, 
                                       in long screenXArg, 
                                       in long screenYArg, 
@@ -226,7 +226,7 @@
                                         in DOMString typeArg, 
                                         in boolean canBubbleArg, 
                                         in boolean cancelableArg, 
-                                        in views::AbstractView viewArg, 
+                                        in AbstractView viewArg, 
                                         in long detailArg, 
                                         in long screenXArg, 
                                         in long screenYArg, 
@@ -246,7 +246,7 @@
                                                   in DOMString typeArg, 
                                                   in boolean canBubbleArg, 
                                                   in boolean cancelableArg, 
-                                                  in views::AbstractView viewArg, 
+                                                  in AbstractView viewArg, 
                                                   in long detailArg, 
                                                   in long screenXArg, 
                                                   in long screenYArg, 
@@ -267,7 +267,7 @@
                                              in DOMString typeArg, 
                                              in boolean canBubbleArg, 
                                              in boolean cancelableArg, 
-                                             in views::AbstractView viewArg, 
+                                             in AbstractView viewArg, 
                                              in long detailArg, 
                                              in long screenXArg, 
                                              in long screenYArg, 

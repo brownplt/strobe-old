@@ -15,12 +15,15 @@ import TypedJavaScript.Types
 import TypedJavaScript.Syntax (Type (..), LatentPred (..), VP (..))
 
 
+-- |The order in which these files are specified does not matter.
 idlFiles :: [FilePath]
 idlFiles = 
   [ "idl" </> "dom.idl"
   , "idl" </> "events.idl"
   , "idl" </> "html.idl"
   , "idl" </> "xmlhttprequest.idl"
+  , "idl" </> "views.idl"
+  , "idl" </> "window.idl"
   ]
 
 -- |Search for typedef in the DOM IDLs.  We need an entry for each typedef.
@@ -28,8 +31,8 @@ extras :: [(String, Type)]
 extras = 
   [ ("DOMString", stringType)
   , ("DOMObject", TObject [])
-  , ("DOMUserData", TObject [])
-  
+  , ("DOMUserData", TAny)
+  , ("DOMTimeStamp", intType)
   ]
 
 

@@ -148,14 +148,6 @@ external one_e :: any -> EventStream;
 //external one_e :: forall a. a -> EventStream<a>;
 
 //AJAX
-type XMLHttpRequest :: rec self . {readyState :: int,
-                        responseText :: DOMString,
-                        responseXML :: Document,
-                        status :: int,
-                        statusText :: DOMString,
-                        abort :: ([self] ->),
-                        //more stuff goes here
-};
 
 //Prototype
 external String_prototype_evalJSON :: (string, bool -> {}); //TODO: blah eval!!!

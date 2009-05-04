@@ -18,7 +18,8 @@ module TypedJavaScript.Types
   , isSubType
   , unionType, unionTypeVP, equalityvp
   , gammaPlus, gammaMinus
-  , unaliasType
+  , checkTypeEnv
+  , unaliasTypeEnv
   ) where
 
 import Debug.Trace
@@ -103,6 +104,58 @@ checkKinds kinds t = case t of
     return KindStar
 
 
+-- |Checks a type-environment for consistency, given a kind-environment.
+-- Once the type-environment has passes this check, attempts to substitute
+-- its aliases will always succeed.
+checkTypeEnv :: KindEnv
+             -> Map String Type
+             -> Either String ()
+checkTypeEnv kinds env = do
+  -- Assume that all bindings are well-kinded.
+  let kinds' = M.map (const KindStar) env
+  let types = M.elems env
+  -- Check each binding, assuming others are well-kinded.
+  mapM_ (checkKinds (M.union kinds' kinds)) types
+
+
+unaliasTypeEnv :: KindEnv
+               -> Map String Type
+               -> Map String Type
+unaliasTypeEnv kinds aliasedTypes = types where
+  types = M.map (unalias types) aliasedTypes
+
+  unalias :: Map String Type -> Type -> Type
+  unalias types type_ = case type_ of
+    TId v -> case M.lookup v kinds of
+      Just KindStar -> type_
+      Just k -> error $ printf "unaliasTypeEnv: %s has kind %s" v (show k)
+      Nothing -> case M.lookup v types of
+        -- BrownPLT.TypedJS.IntialEnvironment.bindingFromIDL maps interfaces 
+        -- named v to the type (TRec v ...).
+        --
+        -- No need for recursion, the lookup in types is recursive
+        Just  t -> t
+        Nothing -> error $ printf "unaliasTypeEnv: unbound type %s" v
+    -- Stops infinite recursion
+    TRec v t -> TRec v (unalias (M.insert v (TId v) types) t)
+    TAny -> TAny
+    TObject props -> TObject (map unaliasProp props)
+      where unaliasProp (v, t) = (v, unalias types t)
+    TFunc args vararg ret lp -> TFunc args' vararg' ret' lp
+      where args' = map (unalias types) args
+            vararg' = case vararg of
+              Nothing -> Nothing
+              Just t -> Just (unalias types t)
+            ret' = unalias types ret
+    -- HACK: We do not allow constructors to be aliased.
+    TApp t ts -> TApp t (map (unalias types) ts)
+    TUnion ts -> TUnion (map (unalias types) ts)
+    TRefined t1 t2 -> TRefined (unalias types t1) (unalias types t2)
+    TForall vs cs t -> TForall vs cs t' -- TODO: recur into cs?
+      where types' = M.fromList (map (\v -> (v, TId v)) vs)
+            t' = unalias (M.union types' types) t
+
+
 freeTypeVariables :: Type -> Map String Kind
 freeTypeVariables t = fv t where
   -- type variables in the constructor are applied
@@ -144,7 +197,6 @@ unaliasType :: Monad m
             -> Type
             -> m Type
 unaliasType types kinds type_ = do
-  let rec = unaliasType types kinds
   case type_ of
     TId v -> case M.lookup v kinds of
       Just KindStar -> return type_
