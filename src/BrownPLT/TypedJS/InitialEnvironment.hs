@@ -23,8 +23,14 @@ idlFiles =
   , "idl" </> "xmlhttprequest.idl"
   ]
 
+-- |Search for typedef in the DOM IDLs.  We need an entry for each typedef.
 extras :: [(String, Type)]
-extras = [("DOMString", stringType)]
+extras = 
+  [ ("DOMString", stringType)
+  , ("DOMObject", TObject [])
+  , ("DOMUserData", TObject [])
+  
+  ]
 
 
 parseIDLType :: IDL.Type -> Type

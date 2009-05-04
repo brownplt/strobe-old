@@ -51,6 +51,7 @@ type_ t = case t of
             varargDoc = case vararg of
               Nothing -> empty
               Just t' -> comma <+> arg t' <+> text "..."
+  TApp t ts -> type_ t <> text "<" <> commas (map type_ ts) <> text ">"
   TAny -> text "any"
   TRec id t -> text "rec" <+> text id <+> text "." <+> type_ t
   TFunc [] _ _ _ -> error "PrettyPrint.hs: function without this"

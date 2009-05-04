@@ -18,10 +18,10 @@ module TypedJavaScript.Types
   , isSubType
   , unionType, unionTypeVP, equalityvp
   , gammaPlus, gammaMinus
+  , unaliasType
   ) where
 
-import System.IO.Unsafe --unsafePerformIO
-
+import Debug.Trace
 import BrownPLT.JavaScript.Analysis.ANF
 import TypedJavaScript.Prelude
 import TypedJavaScript.PrettyPrint()
@@ -46,7 +46,7 @@ data Kind
 instance Show Kind where
   show KindStar = "*"
   show (KindConstr args r) = 
-    concat (intersperse ", " (map show' args)) ++ show r where
+    concat (intersperse ", " (map show' args)) ++ " -> " ++ show r where
       -- parenthesize arrows on the left
       show' k = case k of 
         KindStar -> "*"
@@ -143,43 +143,45 @@ unaliasType :: Monad m
             -> KindEnv
             -> Type
             -> m Type
-unaliasType types kinds type_ = case type_ of
-  TId v -> case M.lookup v kinds of
-    Just KindStar -> return type_
-    Just k -> fail $ printf "unaliasType: %s has kind %s" v (show k)
-    Nothing -> case M.lookup v types of
-      -- BrownPLT.TypedJS.IntialEnvironment.bindingFromIDL maps interfaces named
-      -- v to the type (TRec v ...).
-      Just t -> unaliasType types kinds t
-      Nothing -> fail $ printf "unaliasType: unbound type %s" v
-  TRec v t -> do
-    t' <- unaliasType types (M.insert v KindStar kinds) t
-    return (TRec v t')
-  TAny -> return TAny
-  TObject props -> do
-    let propM (v, t) = do
-          t' <- unaliasType types kinds t
-          return (v, t)
-    liftM TObject (mapM propM props)
-  TFunc args vararg ret lp -> do
-    args' <- mapM (unaliasType types kinds) args
-    vararg' <- case vararg of
-                 Nothing -> return Nothing
-                 Just t -> liftM Just (unaliasType types kinds t)
-    ret' <- unaliasType types kinds ret
-    return (TFunc args' vararg' ret' lp)
-  TApp t ts -> do
-    t' <- unaliasType types kinds t
-    ts' <- mapM (unaliasType types kinds) ts
-    return (TApp t' ts')
-  TUnion ts -> do
-    liftM TUnion (mapM (unaliasType types kinds) ts)
-  TRefined t1 t2 -> do
-    liftM2 TRefined (unaliasType types kinds t1) (unaliasType types kinds t2)
-  TForall vs cs t -> do
-    let kinds' = M.fromList (zip vs (repeat KindStar))
-    t' <- unaliasType types (M.union kinds' kinds) t
-    return (TForall vs cs t') -- TODO: recur into cs?
+unaliasType types kinds type_ = do
+  let rec = unaliasType types kinds
+  case type_ of
+    TId v -> case M.lookup v kinds of
+      Just KindStar -> return type_
+      Just k -> fail $ printf "unaliasType: %s has kind %s" v (show k)
+      Nothing -> case M.lookup v types of
+        -- BrownPLT.TypedJS.IntialEnvironment.bindingFromIDL maps interfaces 
+        -- named v to the type (TRec v ...).
+        Just t -> unaliasType types kinds t
+        Nothing -> fail $ printf "unaliasType: unbound type %s" v
+    TRec v t -> do
+      t' <- unaliasType types (M.insert v KindStar kinds) t
+      return (TRec v t')
+    TAny -> return TAny
+    TObject props -> do
+      let propM (v, t) = do
+            t' <- unaliasType types kinds t
+            return (v, t)
+      liftM TObject (mapM propM props)
+    TFunc args vararg ret lp -> do
+      args' <- mapM (unaliasType types kinds) args
+      vararg' <- case vararg of
+                   Nothing -> return Nothing
+                   Just t -> liftM Just (unaliasType types kinds t)
+      ret' <- unaliasType types kinds ret
+      return (TFunc args' vararg' ret' lp)
+    TApp t ts -> do
+      let t' = t -- we do not allow constructors to be aliased
+      ts' <- mapM (unaliasType types kinds) ts
+      return (TApp t' ts')
+    TUnion ts -> do
+      liftM TUnion (mapM (unaliasType types kinds) ts)
+    TRefined t1 t2 -> do
+      liftM2 TRefined (unaliasType types kinds t1) (unaliasType types kinds t2)
+    TForall vs cs t -> do
+      let kinds' = M.fromList (zip vs (repeat KindStar))
+      t' <- unaliasType types (M.union kinds' kinds) t
+      return (TForall vs cs t') -- TODO: recur into cs?
 
 
 -- |Deconstructs the declared type of a function, returning a list of quantified

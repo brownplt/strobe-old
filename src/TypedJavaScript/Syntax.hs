@@ -43,7 +43,6 @@ data Type
   -- | TIndex Type Type String --obj[x] --> TIndex <obj> <x> "x"
   --the first type, 'refined' to the 2nd
   | TRefined Type Type
-  | TExtend Type Type
   deriving (Show, Eq, Ord)
 
 -- the following are constructs which just assign types to IDs, either

@@ -191,9 +191,6 @@ stmt env ee cs rettype node s = do
   let t1 <: t2 = isSubType cs t1 t2
   state <- get
   let tenv = typeEnv state
-  let unAlias t = case resolveAliases tenv t of
-        Just t' -> t'
-        Nothing -> error $ "unbound types in " ++ show t
   succs <- stmtSuccs s
   -- statements that do not affect the incoming environment are "no-ops"
   let noop = return (zip (map fst succs) (repeat env))
@@ -250,11 +247,11 @@ stmt env ee cs rettype node s = do
           -- Variable is in scope but is yet to be defined.
           fail $ printf "at %s: can't assign to obj %s; has no type yet"
                    (show p) obj
-        Just (Just (t, vp)) -> case unRec (unAlias (refined t)) of
+        Just (Just (t, vp)) -> case unRec (refined t) of
           TObject props -> case lookup prop props of
             Nothing -> 
               typeError p (printf "object does not have the property %s" prop)
-            Just t' | t_rhs <: (unAlias t') -> noop -- TODO: affect VP?
+            Just t' | t_rhs <: t' -> noop -- TODO: affect VP?
                     | otherwise -> 
                         subtypeError p "assignment to property" t_rhs t'
           t' -> typeError p (printf "expected object, received %s" (show t'))
@@ -282,7 +279,7 @@ stmt env ee cs rettype node s = do
         -- functions
         insts <- forceLookupMultiErasedEnv ee p
         let f = refined f''
-        actualsWithVP' <- liftM (map (\(t, vp) -> (unAlias t, vp)))
+        actualsWithVP' <- liftM (map (\(t, vp) -> (t, vp)))
                                 (mapM (forceEnvLookup p env) args_v)
         let (this':arguments:actuals', actuals_vps) = unzip actualsWithVP'
         this <- dotrefContext this' --motivation: if 'this' is a
@@ -434,15 +431,12 @@ expr env ee cs e = do
   let unConstraint t = lookupConstraint t cs
   state <- get
   let tenv = typeEnv state
-  let unAlias t = case resolveAliases tenv t of
-        Just t' -> t'
-        Nothing -> t -- error $ "unbound types in " ++ show t
   case e of 
    VarRef (_,p) id -> do
      (t, vp) <- forceEnvLookup p env id
      case vp of
-       VPNone -> return (unAlias t, VPId id)
-       _      -> return (unAlias t, VPMulti [VPId id, vp])
+       VPNone -> return (t, VPId id)
+       _      -> return (t, VPMulti [VPId id, vp])
    DotRef (_, loc) e p -> do
      --I'm uneasy about needing all of the following 3 lines
      (t'', _) <- expr env ee cs e
@@ -814,6 +808,7 @@ typeCheckWithGlobals venv tenv prog = do
 loadCoreEnv :: Map String Type
             -> IO (Env, Map String Type)
 loadCoreEnv env = do
+  let kinds = basicKinds
   -- load the global environment from "core.js"
   dir <- getDataDir
   toplevels' <- parseFromFile (parseToplevels) (dir </> "core.tjs")
@@ -821,26 +816,27 @@ loadCoreEnv env = do
     Left err -> fail $ "PARSE ERROR ON CORE.TJS: " ++ show err
     Right tls -> return tls
 
-  let procTLs :: (MonadIO m) => [TJS.ToplevelStatement SourcePos]
-                 -> (Env, Map String (Type))
-                 -> m (Env, Map String (Type))
-      procTLs [] results = return results
+  
+  let procTLs [] results = return results
       procTLs ((TJS.ExternalStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
-        t' <- resolveAliases tenv t
+        putStrLn $ " Unaliasing: " ++ show t
+        t' <- unaliasType tenv kinds t
         procTLs rest (M.insertWithKey 
                         (\k n o -> error $ "already in venv: " ++ show k)
                         s (Just (t', VPId s)) venv, tenv)
       procTLs ((TJS.TypeStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
-        t' <- resolveAliases tenv t
+        putStrLn $ " Unaliasing: " ++ show t
+        t' <- unaliasType tenv kinds t
         procTLs rest (venv, M.insertWithKey
                               (\k n o -> error $ "already in tenv: " ++ show k)
                               s t' tenv)
+  putStrLn "LOADING"
   procTLs toplevels (M.empty, env)
 
 -- |Type-check a Typed JavaScript program.  
 typeCheck :: [TJS.Statement SourcePos] -> IO Env
 typeCheck prog = do
   domTypeEnv <- makeInitialEnv
-  (venv, tenv) <- loadCoreEnv domTypeEnv
+  (venv, tenv) <- loadCoreEnv domTypeEnv 
   typeCheckWithGlobals venv (M.union domTypeEnv tenv) prog
 
