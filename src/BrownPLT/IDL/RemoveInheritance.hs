@@ -1,6 +1,8 @@
 -- |Removes inheritance from interface definitions, expanding all interfaces
 -- to contain all their methods and attributes.
-module BrownPLT.IDL.RemoveInheritance where
+module BrownPLT.IDL.RemoveInheritance
+  ( removeInheritance
+  ) where
 
 import Data.Map (Map)
 import Data.Set (Set)

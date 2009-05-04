@@ -160,6 +160,7 @@ unRec t = t
 
 -- |This is _not_ capture-free.
 substType :: String -> Type -> Type -> Type
+substType _ _ TAny = TAny
 substType var sub (TRec var' t) 
   | var == var' = error "substType captures"
   | otherwise   = TRec var' (substType var sub t)

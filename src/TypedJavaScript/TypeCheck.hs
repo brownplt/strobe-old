@@ -18,6 +18,7 @@ import BrownPLT.JavaScript.Analysis.ANFUtils
 import BrownPLT.JavaScript.Analysis.ANFPrettyPrint
 import TypedJavaScript.ErasedEnvTree
 import TypedJavaScript.TypeErasure
+import BrownPLT.TypedJS.InitialEnvironment
 
 import Paths_TypedJavaScript
 import Text.ParserCombinators.Parsec
@@ -190,6 +191,9 @@ stmt env ee cs rettype node s = do
   let t1 <: t2 = isSubType cs t1 t2
   state <- get
   let tenv = typeEnv state
+  let unAlias t = case resolveAliases tenv t of
+        Just t' -> t'
+        Nothing -> error $ "unbound types in " ++ show t
   succs <- stmtSuccs s
   -- statements that do not affect the incoming environment are "no-ops"
   let noop = return (zip (map fst succs) (repeat env))
@@ -246,11 +250,11 @@ stmt env ee cs rettype node s = do
           -- Variable is in scope but is yet to be defined.
           fail $ printf "at %s: can't assign to obj %s; has no type yet"
                    (show p) obj
-        Just (Just (t, vp)) -> case unRec (refined t) of
+        Just (Just (t, vp)) -> case unRec (unAlias (refined t)) of
           TObject props -> case lookup prop props of
             Nothing -> 
               typeError p (printf "object does not have the property %s" prop)
-            Just t' | t_rhs <: t' -> noop -- TODO: affect the VP somehow?
+            Just t' | t_rhs <: (unAlias t') -> noop -- TODO: affect VP?
                     | otherwise -> 
                         subtypeError p "assignment to property" t_rhs t'
           t' -> typeError p (printf "expected object, received %s" (show t'))
@@ -278,7 +282,8 @@ stmt env ee cs rettype node s = do
         -- functions
         insts <- forceLookupMultiErasedEnv ee p
         let f = refined f''
-        actualsWithVP' <- mapM (forceEnvLookup p env) args_v
+        actualsWithVP' <- liftM (map (\(t, vp) -> (unAlias t, vp)))
+                                (mapM (forceEnvLookup p env) args_v)
         let (this':arguments:actuals', actuals_vps) = unzip actualsWithVP'
         this <- dotrefContext this' --motivation: if 'this' is a
                                     --string, int, etc, it is automatically
@@ -325,7 +330,7 @@ stmt env ee cs rettype node s = do
                                   (length actuals))
             let checkArg (actual,formal) = do
                   unless (actual <: formal) $ do
-                    subtypeError p "CallStmt" formal actual
+                    subtypeError p "function call arguments" formal actual
             mapM_ checkArg (zip actuals supplied)
             let checkMissingArg actual = do
                   unless (undefType <: actual) $
@@ -425,117 +430,120 @@ expr :: Env -- ^the environment in which to type-check this expression
      -> Expr (Int,SourcePos)
      -> TypeCheck (Type, VP) 
 expr env ee cs e = do 
- let t1 <: t2 = isSubType cs t1 t2
- let unConstraint t = lookupConstraint t cs
- state <- get
- let tenv = typeEnv state
- case e of 
-  VarRef (_,p) id -> do
-    (t, vp) <- forceEnvLookup p env id
-    case vp of
-      VPNone -> return (t, VPId id)
-      _      -> return (t, VPMulti [VPId id, vp])
-  DotRef (_, loc) e p -> do
-    --I'm uneasy about needing all of the following 3 lines
-    (t'', _) <- expr env ee cs e
-    t' <- dotrefContext (unRec (refined t''))
-    let t = unConstraint (unRec t')
-    case t of
-      TObject props -> case lookup p props of
-        Just t' -> return (t', VPNone)
-        Nothing -> case p of
-          "toString" -> return (TFunc [TId "any"] Nothing (TId "string") 
-                                      LPNone,
-                                VPNone)
-          _ -> typeError loc (printf "expected object with field %s" p)
-      otherwise -> typeError loc (printf "expected object, received %s, constraints were %s"
-                                         (show t) (show cs))
-                                         
-  BracketRef (_, loc) e ie -> do
-    (t'', _) <- expr env ee cs e
-    t' <- dotrefContext (unRec (refined t''))
-    let t = unRec t'
-    (it', _) <- expr env ee cs ie
-    let it = unRec (refined it')
-    unless (it <: intType) $ do
-      subtypeError loc "obj[prop]" it intType
-    case t of
-      TApp (TId "Array") [btype] -> return (btype, VPNone)
-      _ -> fail $ printf "at %s: expected array, got %s" (show loc) (show t)
-  OpExpr (_,p) f args_e -> do
-    args <- mapM (expr env ee cs) args_e
-    operator cs p f args
-  Lit (StringLit (_,a) s) -> 
-    return (TId "string",
-            VPLit (StringLit a s) (TId "string"))
-  Lit (RegexpLit _ _ _ _) -> fail "regexp NYI"
-  Lit (NumLit (_,a) n) ->
-    return (TId "double", 
-            VPLit (NumLit a n) (TId "double"))
-  Lit (IntLit (_,a) n) -> 
-    return (TId "int",
-            VPLit (IntLit a n) (TId "int"))
-  Lit (BoolLit (_,a) v) ->
-    return (boolType,
-            VPLit (BoolLit a v) boolType)
-  Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
-  Lit (ArrayLit (_,p) es) -> do
-    r <- mapM (expr env ee cs) es
-    let ts = nub (map (refined . fst) r)
-    let atype = if length ts == 1 
-                  then head ts
-                  else TUnion ts
-    let vp = VPLit (ArrayLit p (error "dont look inside VP arraylit"))
-                   (TApp (TId "Array") [atype])
-    return (TApp (TId "Array") [atype], vp)
-  Lit (ObjectLit (_, loc) props) -> do
-    let prop (Left s, (_, propLoc), e) = do
-          -- the VP is simply dropped, but it is always safe to drop a VP
-          (t, vp) <- expr env ee cs e
-          case M.lookup propLoc ee of
-            Just [t'] | t <: t' -> return (s, t')
-                      | otherwise -> subtypeError propLoc "{ ... }" t t'
-            Nothing -> return (s, t)
-            Just ts ->
-              catastrophe propLoc (printf "erased-env for property is %s" 
-                                          (show ts))
-          return (s, t) 
-        prop (Right n, (_, propLoc), e) = do
-          catastrophe propLoc "object literals with numeric keys NYI"
-    propTypes <- mapM prop props
-    let t = TObject propTypes
-    return (t, VPNone)
-  Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
-    Nothing -> catastrophe p "function lit is not in the erased environment"
-    Just [t] -> do
-     case deconstrFnType t of
-      Just (_, _, argTypes, Nothing, _, _) 
-        --argtypes is ("thistype", real args)
-        --args should be is ("this", "arguments", real args)
-        | length argTypes == length args - 1 -> 
-            return (t, VPLit (FuncLit p (error "dont look in VP Funclit args")
-                                        (error "dont look in VP Funclit lcls")
-                                        (error "dont look in VP Funclit body"))
-                             t)
-        | otherwise -> typeError p $ 
-            printf ("argument number mismatch in funclit: %s args named, but"++
-                    "%s in the type")
-              (show (length args - 2)) (show (length argTypes - 1))
-      Just (_, _, argTypes, Just vararg, _, _)
-        --argtypes is ("thistype", real args)
-        --args should be ("this", "arguments", real args, varargname)
-        | length argTypes == length args - 2 ->
-            return (t, VPLit (FuncLit p (error "dont look in VP Funclit args")
-                                        (error "dont look in VP Funclit lcls")
-                                        (error "dont look in VP Funclit body"))
-                             t)
-        | otherwise -> typeError p $ 
-            printf ("argument number mismatch in funclit: %s args named, but"++
-                    "%s (%s + 1 vararg) in the type")
-              (show (length args - 2)) 
-              (show (length argTypes)) (show (length argTypes - 1))
-      Nothing -> typeError p "not a function type"
-    Just _ -> catastrophe p "many types for function in the erased environment"
+  let t1 <: t2 = isSubType cs t1 t2
+  let unConstraint t = lookupConstraint t cs
+  state <- get
+  let tenv = typeEnv state
+  let unAlias t = case resolveAliases tenv t of
+        Just t' -> t'
+        Nothing -> t -- error $ "unbound types in " ++ show t
+  case e of 
+   VarRef (_,p) id -> do
+     (t, vp) <- forceEnvLookup p env id
+     case vp of
+       VPNone -> return (unAlias t, VPId id)
+       _      -> return (unAlias t, VPMulti [VPId id, vp])
+   DotRef (_, loc) e p -> do
+     --I'm uneasy about needing all of the following 3 lines
+     (t'', _) <- expr env ee cs e
+     t' <- dotrefContext (unRec (refined t''))
+     let t = unConstraint (unRec t')
+     case t of
+       TObject props -> case lookup p props of
+         Just t' -> return (t', VPNone)
+         Nothing -> case p of
+           "toString" -> return (TFunc [TId "any"] Nothing (TId "string") 
+                                       LPNone,
+                                 VPNone)
+           _ -> typeError loc (printf "expected object with field %s" p)
+       otherwise -> typeError loc (printf "expected object, received %s, constraints were %s"
+                                          (show t) (show cs))
+                                          
+   BracketRef (_, loc) e ie -> do
+     (t'', _) <- expr env ee cs e
+     t' <- dotrefContext (unRec (refined t''))
+     let t = unRec t'
+     (it', _) <- expr env ee cs ie
+     let it = unRec (refined it')
+     unless (it <: intType) $ do
+       subtypeError loc "obj[prop]" it intType
+     case t of
+       TApp (TId "Array") [btype] -> return (btype, VPNone)
+       _ -> fail $ printf "at %s: expected array, got %s" (show loc) (show t)
+   OpExpr (_,p) f args_e -> do
+     args <- mapM (expr env ee cs) args_e
+     operator cs p f args
+   Lit (StringLit (_,a) s) -> 
+     return (TId "string",
+             VPLit (StringLit a s) (TId "string"))
+   Lit (RegexpLit _ _ _ _) -> fail "regexp NYI"
+   Lit (NumLit (_,a) n) ->
+     return (TId "double", 
+             VPLit (NumLit a n) (TId "double"))
+   Lit (IntLit (_,a) n) -> 
+     return (TId "int",
+             VPLit (IntLit a n) (TId "int"))
+   Lit (BoolLit (_,a) v) ->
+     return (boolType,
+             VPLit (BoolLit a v) boolType)
+   Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
+   Lit (ArrayLit (_,p) es) -> do
+     r <- mapM (expr env ee cs) es
+     let ts = nub (map (refined . fst) r)
+     let atype = if length ts == 1 
+                   then head ts
+                   else TUnion ts
+     let vp = VPLit (ArrayLit p (error "dont look inside VP arraylit"))
+                    (TApp (TId "Array") [atype])
+     return (TApp (TId "Array") [atype], vp)
+   Lit (ObjectLit (_, loc) props) -> do
+     let prop (Left s, (_, propLoc), e) = do
+           -- the VP is simply dropped, but it is always safe to drop a VP
+           (t, vp) <- expr env ee cs e
+           case M.lookup propLoc ee of
+             Just [t'] | t <: t' -> return (s, t')
+                       | otherwise -> subtypeError propLoc "{ ... }" t t'
+             Nothing -> return (s, t)
+             Just ts ->
+               catastrophe propLoc (printf "erased-env for property is %s" 
+                                           (show ts))
+           return (s, t) 
+         prop (Right n, (_, propLoc), e) = do
+           catastrophe propLoc "object literals with numeric keys NYI"
+     propTypes <- mapM prop props
+     let t = TObject propTypes
+     return (t, VPNone)
+   Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
+     Nothing -> catastrophe p "function lit is not in the erased environment"
+     Just [t] -> do
+      case deconstrFnType t of
+       Just (_, _, argTypes, Nothing, _, _) 
+         --argtypes is ("thistype", real args)
+         --args should be is ("this", "arguments", real args)
+         | length argTypes == length args - 1 -> 
+             return (t, VPLit (FuncLit p (error "dont look in VP Funclit args")
+                                         (error "dont look in VP Funclit lcls")
+                                         (error "dont look in VP Funclit body"))
+                              t)
+         | otherwise -> typeError p $ 
+             printf ("argument number mismatch in funclit: %s args named, but"++
+                     "%s in the type")
+               (show (length args - 2)) (show (length argTypes - 1))
+       Just (_, _, argTypes, Just vararg, _, _)
+         --argtypes is ("thistype", real args)
+         --args should be ("this", "arguments", real args, varargname)
+         | length argTypes == length args - 2 ->
+             return (t, VPLit (FuncLit p (error "dont look in VP Funclit args")
+                                         (error "dont look in VP Funclit lcls")
+                                         (error "dont look in VP Funclit body"))
+                              t)
+         | otherwise -> typeError p $ 
+             printf ("argument number mismatch in funclit: %s args named, but"++
+                     "%s (%s + 1 vararg) in the type")
+               (show (length args - 2)) 
+               (show (length argTypes)) (show (length argTypes - 1))
+       Nothing -> typeError p "not a function type"
+     Just _ -> catastrophe p "many types for function in the erased environment"
   
 operator :: [TypeConstraint]
          -> SourcePos 
@@ -691,8 +699,10 @@ typeCheckProgram env enclosingKindEnv constraints
 -- |Take a type environment and a type, and return a type with all the
 -- |aliases resolved (e.g. TId "DOMString" --> TId "string").
 -- |Fail if the TId is not in the environment.
-resolveAliases :: (MonadIO m) => (Map String (Type)) 
-                  -> (Type) -> m (Type)
+resolveAliases :: Monad m
+               => Map String Type
+               -> Type -> m (Type)
+resolveAliases _ TAny = return TAny
 resolveAliases tenv t@(TId i)
  | i == "string"    = return t
  | i == "int"       = return t
@@ -830,5 +840,6 @@ loadCoreEnv = do
 typeCheck :: [TJS.Statement SourcePos] -> IO Env
 typeCheck prog = do
   (venv, tenv) <- loadCoreEnv 
-  typeCheckWithGlobals venv tenv prog
+  domTypeEnv <- makeInitialEnv
+  typeCheckWithGlobals venv (M.union domTypeEnv tenv) prog
 

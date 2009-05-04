@@ -13,7 +13,8 @@ Build-Type:     Custom
 Synopsis:       Typed JavaScript compiler
 Data-Dir:       data
 Data-Files:
-  typedjs_contracts.js core.tjs
+  typedjs_contracts.js core.tjs idl/dom.idl idl/events.idl idl/html.idl
+  idl/xmlhttprequest.idl
 Description:
 
  
@@ -23,7 +24,7 @@ Executable tjs
     src
   Build-Depends:
     base>=4, mtl>=1.1.0.1, parsec<3.0.0, pretty>=0.1, containers>=0.1, syb>=0.1,
-    filepath>=1.1.0.1, JsContracts>=0.4, WebBits>=0.13.0,
+    filepath>=1.1.0.1, JsContracts>=0.4, WebBits == 0.15,
     javascript-analysis>=0.5, directory >= 1.0.0.2,
     fgl, graphviz
   ghc-options:

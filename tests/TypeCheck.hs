@@ -18,12 +18,13 @@ import Test.HUnit
 import qualified Control.Exception as E
 import qualified Data.Map as M
 import TypedJavaScript.Syntax
-import TypedJavaScript.Lexer (semi,reservedOp,reserved)
+import TypedJavaScript.Lexer (semi, reservedOp, reserved, whiteSpace)
 import TypedJavaScript.Parser (parseType,parseExpression)
 import TypedJavaScript.TypeCheck (typeCheck, typeCheckWithGlobals, loadCoreEnv)
 import TypedJavaScript.Types (isSubType)
 import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
+import BrownPLT.TypedJS.InitialEnvironment
 
 import Text.ParserCombinators.Parsec.Pos (initialPos, SourcePos)
 
@@ -61,7 +62,7 @@ assertTypeError pos expr venv tenv = do
   case result of
     Left (err::(E.SomeException)) -> return () -- error expected
     Right (exprType) -> assertFailure (
-      (showSp pos) ++ ": expected fail, got: " ++ (show $ pp exprType))
+      (showSp pos) ++ ": expected fail, got: " ++ (show exprType))
 
 --assertTypeSuccess :: SourcePos -> Expression SourcePos -> Assertion
 assertTypeSuccess pos expr venv tenv = do
@@ -90,11 +91,18 @@ parseTestCase venv tenv = (do
         reserved "succeeds"
         return $ TestCase (assertTypeSuccess pos expr venv tenv)
    
-  typeOK <|> (try typeError) <|> typeSuccess) <|> (do return $ TestCase $ assertEqual "empty test case" True True)
+  typeOK <|> (try typeError) <|> typeSuccess) -- <|> 
+--    (do return $ TestCase $ assertEqual "empty test case" True True)
+
+parseAllTests venv tenv = do
+  whiteSpace
+  tests <- parseTestCase venv tenv `endBy` semi
+  eof -- ensure the whole file parses
+  return tests
   
 --readTestFile :: FilePath -> IO Test
 readTestFile venv tenv path = do
-  result <- parseFromFile ((parseTestCase venv tenv) `endBy` semi) path
+  result <- parseFromFile (parseAllTests venv tenv) path
   case result of
     -- Reporting the parse error is deferred until the test is run.
     Left err -> return $ TestCase (assertFailure (show err))
@@ -103,5 +111,6 @@ readTestFile venv tenv path = do
 main = do
   testPaths <- getPathsWithExtension ".js" "type-check"
   (venv, tenv) <- loadCoreEnv
-  testCases <- mapM (readTestFile venv tenv) testPaths
+  domTypeEnv <- makeInitialEnv
+  testCases <- mapM (readTestFile venv (M.union domTypeEnv tenv)) testPaths
   return (TestList testCases)
