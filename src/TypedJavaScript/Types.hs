@@ -20,6 +20,7 @@ module TypedJavaScript.Types
   , gammaPlus, gammaMinus
   , checkTypeEnv
   , unaliasTypeEnv
+  , unaliasType
   ) where
 
 import Debug.Trace
@@ -117,43 +118,56 @@ checkTypeEnv kinds env = do
   -- Check each binding, assuming others are well-kinded.
   mapM_ (checkKinds (M.union kinds' kinds)) types
 
+{-
+unaliasTypeView :: KindEnv -> Map String Type
+                -> Type -> String -> Type
+unaliasTypeView kinds types type_ view = case type_ of
+  TId v | v == view -> TId v
+  otherwise -> unaliasType kinds types type_
+-}
+
+unaliasType :: KindEnv -> Map String Type
+            -> Type
+            -> Type
+unaliasType kinds types type_ = case type_ of
+  TId v -> case M.lookup v kinds of
+    Just KindStar -> type_
+    Just k -> error $ printf "unaliasType kindsTypeEnv: %s has kind %s" v 
+                             (show k)
+    Nothing -> case M.lookup v types of
+      -- BrownPLT.TypedJS.IntialEnvironment.bindingFromIDL maps interfaces 
+      -- named v to the type (TRec v ...).
+      --
+      -- No need for recursion, the lookup in types is recursive
+      Just  t -> t
+      Nothing -> error $ printf "unaliasType kindsTypeEnv: unbound type %s" v
+  -- Stops infinite recursion
+  TRec v t -> TRec v (unaliasType kinds (M.insert v (TId v) types) t)
+  TAny -> TAny
+  TObject props -> TObject (map unaliasProp props)
+    where unaliasProp (v, t) = (v, unaliasType kinds types t)
+  TFunc args vararg ret lp -> TFunc args' vararg' ret' lp
+    where args' = map (unaliasType kinds types) args
+          vararg' = case vararg of
+            Nothing -> Nothing
+            Just t -> Just (unaliasType kinds types t)
+          ret' = unaliasType kinds types ret
+  -- HACK: We do not allow constructors to be aliased.
+  TApp t ts -> TApp t (map (unaliasType kinds types) ts)
+  TUnion ts -> TUnion (map (unaliasType kinds types) ts)
+  TRefined t1 t2 -> 
+    TRefined (unaliasType kinds types t1) (unaliasType kinds types t2)
+  TForall vs cs t -> TForall vs cs t' -- TODO: recur into cs?
+    where types' = M.fromList (map (\v -> (v, TId v)) vs)
+          t' = unaliasType kinds (M.union types' types) t
 
 unaliasTypeEnv :: KindEnv
                -> Map String Type
                -> Map String Type
-unaliasTypeEnv kinds aliasedTypes = types where
-  types = M.map (unalias types) aliasedTypes
-
-  unalias :: Map String Type -> Type -> Type
-  unalias types type_ = case type_ of
-    TId v -> case M.lookup v kinds of
-      Just KindStar -> type_
-      Just k -> error $ printf "unaliasTypeEnv: %s has kind %s" v (show k)
-      Nothing -> case M.lookup v types of
-        -- BrownPLT.TypedJS.IntialEnvironment.bindingFromIDL maps interfaces 
-        -- named v to the type (TRec v ...).
-        --
-        -- No need for recursion, the lookup in types is recursive
-        Just  t -> t
-        Nothing -> error $ printf "unaliasTypeEnv: unbound type %s" v
-    -- Stops infinite recursion
-    TRec v t -> TRec v (unalias (M.insert v (TId v) types) t)
-    TAny -> TAny
-    TObject props -> TObject (map unaliasProp props)
-      where unaliasProp (v, t) = (v, unalias types t)
-    TFunc args vararg ret lp -> TFunc args' vararg' ret' lp
-      where args' = map (unalias types) args
-            vararg' = case vararg of
-              Nothing -> Nothing
-              Just t -> Just (unalias types t)
-            ret' = unalias types ret
-    -- HACK: We do not allow constructors to be aliased.
-    TApp t ts -> TApp t (map (unalias types) ts)
-    TUnion ts -> TUnion (map (unalias types) ts)
-    TRefined t1 t2 -> TRefined (unalias types t1) (unalias types t2)
-    TForall vs cs t -> TForall vs cs t' -- TODO: recur into cs?
-      where types' = M.fromList (map (\v -> (v, TId v)) vs)
-            t' = unalias (M.union types' types) t
+unaliasTypeEnv kinds aliasedTypes = types
+  where explicitRec v t = 
+          unaliasType kinds types t
+        types = M.mapWithKey explicitRec aliasedTypes
 
 
 freeTypeVariables :: Type -> Map String Kind
@@ -189,51 +203,6 @@ intType = TId "int"
 doubleType = TId "double"
 
 boolType = TId "bool"
-
-
-unaliasType :: Monad m
-            => Map String Type -- ^type aliases that may themselves be aliased
-            -> KindEnv
-            -> Type
-            -> m Type
-unaliasType types kinds type_ = do
-  case type_ of
-    TId v -> case M.lookup v kinds of
-      Just KindStar -> return type_
-      Just k -> fail $ printf "unaliasType: %s has kind %s" v (show k)
-      Nothing -> case M.lookup v types of
-        -- BrownPLT.TypedJS.IntialEnvironment.bindingFromIDL maps interfaces 
-        -- named v to the type (TRec v ...).
-        Just t -> unaliasType types kinds t
-        Nothing -> fail $ printf "unaliasType: unbound type %s" v
-    TRec v t -> do
-      t' <- unaliasType types (M.insert v KindStar kinds) t
-      return (TRec v t')
-    TAny -> return TAny
-    TObject props -> do
-      let propM (v, t) = do
-            t' <- unaliasType types kinds t
-            return (v, t)
-      liftM TObject (mapM propM props)
-    TFunc args vararg ret lp -> do
-      args' <- mapM (unaliasType types kinds) args
-      vararg' <- case vararg of
-                   Nothing -> return Nothing
-                   Just t -> liftM Just (unaliasType types kinds t)
-      ret' <- unaliasType types kinds ret
-      return (TFunc args' vararg' ret' lp)
-    TApp t ts -> do
-      let t' = t -- we do not allow constructors to be aliased
-      ts' <- mapM (unaliasType types kinds) ts
-      return (TApp t' ts')
-    TUnion ts -> do
-      liftM TUnion (mapM (unaliasType types kinds) ts)
-    TRefined t1 t2 -> do
-      liftM2 TRefined (unaliasType types kinds t1) (unaliasType types kinds t2)
-    TForall vs cs t -> do
-      let kinds' = M.fromList (zip vs (repeat KindStar))
-      t' <- unaliasType types (M.union kinds' kinds) t
-      return (TForall vs cs t') -- TODO: recur into cs?
 
 
 -- |Deconstructs the declared type of a function, returning a list of quantified

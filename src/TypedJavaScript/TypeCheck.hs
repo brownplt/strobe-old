@@ -403,10 +403,7 @@ stmt env ee cs rettype node s = do
 -- this function does this conversion
 dotrefContext :: Type -> TypeCheck (Type)
 dotrefContext (TId "string") = do
-  state <- get
-  let tenv = typeEnv state
-  sobj <- resolveAliases tenv (TId "String")
-  return sobj
+  return stringType
 dotrefContext t = return t
 
 
@@ -450,7 +447,8 @@ expr env ee cs e = do
                                        LPNone,
                                  VPNone)
            _ -> typeError loc (printf "expected object with field %s" p)
-       otherwise -> typeError loc (printf "expected object, received %s, constraints were %s"
+       otherwise -> typeError loc (printf "expected object, received %s, \
+                                          \constraints were %s"
                                           (show t) (show cs))
                                           
    BracketRef (_, loc) e ie -> do
@@ -630,7 +628,7 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
         Just t | head name == '@' -> return Nothing
                | otherwise -> do
                    --liftIO $ putStrLn $ "Got: " ++ show t
-                   t' <- mapM (resolveAliases tenv) t
+                   let t' = map (unaliasType basicKinds tenv) t
                    --liftIO $ putStrLn $ "Yield: " ++ show t'
                    return $ Just t'
       functype' = head $ case M.lookup pos ee of
@@ -642,7 +640,7 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
                             [(TFunc [TId "undefined"] Nothing 
                                 (TId "undefined") LPNone)]
                           Just xx -> xx
-  functype <- resolveAliases tenv functype'
+  let functype = unaliasType basicKinds tenv functype'
   let Just (_, cs, types, vararg, rettype, lp) = deconstrFnType functype
       -- undefined for arguments
   let (this:types') = types ++ (case vararg of
@@ -676,7 +674,7 @@ typeCheckProgram env enclosingKindEnv constraints
   state <- get
   put $ state { stateGraph = gr, stateEnvs = M.empty }
   -- When type-checking the body, we assume the declared types for functions.
-  ee <- resolveAliasesEE (typeEnv state) ee'
+  ee <- resolveAliasesEE enclosingKindEnv (typeEnv state) ee'
   (env', cs, rettype, fnType) <- uneraseEnv env (typeEnv state) ee lit
   let kindEnv = M.union (freeTypeVariables fnType) enclosingKindEnv
   checkDeclaredKinds kindEnv ee
@@ -691,68 +689,12 @@ typeCheckProgram env enclosingKindEnv constraints
   return topLevelEnv
 
 
-             
-
--- |Take a type environment and a type, and return a type with all the
--- |aliases resolved (e.g. TId "DOMString" --> TId "string").
--- |Fail if the TId is not in the environment.
-resolveAliases :: Monad m
-               => Map String Type
-               -> Type -> m (Type)
-resolveAliases _ TAny = return TAny
-resolveAliases tenv t@(TId i)
- | i == "string"    = return t
- | i == "int"       = return t
- | i == "double"    = return t
- | i == "bool"      = return t
- | i == "Array"     = return t -- TODO: handle 'generics' properly
- | i == "undefined" = return t
- | i == "any"       = return t
- | otherwise        = case M.lookup i tenv of
-     Nothing -> return t {-fail $ printf "at %s: type %s is unbound. (env=%s)" 
-                         (show pos) (show t) (show tenv)-}
-     Just x -> return x
-resolveAliases tenv (TRec s t) = do
-  --TODO: is this right? I temporarily insert 's' into the tenv so it gets
-  -- left alone.
-  t' <- resolveAliases (M.insert s (TId s) tenv) t
-  return (TRec s t')
-resolveAliases tenv (TFunc req var ret lp) = do
-  req' <- mapM (resolveAliases tenv) req
-  var' <- case var of
-    Nothing -> return Nothing
-    Just blah -> do
-      res <- resolveAliases tenv blah
-      return (Just res)
-  ret' <- resolveAliases tenv ret
-  return (TFunc req' var' ret' lp)
-resolveAliases tenv (TObject fields) = do
-  fields' <- mapM (\(s, t) -> do
-                     t' <- resolveAliases tenv t
-                     return (s, t')) fields
-  return (TObject fields')
-resolveAliases tenv (TApp tapp ts) = do
-  tapp' <- resolveAliases tenv tapp
-  ts' <- mapM (resolveAliases tenv) ts
-  return (TApp tapp' ts')
-resolveAliases tenv (TUnion ts) = do
-  ts' <- mapM (resolveAliases tenv) ts
-  return (TUnion ts')
-resolveAliases tenv (TForall ss cs t) = do
-  --make the function ignore all types the forall defines
-  t' <- resolveAliases (M.unions $ (map (\k->M.singleton k (TId k)) ss) ++
-                                   [tenv]) t
-  return (TForall ss cs t')                                   
-resolveAliases tenv (TRefined t1 t2) = fail "What is TRefined doing in alias?"
-  
-resolveAliases tenv t = fail $ "resolveAliases can't handle " ++ show t
-
-resolveAliasesEE :: (MonadIO m) => (Map String (Type)) 
+resolveAliasesEE :: (MonadIO m) => KindEnv -> Map String Type
                   -> ErasedEnv -> m ErasedEnv
-resolveAliasesEE tenv ee = do
-  --not sure if there is a more efficient way to do this:
+resolveAliasesEE kinds types ee = do
   let procp (k, v) = do
-        v' <- mapM (resolveAliases tenv) v
+        -- TODO: Must check that this is well formed
+        let v' = map (unaliasType kinds types) v
         return (k, v')
   resl <- mapM procp (M.toList ee)
   return $ M.fromList resl
@@ -834,7 +776,11 @@ loadCoreEnv env = do
   (env, types) <- procTLs toplevels (M.empty, env)
   case checkTypeEnv kinds types of
     Left s -> fail s
-    Right () -> return (env, unaliasTypeEnv kinds types)
+    Right () -> do
+      let unaliasedTypes = unaliasTypeEnv kinds types
+      let unalias Nothing = Nothing -- strange
+          unalias (Just (t, vp)) = Just (unaliasType kinds unaliasedTypes t, vp)
+      return (M.map unalias env, unaliasedTypes)
 
 -- |Type-check a Typed JavaScript program.  
 typeCheck :: [TJS.Statement SourcePos] -> IO Env
