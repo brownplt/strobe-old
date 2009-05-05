@@ -40,6 +40,26 @@ catMembers fs1 fs2 = case unique (map definitionName (fs1 ++ fs2)) of
   Nothing -> Right (fs1 ++ fs2)
 
 
+renameType :: String -> String -> Type -> Type
+renameType src dest t = case t of
+  TId v | v == src -> TId dest
+  otherwise -> t
+
+
+rename :: String -> String -> Definition -> Definition
+rename src dest def = case def of
+  Const t i v -> Const (renameType src dest t) i v
+  Attr ro t v -> Attr ro (renameType src dest t) v
+  Method t v args -> Method (renameType src dest t) v (map renameArg args)
+    where renameArg (t', v') = (renameType src dest t', v')
+  Interface _ _ _ -> 
+    error $ "BrownPLT.IDL.RemoveInheritance: unexpected interface"
+
+
+renameAll :: String -> String -> [Definition] -> [Definition]
+renameAll src dest defs = map (rename src dest) defs
+
+
 -- |Returns all the members of an interface, including inherited members.
 -- Returns an expanded definitions map.
 uninherit :: Map Id Definition
@@ -48,8 +68,10 @@ uninherit :: Map Id Definition
 uninherit im name = case M.lookup name im of
   Just (Interface _ Nothing fs) -> (fs, im)
   Just (Interface _ (Just parent) fs) -> (fs'', im'')
-    where (fs', im') = uninherit im parent
-          fs'' = case catMembers fs fs' of
+    where -- recursive construction ensures that fs' contains all fields of
+          -- parent and its parents and have been renamed appropriately.
+          (fs', im') = uninherit im parent
+          fs'' = case catMembers fs (renameAll parent name fs') of
                    Right members -> members
                    Left s -> 
                      error $ "BrownPLT.IDL.RemoveInheritance.uninherit: \
