@@ -14,7 +14,7 @@ import BrownPLT.JavaScript.Analysis.ANFPrettyPrint (prettyLit)
 -- Displays the statement in { ... }, unless it already is in a block.
 inBlock :: Statement a -> Doc
 inBlock s@(BlockStmt _ _) = stmt s
-inBlock s = lbrace $+$ nest 2 (stmt s) $+$ rbrace
+inBlock s = lbrace $$ nest 2 (stmt s) $$ rbrace
 
 
 -- Displays the expression in ( ... ), unless it already is in parens.
@@ -28,7 +28,7 @@ commas ds = sep (punctuate comma ds)
 
 
 hangBraces :: Doc -> Doc
-hangBraces doc = lbrace $+$ (nest 2 doc) $+$ rbrace
+hangBraces doc = lbrace $$ (nest 2 doc) $$ rbrace
 
 
 typeConstraint :: TypeConstraint -> Doc
@@ -57,9 +57,9 @@ type_ t = case t of
               Just t' -> comma <+> arg t' <+> text "..."
   TApp t ts -> type_ t <> text "<" <> commas (map type_ ts) <> text ">"
   TAny -> text "any"
-  TRec id t -> text "rec" <+> text id <+> text "." <+> type_ t
+  TRec id t -> hang (text "rec" <+> text id <+> text ".") 2 (type_ t)
   TFunc [] _ _ _ -> error "PrettyPrint.hs: function without this"
-  TObject fields -> hangBraces $ commas (map field fields)
+  TObject fields -> braces (nest 2 $ commas (map field fields))
     where field (id, t') = text id <+> text "::" <+> type_ t'
   TUnion ts -> text "U" <+> parens (commas (map type_ ts))
   TId v -> text v
