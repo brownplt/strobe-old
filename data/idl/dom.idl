@@ -23,7 +23,6 @@
 // module dom
 // {
 
-
   typedef   unsigned long long DOMTimeStamp;
 
   typedef   any DOMUserData;

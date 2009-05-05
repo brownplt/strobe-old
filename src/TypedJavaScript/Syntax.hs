@@ -22,7 +22,8 @@ data JavaScript a
 
 unId (Id _ s) = s
 
-data Id a = Id a String deriving (Ord,Data,Typeable)
+data Id a = Id a String 
+  deriving (Show, Ord, Data, Typeable)
 
 data TypeConstraint
   = TCSubtype Type Type
@@ -51,6 +52,7 @@ data Type
 data ToplevelStatement a 
   = TypeStmt a (Id a) Type
   | ExternalStmt a (Id a) Type
+  deriving (Show)
 
 -- hack-ish to avoid parametrizing VP. 
 data VP = VPId String
@@ -90,7 +92,7 @@ instance Eq (Id a) where
 --TODO: remove PropString?
 data Prop a 
   = PropId a (Id a) | PropString a String | PropNum a Integer
-  deriving (Ord)
+  deriving (Show, Ord)
 
 propToString (PropId _ (Id _ s)) = s
 propToString (PropString _ s)    = s
@@ -124,27 +126,27 @@ data Expression a
   | FuncExpr a [Id a] {- arg names -} 
                Type
                (Statement a)    {- body -}
-  deriving (Eq,Ord)
+  deriving (Show, Eq,Ord)
 
 data CaseClause a 
   = CaseClause a (Expression a) [Statement a]
   | CaseDefault a [Statement a]
-  deriving (Eq,Ord)
+  deriving (Show, Eq,Ord)
   
 data CatchClause a 
   = CatchClause a (Id a) (Statement a) 
-  deriving (Eq,Ord)
+  deriving (Show, Eq,Ord)
 
 data VarDecl a 
   = VarDecl a (Id a) Type
   | VarDeclExpr a (Id a) (Maybe Type) (Expression a)
-  deriving (Eq,Ord)
+  deriving (Show, Eq,Ord)
   
 data ForInit a
   = NoInit
   | VarInit [VarDecl a]
   | ExprInit (Expression a)
-  deriving (Eq,Ord)
+  deriving (Show, Eq,Ord)
 
 data ForInInit a
  -- |These terms introduce a name to the enclosing function's environment.
@@ -152,7 +154,7 @@ data ForInInit a
  -- type inference.  Save type inference for later.
  = ForInVar (Id a) 
  | ForInNoVar (Id a) 
- deriving (Eq,Ord)
+ deriving (Show, Eq,Ord)
 
 data Statement a
   = BlockStmt a [Statement a]
@@ -184,7 +186,7 @@ data Statement a
                       [(Id a, Type)] {- optional args -}
                       (Maybe (Id a, Type)) {- optional var arg -}
                       (Statement a) {-body-} -}
-  deriving (Eq,Ord)  
+  deriving (Show, Eq,Ord)  
   
 showSp :: SourcePos -> String
 showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)

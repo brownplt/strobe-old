@@ -20,18 +20,19 @@ import TypedJavaScript.Parser
 import TypedJavaScript.Lexer
 import TypedJavaScript.Contracts
 import TypedJavaScript.TypeErasure
-import TypedJavaScript.PrettyPrint (pp)
+import TypedJavaScript.PrettyPrint
 import TypedJavaScript.TypeCheck
 
 
 pretty :: [ParsedStatement] -> String
-pretty stmts = render $ vcat $ map pp stmts
+pretty = renderStatements
 
 data Flag
   = Help
   | ANF
   | TypeCheck
   | Graphs
+  | PrintType String
   deriving (Eq, Ord)
 
 options :: [OptDescr Flag]
@@ -44,6 +45,8 @@ options =
       "print the program in ANF"
   , Option ['g'] ["graphs"] (NoArg Graphs)
       "print the interprocedural graphs of the program"
+  , Option ['y'] ["type"] (ReqArg PrintType "NAME")
+      "prints the type named NAME"
   ]
 
 checkHelp (Help:_) = do
@@ -64,15 +67,18 @@ getInput files = do
   hPutStrLn stderr "multiple input files are not yet supported"
   exitFailure
 
-getAction (ANF:args) = return (action, args) where
+data Action = RequireInput ([Statement SourcePos] -> IO ())
+            | NoInput (IO ())
+
+getAction (ANF:args) = return (RequireInput action, args) where
   action prog = do
     let (topDecls, anfProg) = jsToCore (simplify (eraseTypes prog))
     putStrLn (prettyANF anfProg)
-getAction (TypeCheck:args) = return (action, args) where
+getAction (TypeCheck:args) = return (RequireInput action, args) where
   action prog = do
     typeCheck prog
     putStrLn "Type-checking successful."
-getAction (Graphs:args) = return (action, args) where
+getAction (Graphs:args) = return (RequireInput action, args) where
   action prog = do
     let anf = jsToCore (simplify (eraseTypes prog))
     let (clusterFn,gr) = clusteredIntraproceduralGraphs anf
@@ -86,8 +92,11 @@ getAction (Graphs:args) = return (action, args) where
                 (\(n,s) -> [GV.Label (show s)]) -- node atributes
                 edgeFn -- edge attributes
     hPutStrLn stdout (show dot)
-    
-getAction args = return (action, args) where
+getAction ((PrintType name):args) = return (NoInput action, args) where
+  action = do
+    t <- getType name
+    putStrLn (renderType t)
+getAction args = return (RequireInput action, args) where
   action prog = do
     typeCheck prog
     putStrLn "Type-checking successful."
@@ -109,7 +118,9 @@ main = do
     hPutStrLn stderr "superfluous arguments"
     exitFailure
 
-  str <- hGetContents inputHandle
-  let script = parseTypedJavaScript inputName str
-  
-  action (script)
+  case action of
+    RequireInput action -> do
+      str <- hGetContents inputHandle
+      let script = parseTypedJavaScript inputName str
+      action script
+    NoInput action -> action

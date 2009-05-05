@@ -118,13 +118,7 @@ checkTypeEnv kinds env = do
   -- Check each binding, assuming others are well-kinded.
   mapM_ (checkKinds (M.union kinds' kinds)) types
 
-{-
-unaliasTypeView :: KindEnv -> Map String Type
-                -> Type -> String -> Type
-unaliasTypeView kinds types type_ view = case type_ of
-  TId v | v == view -> TId v
-  otherwise -> unaliasType kinds types type_
--}
+
 
 unaliasType :: KindEnv -> Map String Type
             -> Type
@@ -161,12 +155,45 @@ unaliasType kinds types type_ = case type_ of
     where types' = M.fromList (map (\v -> (v, TId v)) vs)
           t' = unaliasType kinds (M.union types' types) t
 
+unaliasType' :: KindEnv -> Map String Type
+            -> Type
+            -> Type
+unaliasType' kinds types type_ = case type_ of
+  TId v -> case M.lookup v kinds of
+    Just KindStar -> type_
+    Just k -> error $ printf "unaliasType': %s has kind %s" v 
+                             (show k)
+    Nothing -> case M.lookup v types of
+      -- BrownPLT.TypedJS.IntialEnvironment.bindingFromIDL maps interfaces 
+      -- named v to the type (TRec v ...).
+      Just  t -> unaliasType' kinds types t
+      Nothing -> error $ printf "unaliasType' kindsTypeEnv: unbound type %s" v
+  -- Stops infinite recursion
+  TRec v t -> TRec v (unaliasType' (M.insert v KindStar kinds) types t)
+  TAny -> TAny
+  TObject props -> TObject (map unaliasProp props)
+    where unaliasProp (v, t) = (v, unaliasType' kinds types t)
+  TFunc args vararg ret lp -> TFunc args' vararg' ret' lp
+    where args' = map (unaliasType' kinds types) args
+          vararg' = case vararg of
+            Nothing -> Nothing
+            Just t -> Just (unaliasType' kinds types t)
+          ret' = unaliasType' kinds types ret
+  -- HACK: We do not allow constructors to be aliased.
+  TApp t ts -> TApp t (map (unaliasType' kinds types) ts)
+  TUnion ts -> TUnion (map (unaliasType' kinds types) ts)
+  TRefined t1 t2 -> 
+    TRefined (unaliasType' kinds types t1) (unaliasType' kinds types t2)
+  TForall vs cs t -> TForall vs cs t' -- TODO: recur into cs?
+    where types' = M.fromList (map (\v -> (v, TId v)) vs)
+          t' = unaliasType' kinds (M.union types' types) t
+
 unaliasTypeEnv :: KindEnv
                -> Map String Type
                -> Map String Type
 unaliasTypeEnv kinds aliasedTypes = types
-  where explicitRec v t = 
-          unaliasType kinds types t
+  where explicitRec v t = unaliasType' kinds aliasedTypes t
+          
         types = M.mapWithKey explicitRec aliasedTypes
 
 

@@ -1,5 +1,6 @@
 module TypedJavaScript.TypeCheck where
 
+import TypedJavaScript.PrettyPrint
 import TypedJavaScript.Prelude
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -788,4 +789,13 @@ typeCheck prog = do
   domTypeEnv <- makeInitialEnv
   (venv, tenv) <- loadCoreEnv domTypeEnv 
   typeCheckWithGlobals venv (M.union domTypeEnv tenv) prog
+
+getType :: String -> IO Type
+getType name = do
+  domTypeEnv <- makeInitialEnv
+  (venv, tenv) <- loadCoreEnv domTypeEnv 
+  case M.lookup name tenv of
+    Just t -> return t
+    Nothing -> fail $ printf "getType: %s is not a type name" name
+ 
 
