@@ -28,13 +28,13 @@ import Test.HUnit
 import Text.Regex.Posix
 import Text.PrettyPrint.HughesPJ (render, vcat)
 import Text.ParserCombinators.Parsec (ParseError,errorPos)
-import TypedJavaScript.PrettyPrint (pp)
+import TypedJavaScript.PrettyPrint
 import TypedJavaScript.Syntax
 import TypedJavaScript.Parser (parseScriptFromString,parseJavaScriptFromFile,
   ParsedStatement)
 
 pretty :: [ParsedStatement] -> String
-pretty stmts = render $ vcat $ map pp stmts
+pretty ss = renderStatements ss
 
 isPrettyPrintError :: ParseError -> Bool
 isPrettyPrintError pe = 
