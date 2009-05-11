@@ -127,11 +127,17 @@ type_ = do
               reservedOp "..."
               reservedOp "->"
               r <- type_ <|> (return Types.undefType)
-              return (TFunc (thisType:(L.init ts)) (Just $L.last ts) r (LPNone))
+              let argstype = TSequence (L.init ts) (Just $ L.last ts)
+              let funcargstype = TSequence ([thisType, argstype]++(L.init ts))
+                                           (Just $ L.last ts)
+              return (TFunc funcargstype r (LPNone))
         let func = do
               reservedOp "->"
               r <- type_ <|> (return Types.undefType)
-              return (TFunc (thisType:ts) Nothing r (LPNone))
+              let argstype = TSequence ts Nothing
+              let funcargstype = TSequence ([thisType, argstype]++ts)
+                                           Nothing
+              return (TFunc funcargstype r (LPNone))
         case ts of
           []  -> func -- function of zero arguments
           [t] -> vararity <|> func <|> (return t)
@@ -146,12 +152,18 @@ type_fn = do
   let vararity = do
         reservedOp "..."
         reservedOp "->"
+        let argstype = TSequence (L.init ts) (Just $ L.last ts)
+        let funcargstype = TSequence ([globalThis, argstype] ++ (L.init ts))
+                                     (Just $ L.last ts)
         r <- type_ <|> (return Types.undefType)
-        return (TFunc (globalThis:(L.init ts)) (Just $L.last ts) r LPNone)
+        return (TFunc funcargstype r LPNone)
   let func = do
         reservedOp "->"
+        let argstype = TSequence ts Nothing
+        let funcargstype = TSequence ([globalThis, argstype] ++ ts)
+                                     Nothing
         r <- type_ <|> (return Types.undefType)
-        return (TFunc (globalThis:ts) Nothing r LPNone)
+        return (TFunc funcargstype r LPNone)
         --Nonte: latent predicates really aren't part of the syntax,
         --but the parser has to deal with them. type checker should fill
         --them in properly.

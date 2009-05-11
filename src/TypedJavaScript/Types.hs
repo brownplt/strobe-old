@@ -76,8 +76,12 @@ checkKinds kinds t = case t of
             return k
         | otherwise -> fail "kind error (arg mismatch)"
       KindStar -> fail "kind error (expected * ... -> *)"
-  TFunc args optional result _ -> do
-    mapM_ (assertKinds kinds) (zip (result:args) (repeat KindStar))
+  TFunc args result _ -> do
+    assertKinds kinds (args, KindStar)
+    assertKinds kinds (result, KindStar)
+    return KindStar
+  TSequence args optional -> do
+    mapM_ (assertKinds kinds) (zip args (repeat KindStar))
     case optional of
       Nothing -> return ()
       Just t -> assertKinds kinds (t, KindStar)
@@ -119,7 +123,6 @@ checkTypeEnv kinds env = do
   mapM_ (checkKinds (M.union kinds' kinds)) types
 
 
-
 unaliasType :: KindEnv -> Map String Type
             -> Type
             -> Type
@@ -140,11 +143,14 @@ unaliasType kinds types type_ = case type_ of
   TAny -> TAny
   TObject props -> TObject (map unaliasProp props)
     where unaliasProp (v, t) = (v, unaliasType kinds types t)
-  TFunc args vararg ret lp -> TFunc args' vararg' ret' lp
+  TSequence args vararg -> TSequence args' vararg' 
     where args' = map (unaliasType kinds types) args
           vararg' = case vararg of
             Nothing -> Nothing
             Just t -> Just (unaliasType kinds types t)
+  TFunc args ret lp -> 
+   TFunc args' ret' lp
+    where args' = unaliasType kinds types args
           ret' = unaliasType kinds types ret
   -- HACK: We do not allow constructors to be aliased.
   TApp t ts -> TApp t (map (unaliasType kinds types) ts)
@@ -173,11 +179,14 @@ unaliasType' kinds types type_ = case type_ of
   TAny -> TAny
   TObject props -> TObject (map unaliasProp props)
     where unaliasProp (v, t) = (v, unaliasType' kinds types t)
-  TFunc args vararg ret lp -> TFunc args' vararg' ret' lp
+  TSequence args vararg -> TSequence args' vararg' 
     where args' = map (unaliasType' kinds types) args
           vararg' = case vararg of
             Nothing -> Nothing
             Just t -> Just (unaliasType' kinds types t)
+  TFunc args ret lp -> 
+   TFunc args' ret' lp
+    where args' = unaliasType' kinds types args
           ret' = unaliasType' kinds types ret
   -- HACK: We do not allow constructors to be aliased.
   TApp t ts -> TApp t (map (unaliasType' kinds types) ts)
@@ -201,8 +210,11 @@ freeTypeVariables :: Type -> Map String Kind
 freeTypeVariables t = fv t where
   -- type variables in the constructor are applied
   fv (TApp _ ts) = M.unions (map fv ts)
-  fv (TFunc args Nothing r _) = M.unions (map fv (r:args))
-  fv (TFunc args (Just opt) r _) = M.unions (map fv (opt:r:args))
+  fv (TFunc (TRec _ (TSequence args Nothing)) r _) = 
+    M.unions (map fv (r:args))
+  fv (TSequence args Nothing) = M.unions (map fv args)
+  fv (TSequence args (Just opt)) = M.unions (map fv (opt:args))
+  fv (TFunc args r _) = M.unions (map fv [args,r])
   fv (TId _) = M.empty
   fv (TObject props) = M.unions (map (fv.snd) props)
   fv TAny = M.empty
@@ -241,9 +253,10 @@ deconstrFnType :: Type
 deconstrFnType (TRefined main refined) = deconstrFnType refined
 deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
   deconstrFnType (substType id t t')
-deconstrFnType (TFunc args varg result latentP) = 
+deconstrFnType (TFunc (TSequence args varg) result latentP) = 
   Just ([],[],args,varg,result,latentP)
-deconstrFnType (TForall ids constraints (TFunc args varg result latentP)) = 
+deconstrFnType (TForall ids constraints 
+                 (TFunc (TRec _ (TSequence args varg)) result latentP)) = 
   Just (ids,constraints,args,varg,result,latentP)
 deconstrFnType _ = Nothing
 
@@ -269,9 +282,11 @@ substType var sub (TUnion ts) =
 substType var sub (TId var')
   | var == var' = sub
   | otherwise =  TId var'
-substType var sub (TFunc args vararg ret latentP) =
-  TFunc (map (substType var sub) args)
-        (liftM (substType var sub) vararg)
+substType var sub (TSequence args vararg) = 
+  TSequence (map (substType var sub) args)
+            (liftM (substType var sub) vararg)
+substType var sub (TFunc args ret latentP) =
+  TFunc (substType var sub args)
         (substType var sub ret)
         latentP
 substType var sub (TObject fields) =
@@ -394,17 +409,17 @@ st rel (t1, t2)
       -- return rel
       rel <- st (S.insert (t1, t2) rel) (c1, c2)
       foldM st rel (zip args1 args2) 
-    (TFunc req2 Nothing ret2 lp2, TFunc req1 Nothing ret1 lp1) -> do
-      assert (length req2 == length req1)
+    --temporary not-quite-good subtyping for vararity functions:
+    (TSequence args1 Nothing, TSequence args2 Nothing) -> do
+      assert (length args1 == length args2)
+      foldM st rel (zip args1 args2)
+    (TSequence args1 (Just v1), TSequence args2 (Just v2)) -> do
+      assert (length args1 == length args2)
+      foldM st rel (zip (v1:args1) (v2:args2))
+    (TFunc args2 ret2 lp2, TFunc args1 ret1 lp1) -> do
       assert (lp1 == lp2 || lp1 == LPNone)
       rel <- st (S.insert (t1, t2) rel) (ret2, ret1)
-      foldM st rel (zip req1 req2)
-    --temporary not-quite-good subtyping for vararity functions:
-    (TFunc req2 (Just v2) ret2 lp2, TFunc req1 (Just v1) ret1 lp1) -> do
-      assert (length req2 == length req1)
-      assert (lp1 == lp2 || lp1 == LPNone)      
-      rel <- st (S.insert (t1, t2) rel) (ret2, ret1)
-      foldM st rel (zip (v1:req1) (v2:req2))
+      st rel (args1, args2)
     (TForall ids1 tcs1 t1, TForall ids2 tcs2 t2) -> do
       assert (ids1 == ids2)
       assert (tcs1 == tcs2)
@@ -421,6 +436,12 @@ st rel (t1, t2)
     (TRec v t1', t2) -> do
       rez <- st (S.insert (t1, t2) rel) (substType v t1 t1', t2)
       return rez
+    --special-case: arrays are subtypes of sequences.
+    --eventually remove this once we make arrays actually sequences.
+    (TApp (TId "Array") [arrt], TSequence [] (Just seqt)) -> do
+      st (S.insert (t1, t2) rel) (arrt, seqt)
+    (TSequence [] (Just seqt), TApp (TId "Array") [arrt]) -> do
+      st (S.insert (t1, t2) rel) (seqt, arrt)
     (TUnion ts1, t2) -> do
       foldM (\rel t1 -> st rel (t1, t2)) rel ts1 -- all
     (t1, TUnion ts2) -> do
@@ -566,7 +587,13 @@ equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId "string")) = case s of
   "boolean"   -> VPType (TId "bool") x
   "string"    -> VPType (TId "string") x
   --function taken from TS. TODO: make sure is fine.
-  "function"  -> VPType (TFunc [TUnion []] Nothing (TId "any") LPNone) x
+  "function"  -> 
+    VPType 
+      (TFunc 
+        (TRec "a" (TSequence [TUnion [], (TId "a")] Nothing))
+        (TId "any") 
+        LPNone)
+      x
   "object"    -> error "vp for typeof x == 'object' nyi"
   _           -> VPNone
 equalityvp a@(VPLit (StringLit l s) (TId "string")) b@(VPTypeof x) = 

@@ -35,7 +35,7 @@ true && x @@ fails;
 //5 && 6 @@ fails; //we no longer require bools
 4 / "13" @@ fails;
 4 + (function(x) :: (double ->) { return; }) @@ fails;
-true && (3 || false) @@ fails;
+//true && (3 || false) @@ fails; no longer require bools
 (3 == 0) + 10 @@ fails;
 //
 (function (x) :: (double ->) { return; }) :: (double ->);

@@ -288,7 +288,7 @@ stmt env ee cs rettype node s = do
                                     --converted to an object.
          
         --actuals_vps contains VP, including VPId for the var name itself.
-        let actuals = this:actuals'
+        let actuals = this:arguments:actuals'
         case deconstrFnType f of
           Nothing -> typeError p ("expected function; received " ++ show f)
           Just (vs, cs', formals', vararg, r, latentPred) -> do
@@ -444,9 +444,9 @@ expr env ee cs e = do
        TObject props -> case lookup p props of
          Just t' -> return (t', VPNone)
          Nothing -> case p of
-           "toString" -> return (TFunc [TId "any"] Nothing (TId "string") 
+{-           "toString" -> return (TFunc [TId "any"] Nothing (TId "string") 
                                        LPNone,
-                                 VPNone)
+                                 VPNone) -}
            _ -> typeError loc (printf "expected object with field %s" p)
        otherwise -> typeError loc (printf "expected object, received %s, \
                                           \constraints were %s"
@@ -482,13 +482,11 @@ expr env ee cs e = do
    Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
    Lit (ArrayLit (_,p) es) -> do
      r <- mapM (expr env ee cs) es
-     let ts = nub (map (refined . fst) r)
-     let atype = if length ts == 1 
-                   then head ts
-                   else TUnion ts
+     let ts = (map (refined . fst) r)
+     let resT = (TSequence ts Nothing)
      let vp = VPLit (ArrayLit p (error "dont look inside VP arraylit"))
-                    (TApp (TId "Array") [atype])
-     return (TApp (TId "Array") [atype], vp)
+                    resT
+     return (resT, vp)
    Lit (ObjectLit (_, loc) props) -> do
      let prop (Left s, (_, propLoc), e) = do
            -- the VP is simply dropped, but it is always safe to drop a VP
@@ -511,30 +509,30 @@ expr env ee cs e = do
      Just [t] -> do
       case deconstrFnType t of
        Just (_, _, argTypes, Nothing, _, _) 
-         --argtypes is ("thistype", real args)
+         --argtypes is ("thistype", argarraytype, real args)
          --args should be is ("this", "arguments", real args)
-         | length argTypes == length args - 1 -> 
+         | length argTypes == length args -> 
              return (t, VPLit (FuncLit p (error "dont look in VP Funclit args")
                                          (error "dont look in VP Funclit lcls")
                                          (error "dont look in VP Funclit body"))
                               t)
          | otherwise -> typeError p $ 
              printf ("argument number mismatch in funclit: %s args named, but"++
-                     "%s in the type")
-               (show (length args - 2)) (show (length argTypes - 1))
+                     " %s in the type")
+               (show (length args - 2)) (show (length argTypes - 2))
        Just (_, _, argTypes, Just vararg, _, _)
-         --argtypes is ("thistype", real args)
+         --argtypes is ("thistype", argarraytype, real args)
          --args should be ("this", "arguments", real args, varargname)
-         | length argTypes == length args - 2 ->
+         | length argTypes == length args - 1 ->
              return (t, VPLit (FuncLit p (error "dont look in VP Funclit args")
                                          (error "dont look in VP Funclit lcls")
                                          (error "dont look in VP Funclit body"))
                               t)
          | otherwise -> typeError p $ 
              printf ("argument number mismatch in funclit: %s args named, but"++
-                     "%s (%s + 1 vararg) in the type")
+                     " %s (%s + 1 vararg) in the type")
                (show (length args - 2)) 
-               (show (length argTypes)) (show (length argTypes - 1))
+               (show (length argTypes - 1)) (show (length argTypes - 2))
        Nothing -> typeError p "not a function type"
      Just _ -> catastrophe p "many types for function in the erased environment"
   
@@ -638,16 +636,17 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
                           --type-checking. pretend that it exists!
                           --TODO: make sure this doesn't break other stuff.
                           Nothing ->
-                            [(TFunc [TId "undefined"] Nothing 
-                                (TId "undefined") LPNone)]
+                            [(TFunc (TSequence [TId "undefined",
+                                                TSequence [] Nothing] Nothing)
+                                    (TId "undefined") LPNone)]
                           Just xx -> xx
   let functype = unaliasType basicKinds tenv functype'
   let Just (_, cs, types, vararg, rettype, lp) = deconstrFnType functype
       -- undefined for arguments
-  let (this:types') = types ++ (case vararg of
+  let (this:argsarray:types') = types ++ (case vararg of
         Nothing -> []
         Just vt -> [TApp (TId "Array") [vt]])
-  argtypes <- return $ zip (map fst args) (map Just (this:undefined:types'))
+  argtypes <- return $ zip (map fst args) (map Just (this:argsarray:types'))
   localtypes <- mapM (\(name,(_, pos)) -> do
                         t <- lookupEE pos name
                         return (name, liftM head t))
@@ -762,7 +761,6 @@ loadCoreEnv env = do
     Left err -> fail $ "PARSE ERROR ON CORE.TJS: " ++ show err
     Right tls -> return tls
 
-  
   let procTLs [] results = return results
       procTLs ((TJS.ExternalStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
         let t' = t -- t' <- unaliasType tenv kinds t
@@ -775,6 +773,7 @@ loadCoreEnv env = do
                               (\k n o -> error $ "already in tenv: " ++ show k)
                               s t' tenv)
   (env, types) <- procTLs toplevels (M.empty, env)
+
   case checkTypeEnv kinds types of
     Left s -> fail s
     Right () -> do

@@ -23,11 +23,11 @@ pos = noPos
 
 -- |'toContract' assumes that the supplied type is closed and well-formed.
 toContract :: Type -> Contract
-toContract (TFunc (this:reqargs) maybeVararg result _) =
+{-toContract (TFunc (this:reqargs) maybeVararg result _) =
   FunctionContract noPos (map toContract reqargs) varargCtc (toContract result)
     where varargCtc = case maybeVararg of
                         Nothing -> Nothing
-                        Just vararg -> Just (toContract vararg)
+                        Just vararg -> Just (toContract vararg)-}
 toContract (TId id) = 
   error $ "unbound identifier (" ++ show id ++ ") at " ++ show pos ++
           " while converting a type to a contract"

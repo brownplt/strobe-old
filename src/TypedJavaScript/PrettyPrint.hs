@@ -46,7 +46,7 @@ renderStatements ss = render $ vcat (map (\s -> stmt s <> semi) ss)
 
 type_ :: Type -> Doc
 type_ t = case t of
-  TFunc (this:args) vararg ret _ -> 
+  TFunc (TRec _ (TSequence (this:args) vararg)) ret _ -> 
     brackets (type_ this) <+> commas (map arg args) <> varargDoc <+> 
     text "->" <+> type_ ret
       where arg t' = case t' of
@@ -55,10 +55,13 @@ type_ t = case t of
             varargDoc = case vararg of
               Nothing -> empty
               Just t' -> comma <+> arg t' <+> text "..."
+  TFunc (TRec _ (TSequence [] _)) _ _ -> 
+    error "PrettyPrint.hs: function without this"
+  TFunc{} -> error "PrettyPrint: Function without TRec as its arguments type"
+  TSequence a b -> text "<<TSEQUENCE>>"
   TApp t ts -> type_ t <> text "<" <> commas (map type_ ts) <> text ">"
   TAny -> text "any"
   TRec id t -> hang (text "rec" <+> text id <+> text ".") 2 (type_ t)
-  TFunc [] _ _ _ -> error "PrettyPrint.hs: function without this"
   TObject fields -> braces (nest 2 $ commas (map field fields))
     where field (id, t') = text id <+> text "::" <+> type_ t'
   TUnion ts -> text "U" <+> parens (commas (map type_ ts))
