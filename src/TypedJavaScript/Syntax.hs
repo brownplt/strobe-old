@@ -34,8 +34,7 @@ data Type
   | TAny
   | TRec String Type
   | TSequence [Type] (Maybe Type) -- sequence of types (e.g. arguments array)
-  | TFunc Type --arg types. should be:
-               --  SEQUENCE[thistype, argsarray realargs]
+  | TFunc [Type]
           Type {- ret type -}
           LatentPred {- latent predicate -} 
   | TId String -- identifier bound by a TForall or a TRec

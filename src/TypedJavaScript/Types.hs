@@ -81,7 +81,7 @@ checkKinds kinds t = case t of
         | otherwise -> fail "kind error (arg mismatch)"
       KindStar -> fail "kind error (expected * ... -> *)"
   TFunc args result _ -> do
-    assertKinds kinds (args, KindStar)
+    mapM_ (assertKinds kinds) (zip args (repeat KindStar))
     assertKinds kinds (result, KindStar)
     return KindStar
   TSequence args optional -> do
@@ -154,7 +154,7 @@ unaliasType kinds types type_ = case type_ of
             Just t -> Just (unaliasType kinds types t)
   TFunc args ret lp -> 
    TFunc args' ret' lp
-    where args' = unaliasType kinds types args
+    where args' = map (unaliasType kinds types) args
           ret' = unaliasType kinds types ret
   -- HACK: We do not allow constructors to be aliased.
   TApp t ts -> TApp t (map (unaliasType kinds types) ts)
@@ -188,9 +188,8 @@ unaliasType' kinds types type_ = case type_ of
           vararg' = case vararg of
             Nothing -> Nothing
             Just t -> Just (unaliasType' kinds types t)
-  TFunc args ret lp -> 
-   TFunc args' ret' lp
-    where args' = unaliasType' kinds types args
+  TFunc args ret lp -> TFunc args' ret' lp
+    where args' = map (unaliasType' kinds types) args
           ret' = unaliasType' kinds types ret
   -- HACK: We do not allow constructors to be aliased.
   TApp t ts -> TApp t (map (unaliasType' kinds types) ts)
@@ -214,11 +213,9 @@ freeTypeVariables :: Type -> Map String Kind
 freeTypeVariables t = fv t where
   -- type variables in the constructor are applied
   fv (TApp _ ts) = M.unions (map fv ts)
-  fv (TFunc (TRec _ (TSequence args Nothing)) r _) = 
-    M.unions (map fv (r:args))
+  fv (TFunc args r _) = M.unions (map fv (r:args))
   fv (TSequence args Nothing) = M.unions (map fv args)
   fv (TSequence args (Just opt)) = M.unions (map fv (opt:args))
-  fv (TFunc args r _) = M.unions (map fv [args,r])
   fv (TId _) = M.empty
   fv (TObject props) = M.unions (map (fv.snd) props)
   fv TAny = M.empty
@@ -257,11 +254,8 @@ deconstrFnType :: Type
 deconstrFnType (TRefined main refined) = deconstrFnType refined
 deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
   deconstrFnType (substType id t t')
-deconstrFnType (TFunc (TSequence args varg) result latentP) = 
-  Just ([],[],args,varg,result,latentP)
-deconstrFnType (TForall ids constraints 
-                 (TFunc (TRec _ (TSequence args varg)) result latentP)) = 
-  Just (ids,constraints,args,varg,result,latentP)
+deconstrFnType (TFunc args@(_:(TSequence _ vararg):_) result latentP) = 
+  Just ([],[],args,vararg,result,latentP)
 deconstrFnType _ = Nothing
 
 unRec :: Type -> Type
@@ -290,7 +284,7 @@ substType var sub (TSequence args vararg) =
   TSequence (map (substType var sub) args)
             (liftM (substType var sub) vararg)
 substType var sub (TFunc args ret latentP) =
-  TFunc (substType var sub args)
+  TFunc (map (substType var sub) args)
         (substType var sub ret)
         latentP
 substType var sub (TObject fields) =
@@ -423,7 +417,7 @@ st env rel (t1, t2)
     (TFunc args2 ret2 lp2, TFunc args1 ret1 lp1) -> do
       assert (lp1 == lp2 || lp1 == LPNone)
       rel <- st env (S.insert (t1, t2) rel) (ret2, ret1)
-      st env rel (args1, args2)
+      foldM (st env) rel (zip args1 args2)
     (TForall ids1 tcs1 t1, TForall ids2 tcs2 t2) -> do
       assert (ids1 == ids2)
       assert (tcs1 == tcs2)
@@ -592,14 +586,8 @@ equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId "string")) = case s of
   "undefined" -> VPType undefType x
   "boolean"   -> VPType (TId "bool") x
   "string"    -> VPType (TId "string") x
-  --function taken from TS. TODO: make sure is fine.
   "function"  -> 
-    VPType 
-      (TFunc 
-        (TRec "a" (TSequence [TUnion [], (TId "a")] Nothing))
-        (TId "any") 
-        LPNone)
-      x
+    VPType (TFunc [TUnion [], TSequence [] Nothing] (TId "any") LPNone) x
   "object"    -> error "vp for typeof x == 'object' nyi"
   _           -> VPNone
 equalityvp a@(VPLit (StringLit l s) (TId "string")) b@(VPTypeof x) = 

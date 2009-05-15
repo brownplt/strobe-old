@@ -46,19 +46,21 @@ renderStatements ss = render $ vcat (map (\s -> stmt s <> semi) ss)
 
 type_ :: Type -> Doc
 type_ t = case t of
-  TFunc (TRec _ (TSequence (this:args) vararg)) ret _ -> 
+  TFunc (this:arguments:args) ret _ -> 
     brackets (type_ this) <+> commas (map arg args) <> varargDoc <+> 
     text "->" <+> type_ ret
       where arg t' = case t' of
               TFunc{} -> parens (type_ t')
               otherwise -> type_ t'
-            varargDoc = case vararg of
-              Nothing -> empty
-              Just t' -> comma <+> arg t' <+> text "..."
-  TFunc (TRec _ (TSequence [] _)) _ _ -> 
-    error "PrettyPrint.hs: function without this"
-  TFunc{} -> error "PrettyPrint: Function without TRec as its arguments type"
-  TSequence a b -> text "<<TSEQUENCE>>"
+            varargDoc = case arguments of
+              TSequence _ (Just t') -> comma <+> arg t' <+> text "..."
+              -- We ignore the case where arguments is not a TSequence.
+              otherwise -> empty 
+
+  TSequence ts opt -> brackets $ (commas (map type_ ts)) <> optional
+    where optional = case opt of
+            Nothing -> empty
+            Just t -> text "," <+> type_ t <+> text "..."
   TApp t ts -> type_ t <> text "<" <> commas (map type_ ts) <> text ">"
   TAny -> text "any"
   TRec id t -> hang (text "rec" <+> text id <+> text ".") 2 (type_ t)

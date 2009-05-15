@@ -500,7 +500,12 @@ expr env ee cs e = do
      let resT = (TSequence ts Nothing)
      let vp = VPLit (ArrayLit p (error "dont look inside VP arraylit"))
                     resT
-     return (resT, vp)
+     case  (nub ts) of
+       -- If we have a homogenous array, let the sequence type be a refinement
+       -- of the simpler homogenous type.
+       [t] -> return (TRefined (TApp (TId "Array") [t]) resT, vp)
+       otherwise -> return (resT, vp)
+
    Lit (ObjectLit (_, loc) props) -> do
      let prop (Left s, (_, propLoc), e) = do
            -- the VP is simply dropped, but it is always safe to drop a VP
@@ -547,7 +552,7 @@ expr env ee cs e = do
                      " %s (%s + 1 vararg) in the type")
                (show (length args - 2)) 
                (show (length argTypes - 1)) (show (length argTypes - 2))
-       Nothing -> typeError p "not a function type"
+       Nothing -> typeError p $ printf "not a function type: %s" (renderType t)
      Just _ -> catastrophe p "many types for function in the erased environment"
   
 operator :: [TypeConstraint]
@@ -641,9 +646,7 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
         Nothing -> return Nothing
         Just t | head name == '@' -> return Nothing
                | otherwise -> do
-                   --liftIO $ putStrLn $ "Got: " ++ show t
                    let t' = map (unaliasType basicKinds tenv) t
-                   --liftIO $ putStrLn $ "Yield: " ++ show t'
                    return $ Just t'
       functype' = head $ case M.lookup pos ee of
                           --i think we get Nothing for the fake function
@@ -651,8 +654,7 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
                           --type-checking. pretend that it exists!
                           --TODO: make sure this doesn't break other stuff.
                           Nothing ->
-                            [(TFunc (TSequence [TId "undefined",
-                                                TSequence [] Nothing] Nothing)
+                            [(TFunc [TObject [], TSequence [] Nothing]
                                     (TId "undefined") LPNone)]
                           Just xx -> xx
   let functype = unaliasType basicKinds tenv functype'

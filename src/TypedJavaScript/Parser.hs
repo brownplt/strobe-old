@@ -127,17 +127,13 @@ type_ = do
               reservedOp "..."
               reservedOp "->"
               r <- type_ <|> (return Types.undefType)
-              let argstype = TSequence (L.init ts) (Just $ L.last ts)
-              let funcargstype = TSequence ([thisType, argstype]++(L.init ts))
-                                           (Just $ L.last ts)
-              return (TFunc funcargstype r (LPNone))
+              let arguments = TSequence (L.init ts) (Just (L.last ts))
+              return (TFunc (thisType:arguments:ts) r (LPNone))
         let func = do
               reservedOp "->"
               r <- type_ <|> (return Types.undefType)
-              let argstype = TSequence ts Nothing
-              let funcargstype = TSequence ([thisType, argstype]++ts)
-                                           Nothing
-              return (TFunc funcargstype r (LPNone))
+              let arguments = TSequence ts Nothing
+              return (TFunc (thisType:arguments:ts) r LPNone)
         case ts of
           []  -> func -- function of zero arguments
           [t] -> vararity <|> func <|> (return t)
@@ -149,22 +145,19 @@ type_fn = do
   p <- getPosition
   let globalThis = TObject [] -- TODO: make this the global this
   ts <- type_' `sepBy` comma
+  let thisType = TObject []
   let vararity = do
         reservedOp "..."
         reservedOp "->"
-        let argstype = TSequence (L.init ts) (Just $ L.last ts)
-        let funcargstype = TSequence ([globalThis, argstype] ++ (L.init ts))
-                                     (Just $ L.last ts)
+        let arguments = TSequence (L.init ts) (Just (L.last ts))
         r <- type_ <|> (return Types.undefType)
-        return (TFunc funcargstype r LPNone)
+        return (TFunc (thisType:arguments:ts) r LPNone)
   let func = do
         reservedOp "->"
-        let argstype = TSequence ts Nothing
-        let funcargstype = TSequence ([globalThis, argstype] ++ ts)
-                                     Nothing
+        let arguments = TSequence ts Nothing
         r <- type_ <|> (return Types.undefType)
-        return (TFunc funcargstype r LPNone)
-        --Nonte: latent predicates really aren't part of the syntax,
+        return (TFunc (thisType:arguments:ts) r LPNone)
+        --Note: latent predicates really aren't part of the syntax,
         --but the parser has to deal with them. type checker should fill
         --them in properly.
   case ts of

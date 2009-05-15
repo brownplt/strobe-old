@@ -56,14 +56,11 @@ objectFromIDL self members = TObject (map field members)
   where field (IDL.Const t v _) = (v, parseIDLType t)
         field (IDL.Attr isReadOnly t v) = (v, parseIDLType t)
         field (IDL.Method ret v args) = 
-          (v, TFunc funcargstype rt LPNone)
+          (v, TFunc (this:arguments:formals) rt LPNone)
             where formals = map parseIDLType (map fst args)
-                  arguments = TAny -- TODO: het. arrays
+                  arguments = TSequence formals Nothing
                   rt = parseIDLType ret
-                  argstype = (TSequence formals Nothing)
-                  funcargstype = (TSequence ([(TId self), argstype]++
-                                              formals)
-                                             Nothing)
+                  this = TId self
         field def = 
           error $ "BrownPLT.TypedJS.InitialEnvironment.objectFromIDL: \
                   \unexpected " ++ show def
