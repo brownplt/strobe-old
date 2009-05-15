@@ -527,7 +527,7 @@ expr env ee cs e = do
      Nothing -> catastrophe p "function lit is not in the erased environment"
      Just [t] -> do
       case deconstrFnType t of
-       Just (_, _, argTypes, Nothing, _, _) 
+       Just (_, _, argTypes, _, _, _) 
          --argtypes is ("thistype", argarraytype, real args)
          --args should be is ("this", "arguments", real args)
          | length argTypes == length args -> 
@@ -536,22 +536,10 @@ expr env ee cs e = do
                                          (error "dont look in VP Funclit body"))
                               t)
          | otherwise -> typeError p $ 
-             printf ("argument number mismatch in funclit: %s args named, but"++
-                     " %s in the type")
+             printf "argument number mismatch in funclit: %s args named, but \
+                    \ %s in the type:%s\n%s\n"
                (show (length args - 2)) (show (length argTypes - 2))
-       Just (_, _, argTypes, Just vararg, _, _)
-         --argtypes is ("thistype", argarraytype, real args)
-         --args should be ("this", "arguments", real args, varargname)
-         | length argTypes == length args - 1 ->
-             return (t, VPLit (FuncLit p (error "dont look in VP Funclit args")
-                                         (error "dont look in VP Funclit lcls")
-                                         (error "dont look in VP Funclit body"))
-                              t)
-         | otherwise -> typeError p $ 
-             printf ("argument number mismatch in funclit: %s args named, but"++
-                     " %s (%s + 1 vararg) in the type")
-               (show (length args - 2)) 
-               (show (length argTypes - 1)) (show (length argTypes - 2))
+               (renderType t) (show $ map renderType argTypes)
        Nothing -> typeError p $ printf "not a function type: %s" (renderType t)
      Just _ -> catastrophe p "many types for function in the erased environment"
   
