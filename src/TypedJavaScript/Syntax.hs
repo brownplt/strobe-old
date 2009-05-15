@@ -35,7 +35,7 @@ data Type
   | TRec String Type
   | TSequence [Type] (Maybe Type) -- sequence of types (e.g. arguments array)
   | TFunc Type --arg types. should be:
-               --  rec args. SEQUENCE[thistype, args, realargs]
+               --  SEQUENCE[thistype, argsarray realargs]
           Type {- ret type -}
           LatentPred {- latent predicate -} 
   | TId String -- an Id defined through a 'type' statement
