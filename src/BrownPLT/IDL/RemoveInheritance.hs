@@ -12,6 +12,8 @@ import qualified Data.Set as S
 import BrownPLT.IDL.Syntax
 
 
+-- |If all elements are unique, returns 'Nothing'.  Otherwise, returns 
+-- 'Just a', where 'a' is the first duplicate element.
 unique :: Ord a => [a] -> Maybe a
 unique xs = isUnique
   where uniqueM set [] = Right set

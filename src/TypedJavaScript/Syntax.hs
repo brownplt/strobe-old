@@ -38,13 +38,14 @@ data Type
                --  SEQUENCE[thistype, argsarray realargs]
           Type {- ret type -}
           LatentPred {- latent predicate -} 
-  | TId String -- an Id defined through a 'type' statement
+  | TId String -- identifier bound by a TForall or a TRec
   | TApp Type [Type]
   | TUnion [Type]
   | TForall [String] [TypeConstraint] Type
   -- | TIndex Type Type String --obj[x] --> TIndex <obj> <x> "x"
   --the first type, 'refined' to the 2nd
   | TRefined Type Type
+  | TEnvId String -- ^a reference to an identifier in the environment
   deriving (Show, Eq, Ord)
 
 -- the following are constructs which just assign types to IDs, either

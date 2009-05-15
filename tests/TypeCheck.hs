@@ -28,10 +28,7 @@ import BrownPLT.TypedJS.InitialEnvironment
 
 import Text.ParserCombinators.Parsec.Pos (initialPos, SourcePos)
 
-t1 <: t2 = isSubType [] t1 t2
 
---too lazy to fix the type annotations for these after adding venv, tenv.
---typeOfExpr :: Expression SourcePos -> IO (Type SourcePos)
 typeOfExpr expr' venv tenv = do 
   let p = initialPos "testcase"
   let stmt = VarDeclStmt p [VarDeclExpr p (Id p "result")
@@ -44,8 +41,8 @@ typeOfExpr expr' venv tenv = do
     
     Just (Just (t, mvp)) -> return t
 
---assertType :: SourcePos -> Expression SourcePos -> Type SourcePos -> Assertion
-assertType pos expr expectedType venv tenv = do
+
+assertType pos expr expectedType venv tenv isSubTypeOf = do
   actualType <- E.try (typeOfExpr expr venv tenv)
   case actualType of
     Left (err::(E.SomeException)) -> assertFailure (
@@ -54,9 +51,9 @@ assertType pos expr expectedType venv tenv = do
       assertBool ((showSp pos) ++ ": type mismatch, " ++ 
                   (show exprType) ++ " is not a subtype of " ++ 
                   (show expectedType)) 
-                 (exprType <: expectedType)
+                 (exprType `isSubTypeOf` expectedType)
 
---assertTypeError :: SourcePos -> Expression SourcePos -> Assertion
+
 assertTypeError pos expr venv tenv = do
   result <- E.try (typeOfExpr expr venv tenv)
   case result of
@@ -64,21 +61,21 @@ assertTypeError pos expr venv tenv = do
     Right (exprType) -> assertFailure (
       (showSp pos) ++ ": expected fail, got: " ++ (show exprType))
 
---assertTypeSuccess :: SourcePos -> Expression SourcePos -> Assertion
+
 assertTypeSuccess pos expr venv tenv = do
   result <- E.try (typeOfExpr expr venv tenv)
   case result of
     Left (err::(E.SomeException)) -> assertFailure ((showSp pos) ++ ": expected success, got: " ++ (show $ err)) 
     Right exprType -> return () -- success expected
 
---parseTestCase :: CharParser st Test
-parseTestCase venv tenv = (do
-  --whiteSpace --TODO: make uncomment work to fix bug
+
+parseTestCase venv tenv isSubTypeOf = do
   pos <- getPosition
   expr <- parseExpression
   let typeOK = do
         expectedType <- parseType -- requires a prefixed ::
-        return $ TestCase (assertType pos expr expectedType venv tenv)
+        return $ TestCase (assertType pos expr expectedType venv tenv 
+                                      isSubTypeOf)
   let typeError = do
         reservedOp "@@" -- random symbol that is not recognized by the
                         -- expression parser.
@@ -91,18 +88,18 @@ parseTestCase venv tenv = (do
         reserved "succeeds"
         return $ TestCase (assertTypeSuccess pos expr venv tenv)
    
-  typeOK <|> (try typeError) <|> typeSuccess) -- <|> 
---    (do return $ TestCase $ assertEqual "empty test case" True True)
+  typeOK <|> (try typeError) <|> typeSuccess
 
-parseAllTests venv tenv = do
+
+parseAllTests venv tenv isSubTypeOf = do
   whiteSpace
-  tests <- parseTestCase venv tenv `endBy` semi
+  tests <- parseTestCase venv tenv isSubTypeOf `endBy` semi
   eof -- ensure the whole file parses
   return tests
   
 --readTestFile :: FilePath -> IO Test
-readTestFile venv tenv path = do
-  result <- parseFromFile (parseAllTests venv tenv) path
+readTestFile venv tenv isSubTypeOf path = do
+  result <- parseFromFile (parseAllTests venv tenv isSubTypeOf) path
   case result of
     -- Reporting the parse error is deferred until the test is run.
     Left err -> return $ TestCase (assertFailure (show err))
@@ -112,5 +109,7 @@ main = do
   testPaths <- getPathsWithExtension ".js" "type-check"
   domTypeEnv <- makeInitialEnv
   (venv, tenv) <- loadCoreEnv domTypeEnv
-  testCases <- mapM (readTestFile venv (M.union domTypeEnv tenv)) testPaths
+  let isSubTypeOf = isSubType tenv []
+  testCases <- mapM (readTestFile venv (M.union domTypeEnv tenv) isSubTypeOf) 
+                    testPaths
   return (TestList testCases)

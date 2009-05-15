@@ -22,7 +22,7 @@ import TypedJavaScript.TypeErasure
 import BrownPLT.TypedJS.InitialEnvironment
 
 import Paths_TypedJavaScript
-import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec (parseFromFile)
 import TypedJavaScript.Parser (parseToplevels)
 
 import System.Directory
@@ -31,7 +31,7 @@ import System.FilePath
 data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,
   stateEnvs :: Map Int Env,
-  typeEnv :: Map String Type
+  stateTypeEnv :: Map String Type
 }
 
 
@@ -44,6 +44,13 @@ basicKinds = M.fromList
   , ("undefined", KindStar)
   , ("any", KindStar)
   , ("Array", KindConstr [KindStar] KindStar)
+  ]
+
+
+basicConstraints :: [TypeConstraint]
+basicConstraints =
+  [ TCSubtype (TApp (TId "Array") [TAny])
+              (TObject [("length", TId "int")])
   ]
 
 
@@ -89,6 +96,13 @@ enterNodeOf gr = fst (G.nodeRange gr)
 exitNodeOf :: Graph -> G.Node
 exitNodeOf gr = snd (G.nodeRange gr)
 
+-- |An environment conventially maps names to types.  However, our environments
+-- also include visible-predicates and identifiers whose types have to be
+-- inferred
+conventionalEnv :: Env -> Map String Type
+conventionalEnv env = M.fromList $ catMaybes $ map maybeInclude (M.toList env)
+  where maybeInclude (name, Nothing) = Nothing
+        maybeInclude (name, Just (type_, vp)) = Just (name, type_)
 
 body :: Env
      -> ErasedEnv
@@ -98,10 +112,10 @@ body :: Env
      -> G.Node
      -> TypeCheck Env
 body env ee constraints rettype enterNode exitNode = do
-  let t1 <: t2 = isSubType constraints t1 t2
+  state <- get
+  let t1 <: t2 = isSubType (stateTypeEnv state) constraints t1 t2
   -- TODO: ensure that the subgraph is connected, probably in 
   -- javascript-analysis
-  state <- get
   let gr = stateGraph state
   -- Enter has no predecessors
   unless (null $ G.pre gr enterNode) $
@@ -189,9 +203,9 @@ stmt :: Env -- ^the environment in which to type-check this statement
      -> Stmt (Int, SourcePos)
      -> TypeCheck [(G.Node, Env)]
 stmt env ee cs rettype node s = do
-  let t1 <: t2 = isSubType cs t1 t2
   state <- get
-  let tenv = typeEnv state
+  let t1 <: t2 = isSubType (stateTypeEnv state) cs t1 t2
+  let tenv = stateTypeEnv state
   succs <- stmtSuccs s
   -- statements that do not affect the incoming environment are "no-ops"
   let noop = return (zip (map fst succs) (repeat env))
@@ -294,7 +308,7 @@ stmt env ee cs rettype node s = do
           Just (vs, cs', formals', vararg, r, latentPred) -> do
 --            unless (vararg == Nothing) 
 --              (fail "calling a vararg function NYI")
-            let t1 <: t2 = isSubType (cs' ++ cs) t1 t2
+            let t1 <: t2 = isSubType (stateTypeEnv state) (cs' ++ cs) t1 t2
 
             unless (length vs == length insts) $ do
               typeError p (printf "expected %d type argument(s), received %d"
@@ -415,7 +429,7 @@ lookupConstraint t@(TId x) (tc:tcs) = case tc of
   otherwise -> lookupConstraint t tcs
 
 lookupConstraint t (tc:tcs) = case tc of
-  TCSubtype t1 t2 | isSubType [] t t1 -> t2
+  TCSubtype t1 t2 | isSubType M.empty [] t t1 -> t2
                   | otherwise -> lookupConstraint t tcs
   
 
@@ -425,10 +439,10 @@ expr :: Env -- ^the environment in which to type-check this expression
      -> Expr (Int,SourcePos)
      -> TypeCheck (Type, VP) 
 expr env ee cs e = do 
-  let t1 <: t2 = isSubType cs t1 t2
-  let unConstraint t = lookupConstraint t cs
   state <- get
-  let tenv = typeEnv state
+  let t1 <: t2 = isSubType (stateTypeEnv state) cs t1 t2
+  let unConstraint t = lookupConstraint t cs
+  let tenv = stateTypeEnv state
   case e of 
    VarRef (_,p) id -> do
      (t, vp) <- forceEnvLookup p env id
@@ -542,7 +556,8 @@ operator :: [TypeConstraint]
          -> [(Type, VP)] 
          -> TypeCheck (Type, VP)
 operator cs loc op argsvp = do
-  let t1 <: t2 = isSubType cs t1 t2
+  state <- get
+  let t1 <: t2 = isSubType (stateTypeEnv state) cs t1 t2
   let (args, vps) = unzip argsvp
   -- The ANF transform gaurantees that the number of arguments is correct for
   -- the specified operator.
@@ -674,8 +689,8 @@ typeCheckProgram env enclosingKindEnv constraints
   state <- get
   put $ state { stateGraph = gr, stateEnvs = M.empty }
   -- When type-checking the body, we assume the declared types for functions.
-  ee <- resolveAliasesEE enclosingKindEnv (typeEnv state) ee'
-  (env', cs, rettype, fnType) <- uneraseEnv env (typeEnv state) ee lit
+  ee <- resolveAliasesEE enclosingKindEnv (stateTypeEnv state) ee'
+  (env', cs, rettype, fnType) <- uneraseEnv env (stateTypeEnv state) ee lit
   let kindEnv = M.union (freeTypeVariables fnType) enclosingKindEnv
   checkDeclaredKinds kindEnv ee
   let cs' = cs ++ constraints
@@ -700,11 +715,6 @@ resolveAliasesEE kinds types ee = do
   return $ M.fromList resl
 
 
-basicConstraints :: [TypeConstraint]
-basicConstraints =
-  [ TCSubtype (TApp (TId "Array") [TAny])
-              (TObject [("length", TId "int")])
-  ]
 
 
 -- |Checks user-specified type annotations for kind-errors.  We assume that
@@ -719,6 +729,45 @@ checkDeclaredKinds kinds ee = do
   let checkAt (loc, types) = mapM_ (check loc) types
   mapM_ checkAt (M.toList ee)
   
+
+
+loadCoreEnv :: Map String Type
+            -> IO (Env, Map String Type)
+loadCoreEnv env = do
+  let kinds = basicKinds
+  -- load the global environment from "core.js"
+  dir <- getDataDir
+  toplevels' <- parseFromFile (parseToplevels) (dir </> "core.tjs")
+  toplevels <- case toplevels' of
+    Left err -> fail $ "PARSE ERROR ON CORE.TJS: " ++ show err
+    Right tls -> return tls
+
+  let procTLs [] results = return results
+      procTLs ((TJS.ExternalStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
+        procTLs rest (M.insertWithKey 
+                        (\k n o -> error $ "already in venv: " ++ show k)
+                        s (Just (t, VPId s)) venv, tenv)
+      procTLs ((TJS.TypeStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
+        procTLs rest (venv, M.insertWithKey
+                              (\k n o -> error $ "already in tenv: " ++ show k)
+                              s t tenv)
+  (env, types) <- procTLs toplevels (M.empty, env)
+
+  case checkTypeEnv kinds types of
+    Left s -> fail s
+    Right () -> do
+      let unaliasedTypes = unaliasTypeEnv kinds types
+      let unalias Nothing = Nothing -- strange
+          unalias (Just (t, vp)) = Just (unaliasType kinds unaliasedTypes t, vp)
+      return (M.map unalias env, unaliasedTypes)
+
+-- |Type-check a Typed JavaScript program.  
+typeCheck :: [TJS.Statement SourcePos] -> IO Env
+typeCheck prog = do
+  domTypeEnv <- makeInitialEnv
+  (venv, tenv) <- loadCoreEnv domTypeEnv 
+  typeCheckWithGlobals venv (M.union domTypeEnv tenv) prog
+
 
 -- convenience function to make testing faster
 typeCheckWithGlobals :: Env -> Map String (Type) -> 
@@ -749,52 +798,3 @@ typeCheckWithGlobals venv tenv prog = do
                                               (envs, intraprocs)) 
                             (TypeCheckState G.empty M.empty tenv)
   return env
-
-loadCoreEnv :: Map String Type
-            -> IO (Env, Map String Type)
-loadCoreEnv env = do
-  let kinds = basicKinds
-  -- load the global environment from "core.js"
-  dir <- getDataDir
-  toplevels' <- parseFromFile (parseToplevels) (dir </> "core.tjs")
-  toplevels <- case toplevels' of
-    Left err -> fail $ "PARSE ERROR ON CORE.TJS: " ++ show err
-    Right tls -> return tls
-
-  let procTLs [] results = return results
-      procTLs ((TJS.ExternalStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
-        let t' = t -- t' <- unaliasType tenv kinds t
-        procTLs rest (M.insertWithKey 
-                        (\k n o -> error $ "already in venv: " ++ show k)
-                        s (Just (t', VPId s)) venv, tenv)
-      procTLs ((TJS.TypeStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
-        let t' = t -- t' <- unaliasType tenv kinds t
-        procTLs rest (venv, M.insertWithKey
-                              (\k n o -> error $ "already in tenv: " ++ show k)
-                              s t' tenv)
-  (env, types) <- procTLs toplevels (M.empty, env)
-
-  case checkTypeEnv kinds types of
-    Left s -> fail s
-    Right () -> do
-      let unaliasedTypes = unaliasTypeEnv kinds types
-      let unalias Nothing = Nothing -- strange
-          unalias (Just (t, vp)) = Just (unaliasType kinds unaliasedTypes t, vp)
-      return (M.map unalias env, unaliasedTypes)
-
--- |Type-check a Typed JavaScript program.  
-typeCheck :: [TJS.Statement SourcePos] -> IO Env
-typeCheck prog = do
-  domTypeEnv <- makeInitialEnv
-  (venv, tenv) <- loadCoreEnv domTypeEnv 
-  typeCheckWithGlobals venv (M.union domTypeEnv tenv) prog
-
-getType :: String -> IO Type
-getType name = do
-  domTypeEnv <- makeInitialEnv
-  (venv, tenv) <- loadCoreEnv domTypeEnv 
-  case M.lookup name tenv of
-    Just t -> return t
-    Nothing -> fail $ printf "getType: %s is not a type name" name
- 
-

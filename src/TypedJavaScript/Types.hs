@@ -21,6 +21,10 @@ module TypedJavaScript.Types
   , checkTypeEnv
   , unaliasTypeEnv
   , unaliasType
+  , Type (..)
+  , VP (..)
+  , TypeConstraint (..)
+  , LatentPred (..)
   ) where
 
 import Debug.Trace
@@ -172,7 +176,7 @@ unaliasType' kinds types type_ = case type_ of
     Nothing -> case M.lookup v types of
       -- BrownPLT.TypedJS.IntialEnvironment.bindingFromIDL maps interfaces 
       -- named v to the type (TRec v ...).
-      Just  t -> unaliasType' kinds types t
+      Just  t -> TEnvId v
       Nothing -> error $ printf "unaliasType' kindsTypeEnv: unbound type %s" v
   -- Stops infinite recursion
   TRec v t -> TRec v (unaliasType' (M.insert v KindStar kinds) types t)
@@ -291,20 +295,9 @@ substType var sub (TFunc args ret latentP) =
         latentP
 substType var sub (TObject fields) =
   TObject (map (\(v,t) -> (v,substType var sub t)) fields)
+substType var sub (TEnvId x) = TEnvId x -- this is most certainly wrong.
 substType _ _ (TRefined _ _) = error "substType TRefined NYI"
 
-applyType :: Monad m => SourcePos -> Type -> [Type] -> m (Type) -- TODO: ensure constraints
-applyType loc (TRefined x y) actuals = applyType loc y actuals
-applyType loc (TForall formals constraints body) actuals = do
-  unless (length formals == length actuals) $ do
-    fail $ printf "at %s: quantified type has %s vars but %s were supplied"
-            (show loc) (show (length formals)) (show (length actuals)) 
-  return $ foldr (uncurry substType) body (zip formals actuals)
-applyType loc t [] = return t
-applyType loc t actuals =
-  fail $ printf ("at %s: type %s is not quantified, but %s " ++ 
-                 " type arguments were supplied") (show t)
-                   (show (length actuals))
 
 
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
@@ -325,7 +318,7 @@ inferLit expr =
 --
 -- The functions that use this (gammaPlus, gammaMinux, unionTypeVP) may need
 -- to take an additional list of constraints.
-x <: y = isSubType [] x y
+x <: y = isSubType M.empty [] x y
 
 
 assert :: Bool -> Maybe ()
@@ -370,26 +363,37 @@ eq rel (t1, t2)
             eq rel (t1, t2)
       foldM prop (S.insert (t1, t2) rel) (zip props1 prop2)
     (TUnion ts1, t2) -> do
-      foldM (\rel t1 -> st rel (t1, t2)) rel ts1 -- all
+      foldM (\rel t1 -> st env rel (t1, t2)) rel ts1 -- all
     (t1, TUnion ts2) -> do
-      anyM (\rel t2 -> st rel (t1, t2)) rel ts2
+      anyM (\rel t2 -> st env rel (t1, t2)) rel ts2
     (t1, TRec v t2') -> do
-      st (S.insert (t1, t2) rel) (t1, substType v t2 t2')
+      st env (S.insert (t1, t2) rel) (t1, substType v t2 t2')
     (TRec v t1', t2) -> do
-      st (S.insert (t1, t2) rel) (substType v t1 t1', t2)
+      st env (S.insert (t1, t2) rel) (substType v t1 t1', t2)
     otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
 -}
 
---how to 'printf':      tmp <- seq (unsafePerformIO $ putStrLn $ "In the trec: " ++ show (t1,t2) ++ " -> " ++ show (t1, substType v t2 t2')) (return rel)
-
--- based on TAPL p.305
-st :: Set (Type, Type)
-   -> (Type, Type)
-   -> Maybe (Set (Type, Type))
-st rel (t1, t2)
+st :: Map String Type  -- ^type environment
+   -> Set (Type, Type) -- ^assumed subtypes
+   -> (Type, Type) -- ^we are checking if lhs <: rhs      
+   -> Maybe (Set (Type, Type)) -- ^returns an extended set of assumptions if
+                               -- ^lhs <: rhs
+st env rel (t1, t2)
   | (t1, t2) `S.member` rel = return rel
   | otherwise = do
    case (t1, t2) of
+    -- If x == y, then (env ! x) == (env ! y), so t1 <: t2
+    (TEnvId x, TEnvId y) | x == y -> return rel
+    -- However, if x != y, they may still be structurally equivalent.
+    (TEnvId x, _) -> case M.lookup x env of
+      Just t1' -> st env rel (t1', t2)
+      Nothing -> error $ printf "BrownPLT.TypedJS.Subtypes.st: TEnvId %s is \
+                                \not in the environment. TEnvId x <: t2" x
+    (_, TEnvId y) -> case M.lookup y env of
+      Just t2' -> st env rel (t1, t2')
+      Nothing -> error $ printf "BrownPLT.TypedJS.Subtypes.st: TEnvId %s is \
+                                \not in the environment. t1 <: TEnvId y" y
+
     (_, TAny) -> return (S.insert (t1, t2) rel)
     (TId "int", TId "double") -> return rel
     (_, TId "any") -> return rel
@@ -397,61 +401,63 @@ st rel (t1, t2)
       | x == y   -> return rel
       | otherwise -> fail $ printf "%s is not a subtype of %s" x y
     (TRefined declared1 refined1, TRefined declared2 refined2) ->
-      st (S.insert (t1, t2) rel) (refined1, declared2)
+      st env (S.insert (t1, t2) rel) (refined1, declared2)
     (TRefined declared refined, other) ->
-      st (S.insert (t1, t2) rel) (refined, other)
+      st env (S.insert (t1, t2) rel) (refined, other)
     (other, TRefined declared refined) -> 
-      st (S.insert (t1, t2) rel) (other, declared)
+      st env (S.insert (t1, t2) rel) (other, declared)
     (TApp c1 args1, TApp c2 args2) -> do
       assert (length args1 == length args2)
       -- assert (c1 == c2)
       -- assert (args1 == args2)
       -- return rel
-      rel <- st (S.insert (t1, t2) rel) (c1, c2)
-      foldM st rel (zip args1 args2) 
+      rel <- st env (S.insert (t1, t2) rel) (c1, c2)
+      foldM (st env) rel (zip args1 args2) 
     --temporary not-quite-good subtyping for vararity functions:
     (TSequence args1 Nothing, TSequence args2 Nothing) -> do
       assert (length args1 == length args2)
-      foldM st rel (zip args1 args2)
+      foldM (st env) rel (zip args1 args2)
     (TSequence args1 (Just v1), TSequence args2 (Just v2)) -> do
       assert (length args1 == length args2)
-      foldM st rel (zip (v1:args1) (v2:args2))
+      foldM (st env) rel (zip (v1:args1) (v2:args2))
     (TFunc args2 ret2 lp2, TFunc args1 ret1 lp1) -> do
       assert (lp1 == lp2 || lp1 == LPNone)
-      rel <- st (S.insert (t1, t2) rel) (ret2, ret1)
-      st rel (args1, args2)
+      rel <- st env (S.insert (t1, t2) rel) (ret2, ret1)
+      st env rel (args1, args2)
     (TForall ids1 tcs1 t1, TForall ids2 tcs2 t2) -> do
       assert (ids1 == ids2)
       assert (tcs1 == tcs2)
-      st (S.insert (t1, t2) rel) (t1, t2)
+      st env (S.insert (t1, t2) rel) (t1, t2)
     (TObject props1, TObject props2) -> do
       -- All of props2 must be in props1
       let prop rel (id2, t2) = do
             t1 <- lookup id2 props1
-            st rel (t1, t2)
+            st env rel (t1, t2)
       foldM prop (S.insert (t1, t2) rel) props2
     (t1, TRec v t2') -> do
-      rez <- st (S.insert (t1, t2) rel) (t1, substType v t2 t2')
+      rez <- st env (S.insert (t1, t2) rel) (t1, substType v t2 t2')
       return rez
     (TRec v t1', t2) -> do
-      rez <- st (S.insert (t1, t2) rel) (substType v t1 t1', t2)
+      rez <- st env (S.insert (t1, t2) rel) (substType v t1 t1', t2)
       return rez
     --special-case: arrays are subtypes of sequences.
     --eventually remove this once we make arrays actually sequences.
     (TApp (TId "Array") [arrt], TSequence [] (Just seqt)) -> do
-      st (S.insert (t1, t2) rel) (arrt, seqt)
+      st env (S.insert (t1, t2) rel) (arrt, seqt)
     (TSequence [] (Just seqt), TApp (TId "Array") [arrt]) -> do
-      st (S.insert (t1, t2) rel) (seqt, arrt)
+      st env (S.insert (t1, t2) rel) (seqt, arrt)
     (TUnion ts1, t2) -> do
-      foldM (\rel t1 -> st rel (t1, t2)) rel ts1 -- all
+      foldM (\rel t1 -> st env rel (t1, t2)) rel ts1 -- all
     (t1, TUnion ts2) -> do
-      anyM (\rel t2 -> st rel (t1, t2)) rel ts2
+      anyM (\rel t2 -> st env rel (t1, t2)) rel ts2
     otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
 
-isSubType :: [TypeConstraint] -> Type -> Type
+
+isSubType :: Map String Type
+          -> [TypeConstraint] -> Type -> Type
           -> Bool
-isSubType cs t1 t2 = result where
-  result = case st initial (t1, t2) of
+isSubType env cs t1 t2 = result where
+  result = case st env initial (t1, t2) of
     Just _ -> True
     Nothing -> False
   initial = S.fromList (map subtype cs)

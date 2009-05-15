@@ -83,6 +83,4 @@ makeInitialEnv = do
   let idlPaths = map (dataDir </>) idlFiles
   idls <- mapM IDL.parseIDLFromFile idlPaths
   let idl = removeInheritance (concat idls)
-  let toBind (v, t) = (v, Just (t, VPNone))
   return (M.fromList $ (map bindingFromIDL idl) ++ extras)
-  

@@ -8,6 +8,7 @@ import System.Exit
 import qualified Data.Graph.Inductive as G
 import qualified Data.GraphViz as GV
 
+import BrownPLT.TypedJS.InitialEnvironment
 import BrownPLT.JavaScript.Analysis
 import BrownPLT.JavaScript.Analysis.ANFPrettyPrint (prettyANF, prettyLit)
 import BrownPLT.JavaScript.Analysis.Intraprocedural
@@ -94,8 +95,11 @@ getAction (Graphs:args) = return (RequireInput action, args) where
     hPutStrLn stdout (show dot)
 getAction ((PrintType name):args) = return (NoInput action, args) where
   action = do
-    t <- getType name
-    putStrLn (renderType t)
+    domTypeEnv <- makeInitialEnv
+    (venv, tenv) <- loadCoreEnv domTypeEnv 
+    case M.lookup name tenv of
+      Just t -> putStrLn (renderType t)
+      Nothing -> fail $ printf "%s is not a type name" name
 getAction args = return (RequireInput action, args) where
   action prog = do
     typeCheck prog
