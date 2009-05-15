@@ -1,3 +1,7 @@
+Typed JavaScript
+================
+
+
 Coding Guidelines
 -----------------
 
@@ -8,4 +12,16 @@ blank lines:
 
 "Separate top-level function and class [sic.] definitions with two blank lines."
 
+Building and Testing
+--------------------
 
+> ./Setup.hs configure --user && ./Setup.hs build
+
+The command above builds the system in ./dist, configured to install to 
+$HOME/.cabal by default.  However, there is no need to install the typechecker.
+You can develop and test it in-place.
+
+> ./Setup.hs test
+
+This runs the test suite in-place.  You can add tests and re-run just this
+command.  However, if you modify the type-checker, you will need to rebuild.

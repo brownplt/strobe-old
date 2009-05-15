@@ -11,8 +11,11 @@
 --
 -- Note that there is a trailing ';' at the end of a list of tests.
 -- JavaScript-style comments are permitted in .test files.
-module TypeCheck where
+module Main where
 
+import Paths_TypedJavaScript (getDataDir)
+
+import System.FilePath
 import Text.ParserCombinators.Parsec
 import Test.HUnit
 import qualified Control.Exception as E
@@ -106,10 +109,11 @@ readTestFile venv tenv isSubTypeOf path = do
     Right tests -> return $ TestList tests
     
 main = do
-  testPaths <- getPathsWithExtension ".js" "type-check"
+  data_ <- getDataDir
+  testPaths <- getPathsWithExtension ".js" (data_ </> "tests" </> "type-check")
   domTypeEnv <- makeInitialEnv
   (venv, tenv) <- loadCoreEnv domTypeEnv
   let isSubTypeOf = isSubType tenv []
   testCases <- mapM (readTestFile venv (M.union domTypeEnv tenv) isSubTypeOf) 
                     testPaths
-  return (TestList testCases)
+  runTestTT (TestList testCases)
