@@ -229,6 +229,14 @@ stmt env ee cs rettype node s = do
       noop
     SeqStmt{} -> noop
     EmptyStmt _ -> noop
+
+    AssignStmt (_,p) v (Lit (ArrayLit _ [])) -> case M.lookup v env of
+      Just (Just (TApp (TId "Array") [t], _)) -> noop
+      Nothing -> fail $ printf "%s is unbound at %s" v (show p)
+      Just Nothing -> catastrophe p "ANF-generated empty array"
+      Just (Just (t, _)) -> 
+        typeError p (printf "[] is an array; given type: %s" (renderType t))
+
     AssignStmt (_,p) v e -> do
       (te,e_vp) <- expr env ee cs e
       case M.lookup v env of        

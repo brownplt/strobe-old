@@ -1,4 +1,8 @@
 function() :: (->) {
+  var x :: Array<int> = [ ];
+} @@ succeeds;
+
+function() :: (->) {
   var x :: Array<int> = [1, 2, 3, 4, 5];
   var y = x[23];
   var l = x.length;
