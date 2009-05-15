@@ -648,15 +648,12 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
                | otherwise -> do
                    let t' = map (unaliasType basicKinds tenv) t
                    return $ Just t'
-      functype' = head $ case M.lookup pos ee of
-                          --i think we get Nothing for the fake function
-                          --we pretend to wrap everything in when we're
-                          --type-checking. pretend that it exists!
-                          --TODO: make sure this doesn't break other stuff.
-                          Nothing ->
-                            [(TFunc [TObject [], TSequence [] Nothing]
-                                    (TId "undefined") LPNone)]
-                          Just xx -> xx
+      functype' = case M.lookup pos ee of
+        Just [t] -> t
+        Nothing -> error $ "uneraseEnv: no type for function at " ++ show pos
+        Just ts -> 
+          error $ printf "uneraseEnv: multiple types for the function at %s, \
+                         \types were %s" (show pos) (show ts)
   let functype = unaliasType basicKinds tenv functype'
   let Just (_, cs, types, vararg, rettype, lp) = deconstrFnType functype
       -- undefined for arguments

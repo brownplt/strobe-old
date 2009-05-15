@@ -36,12 +36,6 @@ unions :: [ErasedEnvTree] -> ErasedEnvTree
 unions et = foldr (+++) empty et
 
 
-buildErasedEnvTree :: [Statement SourcePos] -> ErasedEnvTree
-buildErasedEnvTree stmts = complete M.empty $ unions (map stmt stmts) where
-  complete enclosingEnv (Node env subtrees) =
-    let completeEnv = M.union env enclosingEnv -- left-biased, shadows correctly
-      in Node completeEnv (map (complete completeEnv) subtrees)
-
 proploc :: Prop SourcePos -> SourcePos
 proploc (PropId pos _) = pos
 proploc (PropString pos _) = pos
@@ -120,3 +114,18 @@ stmt s = case s of
   ReturnStmt _ e -> maybe empty expr e
   VarDeclStmt _ vars -> unions $ map vardecl vars
 
+
+buildErasedEnvTree :: [Statement SourcePos] -> ErasedEnvTree
+buildErasedEnvTree stmts = 
+  complete M.empty $ topLevel +++ unions (map stmt stmts) 
+  where complete enclosingEnv (Node env subtrees) =
+          let completeEnv = M.union env enclosingEnv
+            in Node completeEnv (map (complete completeEnv) subtrees)
+        -- The conversion to ANF wraps the program in 0-arity function.
+        -- The location of this function is (noPos "Intraprocedural.hs").
+        -- If the filename of the Typed JavaScript program is 
+        -- Intraprocedural.hs, this may be problematic.
+        topLevel = single (initialPos "Intraprocedural.hs")
+                          (TFunc [TObject [], TSequence [] Nothing] 
+                                 (TId "undefined")
+                                 LPNone)
