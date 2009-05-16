@@ -230,13 +230,20 @@ stmt env ee cs rettype node s = do
     SeqStmt{} -> noop
     EmptyStmt _ -> noop
 
+    -- x :: Array<t> = [ ]
     AssignStmt (_,p) v (Lit (ArrayLit _ [])) -> case M.lookup v env of
-      Just (Just (TApp (TId "Array") [t], _)) -> noop
-      Nothing -> fail $ printf "%s is unbound at %s" v (show p)
-      Just Nothing -> catastrophe p "ANF-generated empty array"
+      Just (Just (TApp (TId "Array") [t], _)) ->
+        noop
+      -- Usually caused by the arguments array of zero-arity functions.
+      Just Nothing -> do
+        let env' = M.insert v (Just (TSequence [] Nothing, VPNone)) env
+        return (zip (map fst succs) (repeat env'))
+      Nothing ->
+        fail $ printf "%s is unbound at %s" v (show p)
       Just (Just (t, _)) -> 
         typeError p (printf "[] is an array; given type: %s" (renderType t))
 
+    
     AssignStmt (_,p) v e -> do
       (te,e_vp) <- expr env ee cs e
       case M.lookup v env of        
@@ -261,6 +268,7 @@ stmt env ee cs rettype node s = do
               return $ zip (map fst succs) (repeat env')
          | otherwise -> 
              subtypeError p "AssignStmt" te t
+    
     DirectPropAssignStmt (_,p) obj prop e -> do
       (t_rhs, e_vp) <- expr env ee cs e
       case M.lookup obj env of
