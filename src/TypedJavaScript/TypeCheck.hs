@@ -187,7 +187,7 @@ forceEnvLookup loc env name = case M.lookup name env of
   Nothing -> 
     fail $ printf "at %s: identifier %s is unbound" (show loc) name
   Just Nothing -> 
-    fail $ printf "at %s: identifier %s is unbound" (show loc) name
+    fail $ printf "at %s: identifier %s is uninitialized" (show loc) name
   Just (Just t) -> return t
 
 assert :: Monad m => Bool -> String -> m ()
@@ -248,7 +248,7 @@ stmt env ee cs rettype node s = do
       (te,e_vp) <- expr env ee cs e
       case M.lookup v env of        
         Nothing -> --unbound id
-          fail $ printf "at %s: identifier %s is unbound" (show p) v
+          fail $ printf "at %s: id. %s is unbound" (show p) v
         Just Nothing -> do --ANF variable, or locally inferred variable
           let env' = M.insert v (Just (te, 
                                        VPMulti [VPId v, e_vp])) env
@@ -702,7 +702,7 @@ typeCheckProgram env enclosingKindEnv constraints
   -- their declared types.
   -- This handles mutually-recursive functions correctly.  
   unless (length subEes == length subGraphs) $
-    fail "CATASTROPHIC FAILURE: erased env and functions have different structures"
+    fail "CATASTROPHIC FAILURE: erased env and functions have different \                \structures"
   mapM_ (typeCheckProgram env' kindEnv cs') (zip subEes subGraphs)
   return topLevelEnv
 

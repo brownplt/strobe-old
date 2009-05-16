@@ -123,14 +123,16 @@ function (x) :: (double -> string) {
   return x;
 } @@ fails;
 
-//TODO: allow the following?
+// This is legal JavaScript, and our ANF transformation erases all traces of
+// it.  So, we permit it.
 function (x) :: (double -> string) {
   var y = "string1";
   var y = "stringy";
   return y;
-} @@ fails;
+} @@ succeeds;
+
 function (x) :: (double -> string) {
-  var x = x + 9; //TODO: this fails because of an unbound id error. WTF?
+  var x = x + 9;
   return x + "s";
 } @@ fails;
 
@@ -146,11 +148,21 @@ function (x) :: (double -> double) {
   return doit(f);
 } :: (double -> double);
 
-//variable interaction w/ nested functions, woooooo.
+
 function () :: (->) {
-  var x = 10;
+  var x :: int = 10;
   function zorro() :: (-> int) { return x; }
-} :: (->);
+} @@ succeeds;
+
+function () :: (->) {
+  var x = 10; // fails because the type is calculated
+  function zorro() :: (-> int) { return x; }
+} @@ succeeds;
+
+
+
+
+
 function () :: (->) {
   var x :: int = 10;
   function zorro() :: (-> int) { return x; }
@@ -160,6 +172,7 @@ function () :: (->) {
   zorro();
   var x = 10;
 } @@ fails;
+
 function () :: (->) {
   function zorro() :: (-> int) { return x; }
   zorro();
