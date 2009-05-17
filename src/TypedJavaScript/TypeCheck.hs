@@ -229,12 +229,13 @@ stmt env ee cs rettype node s = do
 
     
     AssignStmt (_,p) v e -> do
-      (te,e_vp) <- expr env ee cs e
+      (te',e_vp) <- expr env ee cs e
+      let te = unrestrict te'
       case M.lookup v env of        
         Nothing -> --unbound id
           fail $ printf "at %s: id. %s is unbound" (show p) v
         Just Nothing -> do --ANF variable, or locally inferred variable
-          let env' = M.insert v (Just (te, 
+          let env' = M.insert v (Just (te', 
                                        VPMulti [VPId v, e_vp])) env
           return $ zip (map fst succs) (repeat env')
         Just (Just (TRefined t _, vp)) | te <: t -> do
