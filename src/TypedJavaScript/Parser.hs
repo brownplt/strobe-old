@@ -66,6 +66,7 @@ typeConstraint = do
 {- The syntax for types is:
 
  type ::= identifier
+        | any
         | 'literal
         | type?
         | '[' type ']' type [,*] -> type?     ; explicit this
@@ -99,6 +100,7 @@ Disambiguation:
           | { id: type' [,* }
           | constr<type [,*]>
           | 'literal
+          | any
 
  -} 
 
@@ -185,7 +187,10 @@ type_'' =
       noDupFields fields
         | length (L.nub $ map fst fields) == length fields = return fields
         | otherwise = fail "duplicate fields in an object type specification"
-    in (parens type_) <|> (try union) <|> object <|> constrOrId
+      any = do
+        reserved "any"
+        return TAny
+    in (parens type_) <|> any <|> (try union) <|> object <|> constrOrId
 
 
 toANFLit :: Expression SourcePos -> ANF.Lit SourcePos

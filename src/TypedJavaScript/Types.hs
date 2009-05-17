@@ -345,7 +345,6 @@ st env rel (t1, t2)
 
     (_, TAny) -> return (S.insert (t1, t2) rel)
     (TId "int", TId "double") -> return rel
-    (_, TId "any") -> return rel
     (TId x, TId y) 
       | x == y   -> return rel
       | otherwise -> fail $ printf "%s is not a subtype of %s" x y

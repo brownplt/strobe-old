@@ -44,7 +44,6 @@ basicKinds = M.fromList
   , ("string", KindStar)
   , ("double", KindStar)
   , ("undefined", KindStar)
-  , ("any", KindStar)
   , ("Array", KindConstr [KindStar] KindStar)
   ]
 

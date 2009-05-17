@@ -26,3 +26,9 @@ function() :: (->) {
 	// we should use this assumption to check f.
   f();
 } @@ fails;
+
+function() :: (->) {
+  function bar() :: -> int { return x; }
+  bar();
+  var x :: int = 10;
+} @@ fails;
