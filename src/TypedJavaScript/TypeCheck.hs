@@ -76,6 +76,10 @@ nodeToStmt node = do
     Just stmt -> return stmt
     Nothing -> fail $ "nodeToStmt: not a node " ++ show node
 
+subtypeError loc msg  s t = 
+  fail $ printf "at %s: %s, expected subtype of %s, got %s" (show loc) msg
+                (renderType s) (renderType t)
+
 
 lookupLocalEnv :: G.Node -> TypeCheck Env
 lookupLocalEnv node = do
@@ -146,28 +150,6 @@ stmtForBody enclosingEnv erasedEnv constraints rettype node = do
   mapM_ updateLocalEnv succs
     
 
-subtypeError :: Monad m
-             => SourcePos -> String
-             -> Type -- ^expected
-             -> Type -- ^received
-             -> m a
-subtypeError loc func expected received =
-  fail $ printf "%s: at %s: expected subtype of %s, received %s" 
-                (show func) (show loc)
-                (show expected) (show received)
-
-typeError :: Monad m
-          => SourcePos
-          -> String
-          -> m a
-typeError loc msg = fail $ printf "at %s: %s" (show loc) msg
-
-catastrophe :: Monad m
-            => SourcePos
-            -> String
-            -> m a
-catastrophe loc msg =
-  fail $ printf "CATASTROPHIC FAILURE: %s (at %s)" msg (show loc)
 
 -- |Lookup a list of types in an erased-environment.  Signals a catastrophe if
 -- no such list exists.
@@ -225,7 +207,8 @@ stmt env ee cs rettype node s = do
       mapM_ assertReturn returns
       when (null returns && not (undefType <: rettype)) $ do
         liftIO $ putStrLn (show returns)
-        subtypeError p "no returns" undefType rettype
+        typeError p $ printf "no return value, return type is %s" 
+                             (renderType rettype)
       noop
     SeqStmt{} -> noop
     EmptyStmt _ -> noop
@@ -697,14 +680,14 @@ typeCheckProgram env enclosingKindEnv constraints
   let kindEnv = M.union (freeTypeVariables fnType) enclosingKindEnv
   checkDeclaredKinds kindEnv ee
   let cs' = cs ++ constraints
-  topLevelEnv <- body env' ee cs' rettype (enterNodeOf gr) (exitNodeOf gr)
+  localEnv <- body env' ee cs' rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descent into nested functions, we ensure that functions satisfy
   -- their declared types.
   -- This handles mutually-recursive functions correctly.  
   unless (length subEes == length subGraphs) $
     fail "CATASTROPHIC FAILURE: erased env and functions have different \                \structures"
-  mapM_ (typeCheckProgram env' kindEnv cs') (zip subEes subGraphs)
-  return topLevelEnv
+  mapM_ (typeCheckProgram localEnv kindEnv cs') (zip subEes subGraphs)
+  return localEnv
 
 
 resolveAliasesEE :: (MonadIO m) => KindEnv -> Map String Type

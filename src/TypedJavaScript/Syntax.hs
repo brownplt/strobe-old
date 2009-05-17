@@ -13,6 +13,7 @@ import BrownPLT.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..),
   PostfixOp (..))
 import BrownPLT.JavaScript.Analysis.ANF (Lit, eqLit)
 
+
 data JavaScript a
   -- |A script in <script> ... </script> tags.  This may seem a little silly,
   -- but the Flapjax analogue has an inline variant and attribute-inline 
