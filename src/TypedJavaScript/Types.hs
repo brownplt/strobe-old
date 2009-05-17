@@ -71,15 +71,14 @@ assertKinds kinds (t, k) = do
 
 checkKinds :: Map String Kind -> Type -> Either String Kind
 checkKinds kinds t = case t of
-  TApp t ts -> do
-    k <- checkKinds kinds t
-    case k of
-      KindConstr ks k 
-        | length ks == length ts -> do
-            mapM_ (assertKinds kinds) (zip ts ks)
-            return k
-        | otherwise -> fail "kind error (arg mismatch)"
-      KindStar -> fail "kind error (expected * ... -> *)"
+  TApp s ts -> case M.lookup s kinds of
+    Just (KindConstr ks k)
+      | length ks == length ts -> do
+          mapM_ (assertKinds kinds) (zip ts ks)
+          return k
+      | otherwise -> fail "kind error (arg mismatch)"
+    Just KindStar -> fail "kind error (expected * ... -> *)"
+    Nothing -> fail $ printf "undefined type constructor %s" s
   TFunc args result _ -> do
     mapM_ (assertKinds kinds) (zip args (repeat KindStar))
     assertKinds kinds (result, KindStar)
@@ -156,8 +155,7 @@ unaliasType kinds types type_ = case type_ of
    TFunc args' ret' lp
     where args' = map (unaliasType kinds types) args
           ret' = unaliasType kinds types ret
-  -- HACK: We do not allow constructors to be aliased.
-  TApp t ts -> TApp t (map (unaliasType kinds types) ts)
+  TApp s ts -> TApp s (map (unaliasType kinds types) ts)
   TUnion ts -> TUnion (map (unaliasType kinds types) ts)
   TRefined t1 t2 -> 
     TRefined (unaliasType kinds types t1) (unaliasType kinds types t2)
@@ -191,8 +189,7 @@ unaliasType' kinds types type_ = case type_ of
   TFunc args ret lp -> TFunc args' ret' lp
     where args' = map (unaliasType' kinds types) args
           ret' = unaliasType' kinds types ret
-  -- HACK: We do not allow constructors to be aliased.
-  TApp t ts -> TApp t (map (unaliasType' kinds types) ts)
+  TApp s ts -> TApp s (map (unaliasType' kinds types) ts)
   TUnion ts -> TUnion (map (unaliasType' kinds types) ts)
   TRefined t1 t2 -> 
     TRefined (unaliasType' kinds types t1) (unaliasType' kinds types t2)
@@ -325,48 +322,6 @@ anyM f a (b:bs) = case f a b of
   Nothing -> anyM f a bs
   Just a  -> return a
 
-{-
-eq :: Set (Type, Type)
-   -> (Type, Type)
-   -> Maybe (Set (Type, Type))
-eq rel (t1, t2)
-  | (t1, t2) `S.member` rel = return rel
-  | otherwise case (t1, t2) of
-    (TId x, TId y) 
-      | x == y   -> return rel
-      | otherwise -> fail $ printf "%s is not a subtype of %s" x y
-    (TRefined declared1 refined1, TRefined declared2 refined2) -> do
-      rel <- eq (S.insert (t1, t2) rel) refined1 refined2
-      eq rel declared1 declared2
-    (TApp c1 args1, TApp c2 args2) -> do
-      assert (length args1 == length args2)
-      rel <- eq (S.insert (t1, t2) rel) c1 c2
-      foldM eq rel (zip arg1 args2)
-    (TFunc req2 Nothing ret2 lp2, TFunc req1 Nothing ret1 lp1) -> do
-      assert (length req2 == length req1)
-      assert (lp1 == lp2)
-      rel <- eq (S.insert (t1, t2) rel) (ret2, ret1)
-      foldM eq rel (zip req1 req2)
-    (TForall ids1 tcs1 t1, TForall ids2 tcs2 t2) -> do
-      assert (ids1 == ids2)
-      assert (tcs1 == tcs2)
-      eq (S.insert (t1, t2) rel) (t1, t2)
-    (TObject _ props1, TObject _ props2) -> do
-      let prop rel ((id1, t1), (id2, t2)) = do
-            assert (id1 == id2)
-            eq rel (t1, t2)
-      foldM prop (S.insert (t1, t2) rel) (zip props1 prop2)
-    (TUnion ts1, t2) -> do
-      foldM (\rel t1 -> st env rel (t1, t2)) rel ts1 -- all
-    (t1, TUnion ts2) -> do
-      anyM (\rel t2 -> st env rel (t1, t2)) rel ts2
-    (t1, TRec v t2') -> do
-      st env (S.insert (t1, t2) rel) (t1, substType v t2 t2')
-    (TRec v t1', t2) -> do
-      st env (S.insert (t1, t2) rel) (substType v t1 t1', t2)
-    otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
--}
-
 st :: Map String Type  -- ^type environment
    -> Set (Type, Type) -- ^assumed subtypes
    -> (Type, Type) -- ^we are checking if lhs <: rhs      
@@ -402,10 +357,7 @@ st env rel (t1, t2)
       st env (S.insert (t1, t2) rel) (other, declared)
     (TApp c1 args1, TApp c2 args2) -> do
       assert (length args1 == length args2)
-      -- assert (c1 == c2)
-      -- assert (args1 == args2)
-      -- return rel
-      rel <- st env (S.insert (t1, t2) rel) (c1, c2)
+      assert (c1 == c2)
       foldM (st env) rel (zip args1 args2) 
     --temporary not-quite-good subtyping for vararity functions:
     (TSequence args1 Nothing, TSequence args2 Nothing) -> do
@@ -436,9 +388,9 @@ st env rel (t1, t2)
       return rez
     --special-case: arrays are subtypes of sequences.
     --eventually remove this once we make arrays actually sequences.
-    (TApp (TId "Array") [arrt], TSequence [] (Just seqt)) -> do
+    (TApp "Array" [arrt], TSequence [] (Just seqt)) -> do
       st env (S.insert (t1, t2) rel) (arrt, seqt)
-    (TSequence [] (Just seqt), TApp (TId "Array") [arrt]) -> do
+    (TSequence [] (Just seqt), TApp "Array" [arrt]) -> do
       st env (S.insert (t1, t2) rel) (seqt, arrt)
     (TUnion ts1, t2) -> do
       foldM (\rel t1 -> st env rel (t1, t2)) rel ts1 -- all

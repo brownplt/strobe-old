@@ -49,7 +49,7 @@ basicKinds = M.fromList
 
 basicConstraints :: [TypeConstraint]
 basicConstraints =
-  [ TCSubtype (TApp (TId "Array") [TAny])
+  [ TCSubtype (TApp "Array" [TAny])
               (TObject [("length", TId "int")])
   ]
 
@@ -215,7 +215,7 @@ stmt env ee cs rettype node s = do
 
     -- x :: Array<t> = [ ]
     AssignStmt (_,p) v (Lit (ArrayLit _ [])) -> case M.lookup v env of
-      Just (Just (TApp (TId "Array") [t], _)) ->
+      Just (Just (TApp "Array" [t], _)) ->
         noop
       -- Usually caused by the arguments array of zero-arity functions.
       Just Nothing -> do
@@ -272,7 +272,7 @@ stmt env ee cs rettype node s = do
     IndirectPropAssignStmt (_,p) obj method e -> do 
       (t_rhs, _) <- expr env ee cs e
       case (M.lookup obj env, M.lookup method env) of
-        (Just (Just (refined -> TApp (TId "Array") [t_elem], _)), 
+        (Just (Just (refined -> TApp "Array" [t_elem], _)), 
          Just (Just (t_prop, _)))
           | t_prop <: intType && t_rhs <: t_elem -> 
               noop
@@ -280,7 +280,7 @@ stmt env ee cs rettype node s = do
               subtypeError p "array insertion" t_rhs t_elem
           | otherwise -> do
               subtypeError p "array index not an integer" t_prop intType
-        (Just (Just (TApp (TId "Array") [t_elem], _)), Just Nothing) ->
+        (Just (Just (TApp "Array" [t_elem], _)), Just Nothing) ->
           typeError p (printf "index variable %s is undefined" method)
         z -> do
           liftIO $ putStrLn (show z)
@@ -474,7 +474,7 @@ expr env ee cs e = do
      unless (it <: intType) $ do
        subtypeError loc "obj[prop]" it intType
      case t of
-       TApp (TId "Array") [btype] -> return (btype, VPNone)
+       TApp "Array" [btype] -> return (btype, VPNone)
        _ -> fail $ printf "at %s: expected array, got %s" (show loc) (show t)
    OpExpr (_,p) f args_e -> do
      args <- mapM (expr env ee cs) args_e
@@ -502,7 +502,7 @@ expr env ee cs e = do
      case  (nub ts) of
        -- If we have a homogenous array, let the sequence type be a refinement
        -- of the simpler homogenous type.
-       [t] -> return (TRefined (TApp (TId "Array") [t]) resT, vp)
+       [t] -> return (TRefined (TApp "Array" [t]) resT, vp)
        otherwise -> return (resT, vp)
 
    Lit (ObjectLit (_, loc) props) -> do
@@ -646,7 +646,7 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
       -- undefined for arguments
   let (this:argsarray:types') = types ++ (case vararg of
         Nothing -> []
-        Just vt -> [TApp (TId "Array") [vt]])
+        Just vt -> [TApp "Array" [vt]])
   argtypes <- return $ zip (map fst args) (map Just (this:argsarray:types'))
   localtypes <- mapM (\(name,(_, pos)) -> do
                         t <- lookupEE pos name

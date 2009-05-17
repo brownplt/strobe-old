@@ -200,7 +200,7 @@ constrOrId = do
   id <- (identifier >>= \(Id _ id) -> return id)
   let constr = do
         args <- (angles $ type_' `sepBy` comma) <?> "type application"
-        return (TApp (TId id) args)
+        return (TApp id args)
   constr <|> (return (TId id))
 
 field :: CharParser st (String, Type)

@@ -56,12 +56,12 @@ type_ t = case t of
               TSequence _ (Just t') -> comma <+> arg t' <+> text "..."
               -- We ignore the case where arguments is not a TSequence.
               otherwise -> empty 
-
+  TEnvId s -> text "*" <> text s <> text "*"
   TSequence ts opt -> brackets $ (commas (map type_ ts)) <> optional
     where optional = case opt of
             Nothing -> empty
             Just t -> text "," <+> type_ t <+> text "..."
-  TApp t ts -> type_ t <> text "<" <> commas (map type_ ts) <> text ">"
+  TApp s ts -> text s <> text "<" <> commas (map type_ ts) <> text ">"
   TAny -> text "any"
   TRec id t -> hang (text "rec" <+> text id <+> text ".") 2 (type_ t)
   TObject fields -> braces (nest 2 $ commas (map field fields))

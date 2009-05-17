@@ -39,7 +39,7 @@ data Type
           Type {- ret type -}
           LatentPred {- latent predicate -} 
   | TId String -- identifier bound by a TForall or a TRec
-  | TApp Type [Type]
+  | TApp String [Type]
   | TUnion [Type]
   | TForall [String] [TypeConstraint] Type
   -- | TIndex Type Type String --obj[x] --> TIndex <obj> <x> "x"

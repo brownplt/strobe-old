@@ -34,9 +34,9 @@ toContract (TId id) =
 -- TODO: This should not be hard-coded.  Fix  when we enable
 -- user-defined types. Also add nullable contract.
 toContract (TApp constr args) = case (constr,args) of
-  (TId "bool",[]) -> NamedContract pos "isBool"
-  (TId "int",[]) -> NamedContract pos "isInt"
-  (TId "string",[]) -> NamedContract pos "isString"
+  ("bool",[]) -> NamedContract pos "isBool"
+  ("int",[]) -> NamedContract pos "isInt"
+  ("string",[]) -> NamedContract pos "isString"
   (constr,args) -> error $ "toContract does not know " ++  show (constr,args)
 --toContract (TNullable pos t) = FlatContract pos JavaScript
 toContract x = error $ "toContract does not handle " ++ show x
