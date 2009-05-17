@@ -15,6 +15,7 @@ module Main where
 
 import Paths_TypedJavaScript (getDataDir)
 
+import System.Environment
 import System.FilePath
 import Text.ParserCombinators.Parsec
 import Test.HUnit
@@ -108,9 +109,18 @@ readTestFile venv tenv isSubTypeOf path = do
     Left err -> return $ TestCase (assertFailure (show err))
     Right tests -> return $ TestList tests
     
-main = do
+
+getTestPaths :: IO [String]
+getTestPaths = do
   data_ <- getDataDir
-  testPaths <- getPathsWithExtension ".js" (data_ </> "tests" </> "type-check")
+  args <- getArgs
+  case args of
+    [] -> getPathsWithExtension ".js" (data_ </> "tests" </> "type-check")
+    otherwise -> return $ map ((data_ </> "tests" </> "type-check") </>) args
+
+
+main = do
+  testPaths <- getTestPaths
   domTypeEnv <- makeInitialEnv
   (venv, tenv) <- loadCoreEnv domTypeEnv
   let isSubTypeOf = isSubType tenv []

@@ -20,10 +20,12 @@ import BrownPLT.JavaScript.Analysis.ANFPrettyPrint
 import TypedJavaScript.ErasedEnvTree
 import TypedJavaScript.TypeErasure
 import BrownPLT.TypedJS.InitialEnvironment
+import BrownPLT.TypedJS.TypeFunctions
 
 import Paths_TypedJavaScript
 import Text.ParserCombinators.Parsec (parseFromFile)
 import TypedJavaScript.Parser (parseToplevels)
+
 
 import System.Directory
 import System.FilePath
@@ -680,12 +682,13 @@ typeCheckProgram env enclosingKindEnv constraints
   let kindEnv = M.union (freeTypeVariables fnType) enclosingKindEnv
   checkDeclaredKinds kindEnv ee
   let cs' = cs ++ constraints
-  localEnv <- body env' ee cs' rettype (enterNodeOf gr) (exitNodeOf gr)
+  finalEnv <- body env' ee cs' rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descent into nested functions, we ensure that functions satisfy
   -- their declared types.
   -- This handles mutually-recursive functions correctly.  
   unless (length subEes == length subGraphs) $
     fail "CATASTROPHIC FAILURE: erased env and functions have different \                \structures"
+  let localEnv = unrestrictEnv finalEnv
   mapM_ (typeCheckProgram localEnv kindEnv cs') (zip subEes subGraphs)
   return localEnv
 
