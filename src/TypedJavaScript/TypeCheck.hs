@@ -250,8 +250,9 @@ stmt env ee cs rettype node s = do
                                            VPMulti [VPId v, v_vp])) 
                                   env
               return $ zip (map fst succs) (repeat env')
-         | otherwise -> 
-             subtypeError p "AssignStmt" te t
+         | otherwise -> typeError p $
+             printf "assigning to %s :: %s; given an expression of type %s"
+                    v (renderType t) (renderType te)
     
     DirectPropAssignStmt (_,p) obj prop e -> do
       (t_rhs, e_vp) <- expr env ee cs e
