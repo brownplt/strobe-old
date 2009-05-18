@@ -128,6 +128,7 @@ type_ = do
         let vararity = do
               reservedOp "..."
               reservedOp "->"
+              p' <- getPosition
               r <- type_ <|> (return Types.undefType)
               let arguments = TSequence (L.init ts) (Just (L.last ts))
               return (TFunc (thisType:arguments:ts) r (LPNone))

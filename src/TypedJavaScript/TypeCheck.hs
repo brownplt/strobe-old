@@ -346,9 +346,8 @@ stmt env ee cs rettype node s = do
             let formals = case vararg of
                             Nothing -> formals'
                             Just vt -> formals' ++ 
-                              take (length actuals - length formals') 
-                                   (repeat (apply vt))
-
+                              (take (length actuals - length formals') 
+                                    (repeat (apply vt)))
             let (supplied, missing) = splitAt (length actuals) formals
             when (length actuals > length formals) $ do
               typeError p (printf "function expects %d arguments, but %d \
@@ -357,7 +356,9 @@ stmt env ee cs rettype node s = do
             let checkArg (actual,formal) = do
                   unless (actual <: formal) $ do
                     subtypeError p "function call arguments" formal actual
-            mapM_ checkArg (zip actuals supplied)
+            let (athis:aargs:areals) = actuals
+            let (sthis:sargs:sreals) = supplied
+            mapM_ checkArg (zip (athis:areals) (sthis:sreals))
             let checkMissingArg actual = do
                   unless (undefType <: actual) $
                     typeError p (printf "non-null argument %s not supplied"
@@ -539,7 +540,7 @@ expr env ee cs e = do
                               t)
          | otherwise -> typeError p $ 
              printf "argument number mismatch in funclit: %s args named, but \
-                    \ %s in the type:%s\n%s\n"
+                    \%s in the type:%s\n%s\n"
                (show (length args - 2)) (show (length argTypes - 2))
                (renderType t) (show $ map renderType argTypes)
        Nothing -> typeError p $ printf "not a function type: %s" (renderType t)

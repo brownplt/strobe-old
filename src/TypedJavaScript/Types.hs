@@ -326,13 +326,64 @@ st env rel (t1, t2)
       assert (length args1 == length args2)
       assert (c1 == c2)
       foldM (st env) rel (zip args1 args2) 
-    --temporary not-quite-good subtyping for vararity functions:
-    (TSequence args1 Nothing, TSequence args2 Nothing) -> do
-      assert (length args1 == length args2)
-      foldM (st env) rel (zip args1 args2)
-    (TSequence args1 (Just v1), TSequence args2 (Just v2)) -> do
-      assert (length args1 == length args2)
-      foldM (st env) rel (zip (v1:args1) (v2:args2))
+    --TSequence sub-typing was figured out based on what might make
+    --sense with some kind of assignment, combined with some function
+    --calling logic, maybe. not sure if that makes full sense, yet.
+
+{-    
+            let formals = case vararg of
+                            Nothing -> formals'
+                            Just vt -> formals' ++ 
+                              take (length actuals - length formals') 
+                                   (repeat (apply vt))
+
+            let (supplied, missing) = splitAt (length actuals) formals
+            when (length actuals > length formals) $ do
+              typeError p (printf "function expects %d arguments, but %d \
+                                  \were supplied" (length formals)
+                                  (length actuals))
+            let checkArg (actual,formal) = do
+                  unless (actual <: formal) $ do
+                    subtypeError p "function call arguments" formal actual
+            mapM_ checkArg (zip actuals supplied)
+            let checkMissingArg actual = do
+                  unless (undefType <: actual) $
+                    typeError p (printf "non-null argument %s not supplied"
+                                        (show actual))
+            mapM_ checkMissingArg missing -}
+    
+    (TSequence args1 vararg, TSequence args2 Nothing) -> do
+      --assuming "t2 = t1":
+      
+      --it's fine if t1 is bigger, since the ones the lhs can access
+      --will still work. might change this for func calls later.  but
+      --we can never give it less, because then args2 could assign
+      --into stuff that doesn't exist for args1.  this wouldn't
+      --actually break anything in JS, since we don't have arrays of
+      --limited size, so maybe this should be changed.
+      --bug if args1 has varargs, they should repeat to fill the gap.
+      let args2' = case vararg of
+                     Nothing -> args1
+                     Just vt -> args1 ++ (take (length args2 - length args1)
+                                               (repeat vt))
+
+      foldM (st env) rel (zip args1 args2')
+    (TSequence args1 Nothing, TSequence args2 (Just vararg2)) -> do
+      Nothing --fail, since args2 could access more than args1 has(?)
+    (TSequence args1 (Just vararg1), TSequence args2 (Just vararg2)) -> do
+      --TODO: add test cases for this case
+      --check everything up to the varargs:
+      let (args1', args2')
+            | length args1 >= length args2 = 
+                (args1, args2 ++ (take (length args1 - length args2)
+                                       (repeat vararg2)))
+            | otherwise = 
+                (args1 ++ (take (length args2 - length args1)
+                                (repeat vararg1)), args2)      
+      rel' <- foldM (st env) (S.insert (t1, t2) rel) (zip args1' args2')
+      --now check the varargs
+      st env rel' (vararg1, vararg2)
+
     (TFunc args2 ret2 lp2, TFunc args1 ret1 lp1) -> do
       assert (lp1 == lp2 || lp1 == LPNone)
       rel <- st env (S.insert (t1, t2) rel) (ret2, ret1)
