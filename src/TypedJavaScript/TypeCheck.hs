@@ -271,16 +271,14 @@ stmt env ee cs rettype node s = do
           TObject props -> case lookup prop props of
             Nothing -> 
               typeError p (printf "object does not have the property %s" prop)
-            Just t' | isUnion tDec -> typeError p $ 
+            Just t' | isUnion t' -> typeError p $ 
                         printf "cannot mutate to a union field"
                     | isObject t' -> typeError p $
                         printf "cannot mutate the field %s :: %s"
                                prop (renderType t')
                     | t_rhs <: t' -> noop -- TODO: affect VP?
                     | otherwise -> 
-                        typeError p $ printf
-                          "%s.%s = ... the field has type %s, but the RHS has \
-                          \type %s" obj prop (renderType t') (renderType t_rhs)
+                        subtypeError p "assignment to property" t_rhs t'
           t' -> typeError p (printf "expected object, received %s" (show t'))
           
     IndirectPropAssignStmt (_,p) obj method e -> do 

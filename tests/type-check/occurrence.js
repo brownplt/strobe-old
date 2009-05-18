@@ -301,22 +301,23 @@ function () :: (-> int) {
   (function() :: (->) { y = "HAHAHA"; })();
   return y;
 } @@ fails;
-//but not too restrictive plz
+
+//pathological example that no one cares about:
 function () :: (-> int) {
   var y :: U(int, string) = 4;
   var z :: U(int, string) = 19;
   (function() :: (->) { z = "HAHAHA"; })();
   return y;
-} :: (-> int);
+} @@ fails;
 
 
 function() :: (->) {
   var x :: U(int, string, bool) = "hello";
-  var y :: string = 
+  var y :: string =
     (typeof ((typeof x == "number") ? "x is a number" : x) == "boolean")
       ? "x is a boolean"
       : x;
-    
+
 } @@ succeeds;
 
 

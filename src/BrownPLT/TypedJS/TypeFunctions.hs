@@ -14,7 +14,7 @@ import TypedJavaScript.Types
 
 globalizeEnv :: Env -> Env
 globalizeEnv env = M.map f env
-  where f (Just (t1, t2, _, vp)) = Just (t1, t2, False, vp)
+  where f (Just (t1, _, _, vp)) = Just (t1, t1, False, vp)
         f Nothing = Nothing
         
 
