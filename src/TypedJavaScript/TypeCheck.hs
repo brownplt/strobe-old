@@ -559,24 +559,27 @@ operator cs loc op argsvp = do
   let lvp = vps !! 0
       rvp = vps !! 1                      
   let cmp = do
-        unless ((lhs == stringType && rhs == stringType) ||
-                ((lhs == doubleType || lhs == intType) && 
-                 (rhs == doubleType || rhs == intType))) $ do
+        unless ((lhs <: stringType && rhs <: stringType) ||
+                ((lhs <: doubleType || lhs <: intType) && 
+                 (rhs <: doubleType || rhs <: intType))) $ do
           typeError loc (printf "can only compare numbers and strings")
         return $ novp boolType
   let numeric requireInts returnDouble = do
         let result = if returnDouble 
                        then return (novp doubleType)
-                       else return $ novp (if lhs == intType then rhs else lhs)
+                       else return $ novp (if lhs <: intType then rhs else lhs)
         case requireInts of
           True -> do
-            unless (lhs == intType && rhs == intType) $
-              typeError loc $ printf "operator expects int arguments"
+            unless (lhs <: intType && rhs <: intType) $
+              typeError loc $ printf "operator expects int arguments, given %s \
+                                     \and %s" (renderType lhs) (renderType rhs)
             result
           False -> do
-            unless  ((lhs == intType || lhs == doubleType) ||
-                     (rhs == intType || rhs == doubleType)) $
-              typeError loc $ printf "operator expects double/int arguments"
+            unless  ((lhs <: intType || lhs <: doubleType) &&
+                     (rhs <: intType || rhs <: doubleType)) $
+              typeError loc $ printf "operator expects double/int arguments, \
+                                     \given %s and %s" (renderType lhs)
+                                     (renderType rhs)
             result
   case op of
     OpLT -> cmp
@@ -609,10 +612,10 @@ operator cs loc op argsvp = do
       case lvp of
         VPNot v -> return (boolType, v)
         v -> return (boolType, VPNot v)
-    PrefixBNot | lhs == intType -> return (novp intType)
+    PrefixBNot | lhs <: intType -> return (novp intType)
                | otherwise -> subtypeError loc "!expr" lhs intType
-    PrefixMinus | lhs == doubleType -> return (novp lhs)
-	              | lhs == intType -> return (novp lhs)
+    PrefixMinus | lhs <: doubleType -> return (novp lhs)
+	              | lhs <: intType -> return (novp lhs)
                 | otherwise -> typeError loc "prefix - expects int/double"
     PrefixVoid -> do
       catastrophe loc (printf "void has been removed")

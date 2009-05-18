@@ -326,7 +326,7 @@ st env rel (t1, t2)
       Just t2' -> st env rel (t1, t2')
       Nothing -> error $ printf "BrownPLT.TypedJS.Subtypes.st: TEnvId %s is \
                                 \not in the environment. t1 <: TEnvId y" y
-
+    (TId "int", TId "double") -> return rel
     (_, TAny) -> return (S.insert (t1, t2) rel)
     (TId x, TId y) 
       | x == y   -> return rel
@@ -437,13 +437,14 @@ flattenUnion  t = t
 
 
 -- Helpers for occurrence typing, from TypedScheme paper
-restrict :: (Type) -> (Type) -> (Type)
+restrict :: Type -> Type -> Type
 restrict (TRefined main ref) t = case restrict ref t of
   TRefined _ reallyrefined -> TRefined main reallyrefined
   reallyrefined -> TRefined main reallyrefined
 restrict s t
- | s <: t = s
+ | s <: t = s -- usually, t <: s, so we do some work during restriction
  | otherwise = case t of
+     
      --TODO: make sure TRefined-ness deals well with the following case:
      TUnion ts -> flattenUnion $ 
                         TUnion (map (restrict s) ts)
