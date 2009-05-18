@@ -74,7 +74,6 @@ type_ t = case t of
       where constraintsDoc = case cs of
               [] -> empty
               otherwise -> text ":" <+> commas (map typeConstraint cs)
-  TRefined t1 t2 -> text "TRefined" <+> parens (type_ t1) <+> parens (type_ t2)
 
 
 id :: Id a -> Doc

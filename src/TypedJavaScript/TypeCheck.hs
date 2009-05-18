@@ -101,14 +101,6 @@ enterNodeOf gr = fst (G.nodeRange gr)
 exitNodeOf :: Graph -> G.Node
 exitNodeOf gr = snd (G.nodeRange gr)
 
--- |An environment conventially maps names to types.  However, our environments
--- also include visible-predicates and identifiers whose types have to be
--- inferred
-conventionalEnv :: Env -> Map String Type
-conventionalEnv env = M.fromList $ catMaybes $ map maybeInclude (M.toList env)
-  where maybeInclude (name, Nothing) = Nothing
-        maybeInclude (name, Just (type_, vp)) = Just (name, type_)
-
 body :: Env
      -> ErasedEnv
      -> [TypeConstraint]
@@ -125,7 +117,6 @@ body env ee constraints rettype enterNode exitNode = do
   -- Enter has no predecessors
   unless (null $ G.pre gr enterNode) $
     fail $ "Unexpected edges into  " ++ show (G.lab gr enterNode)
-    
 
   let (nodes,removedEdges) = topologicalOrder gr enterNode
 
@@ -133,7 +124,7 @@ body env ee constraints rettype enterNode exitNode = do
 
   finalLocalEnv <- lookupLocalEnv (exitNodeOf gr)
   return finalLocalEnv
-  -- TODO: account for removedEdges
+
 
 stmtForBody :: Env -- ^environment of the enclosing function for a nested
                    -- function, or the globals for a top-level statement or
@@ -165,7 +156,7 @@ forceLookupMultiErasedEnv ee p = case M.lookup p ee of
 
 
 forceEnvLookup :: Monad m
-               => SourcePos -> Env -> Id -> m (Type, VP)
+               => SourcePos -> Env -> Id -> m (Type, Type, Bool, VP)
 forceEnvLookup loc env name = case M.lookup name env of
   Nothing -> 
     fail $ printf "at %s: identifier %s is unbound" (show loc) name
@@ -177,6 +168,38 @@ assert :: Monad m => Bool -> String -> m ()
 assert True _ = return ()
 assert False msg = fail ("CATASPROPHIC FAILURE: " ++  msg)
 
+doAssignment :: (Monad m) => (Type -> Type -> Bool)
+             -> SourcePos -> Env -> Id -> Type -> VP -> m Env
+doAssignment (<:) p env v te e_vp = case M.lookup v env of        
+  Nothing -> --unbound id
+    fail $ printf "at %s: id. %s is unbound" (show p) v
+  Just Nothing -> do --ANF variable, or locally inferred variable
+    return $ M.insert v (Just (te, te, True,
+                               VPMulti [VPId v, e_vp])) env
+  Just (Just (tDec, tAct, True, v_vp)) --local variable
+    | te <: tDec ->  do
+        -- TODO: remove, from environment, any VP referring to this var!
+        let env' = M.insert v (Just (tDec, te, True,
+                                     VPMulti [VPId v, v_vp])) 
+                            env
+        return env'
+   | otherwise -> typeError p $
+       printf "assigning to %s :: %s; given an expression of type %s"
+              v (renderType tDec) (renderType te)
+
+  Just (Just (tDec, tAct, False, v_vp)) --global var
+    | isUnion tDec -> typeError p $ 
+        printf "cannot assign to global union %s :: %s"
+               v (renderType tDec)
+    | te <: tDec ->  do
+        -- TODO: remove, from environment, any VP referring to this var!
+        let env' = M.insert v (Just (tDec, te, False,
+                                     VPMulti [VPId v, v_vp])) 
+                            env
+        return env'
+   | otherwise -> typeError p $
+       printf "assigning to %s :: %s; given an expression of type %s"
+              v (renderType tDec) (renderType te)
 
 stmt :: Env -- ^the environment in which to type-check this statement
      -> ErasedEnv
@@ -216,45 +239,25 @@ stmt env ee cs rettype node s = do
 
     -- x :: Array<t> = [ ]
     AssignStmt (_,p) v (Lit (ArrayLit _ [])) -> case M.lookup v env of
-      Just (Just (TApp "Array" [t], _)) ->
+      Just (Just (_, TApp "Array" [t], _, _)) ->
         noop
       -- Usually caused by the arguments array of zero-arity functions.
       Just Nothing -> do
-        let env' = M.insert v (Just (TSequence [] Nothing, VPNone)) env
+        let env' = M.insert v 
+                     (Just (TSequence [] Nothing, TSequence [] Nothing, 
+                            True, VPNone)) env
         return (zip (map fst succs) (repeat env'))
       Nothing ->
         fail $ printf "%s is unbound at %s" v (show p)
-      Just (Just (t, _)) -> 
+      Just (Just (_, t, _, _)) -> 
         typeError p (printf "[] is an array; given type: %s" (renderType t))
-
     
     AssignStmt (_,p) v e -> do
-      (te',e_vp) <- expr env ee cs e
-      let te = unrestrict te'
-      case M.lookup v env of        
-        Nothing -> --unbound id
-          fail $ printf "at %s: id. %s is unbound" (show p) v
-        Just Nothing -> do --ANF variable, or locally inferred variable
-          let env' = M.insert v (Just (te', 
-                                       VPMulti [VPId v, e_vp])) env
-          return $ zip (map fst succs) (repeat env')
-        Just (Just (TRefined t _, vp)) | te <: t -> do
-          -- If the LHS has been refined, we can "revert" to its declared
-          -- type.
-          let env' = M.insert v (Just ((TRefined t te), VPMulti [VPId v, vp]))
-                              env
-          return $ zip (map fst succs) (repeat env')
-        Just (Just (t, v_vp)) 
-          | te <: t ->  do
-              -- TODO: remove, from environment, any VP referring to this var!
-              let env' = M.insert v (Just (TRefined t te, 
-                                           VPMulti [VPId v, v_vp])) 
-                                  env
-              return $ zip (map fst succs) (repeat env')
-         | otherwise -> typeError p $
-             printf "assigning to %s :: %s; given an expression of type %s"
-                    v (renderType t) (renderType te)
-    
+      (te,e_vp) <- expr env ee cs e
+      env' <- doAssignment (<:) p env v te e_vp
+      return $ zip (map fst succs) (repeat env')
+
+    -- THE FOLLOWING IS MUTATION!!! WARNING!!! CHIDLREN WILL GET HRUT
     DirectPropAssignStmt (_,p) obj prop e -> do
       (t_rhs, e_vp) <- expr env ee cs e
       case M.lookup obj env of
@@ -264,26 +267,35 @@ stmt env ee cs rettype node s = do
           -- Variable is in scope but is yet to be defined.
           fail $ printf "at %s: can't assign to obj %s; has no type yet"
                    (show p) obj
-        Just (Just (t, vp)) -> case unRec (refined t) of
+        Just (Just (tDec, tAct, isLocal, vp)) -> case unRec tAct of
           TObject props -> case lookup prop props of
             Nothing -> 
               typeError p (printf "object does not have the property %s" prop)
-            Just t' | t_rhs <: t' -> noop -- TODO: affect VP?
+            Just t' | isUnion tDec -> typeError p $ 
+                        printf "cannot mutate to a union field"
+                    | isObject tDec -> typeError p $
+                        printf "cannot mutate to an object field"
+                    | t_rhs <: t' -> noop -- TODO: affect VP?
                     | otherwise -> 
                         subtypeError p "assignment to property" t_rhs t'
           t' -> typeError p (printf "expected object, received %s" (show t'))
+          
     IndirectPropAssignStmt (_,p) obj method e -> do 
       (t_rhs, _) <- expr env ee cs e
       case (M.lookup obj env, M.lookup method env) of
-        (Just (Just (refined -> TApp "Array" [t_elem], _)), 
-         Just (Just (t_prop, _)))
+        (Just (Just (_, TApp "Array" [t_elem], isLocal, _)), 
+         Just (Just (_, t_prop, _, _)))
+          | isUnion t_elem -> typeError p $
+              printf "cannot mutate to a union element of an array"
+          | isObject t_elem -> typeError p $
+              printf "cannot mutate to an object element of an array"
           | t_prop <: intType && t_rhs <: t_elem -> 
               noop
           | t_prop <: stringType ->
               subtypeError p "array insertion" t_rhs t_elem
           | otherwise -> do
               subtypeError p "array index not an integer" t_prop intType
-        (Just (Just (TApp "Array" [t_elem], _)), Just Nothing) ->
+        (Just (Just (_, TApp "Array" [t_elem], _, _)), Just Nothing) ->
           typeError p (printf "index variable %s is undefined" method)
         z -> do
           liftIO $ putStrLn (show z)
@@ -291,12 +303,11 @@ stmt env ee cs rettype node s = do
     DeleteStmt _ r del -> fail "delete NYI"
     NewStmt{} -> fail "NewStmt will be removed from ANF"
     CallStmt (_,p) r_v f_v args_v -> do
-        (f'', f_vp) <- forceEnvLookup p env f_v
+        (_, f, f_isLocal, f_vp) <- forceEnvLookup p env f_v
         -- explicitly instantiated type-variables when calling polymorphic
         -- functions
         insts <- forceLookupMultiErasedEnv ee p
-        let f = refined f''
-        actualsWithVP' <- liftM (map (\(t, vp) -> (t, vp)))
+        actualsWithVP' <- liftM (map (\(_, t, _, vp) -> (t, vp)))
                                 (mapM (forceEnvLookup p env) args_v)
         let (this':arguments:actuals', actuals_vps) = unzip actualsWithVP'
         this <- dotrefContext this' --motivation: if 'this' is a
@@ -366,24 +377,9 @@ stmt env ee cs rettype node s = do
                 
             -- For call statements, we must ensure that the result type is
             -- a subtype of the named result.
-            case M.lookup r_v env of
-              Nothing -> catastrophe p (printf "result %s is unbound" r_v)
-              Just Nothing -> do --ANF, or type-infer
-                let env' = M.insert r_v (Just (r, r_vp)) env
-                return $ zip (map fst succs) (repeat env')
-              Just (Just (TRefined r_vt _, vp))
-                | r <: r_vt -> do
-                    let env' = M.insert r_v (Just (TRefined r_vt r,
-                                                   VPMulti [VPId r_v, r_vp]))
-                                            env
-                    return $ zip (map fst succs) (repeat env')
-              Just (Just (r_vt, r_vp)) 
-                | r <: r_vt -> do
-                    let env' = M.insert r_v (Just (TRefined r_vt r,
-                                                   VPMulti [VPId r_v, r_vp]))
-                                            env
-                    return $ zip (map fst succs) (repeat env')
-                | otherwise -> subtypeError p "CallStmt retval" r_vt r
+            env' <- doAssignment (<:) p env r_v r r_vp
+            return $ zip (map fst succs) (repeat env')
+
     IfStmt (_, p) e s1 s2 -> do
       (t, vp) <- expr env ee cs e -- this permits non-boolean tests
       assert (length succs == 2) "IfStmt should have two successors"
@@ -447,14 +443,14 @@ expr env ee cs e = do
   let tenv = stateTypeEnv state
   case e of 
    VarRef (_,p) id -> do
-     (t, vp) <- forceEnvLookup p env id
+     (tDec, tAct, b, vp) <- forceEnvLookup p env id
      case vp of
-       VPNone -> return (t, VPId id)
-       _      -> return (t, VPMulti [VPId id, vp])
+       VPNone -> return (tAct, VPId id)
+       _      -> return (tAct, VPMulti [VPId id, vp])
    DotRef (_, loc) e p -> do
      --I'm uneasy about needing all of the following 3 lines
      (t'', _) <- expr env ee cs e
-     t' <- dotrefContext (unRec (refined t''))
+     t' <- dotrefContext (unRec t'')
      let t = unConstraint (unRec t')
      case t of
        TObject props -> case lookup p props of
@@ -466,11 +462,11 @@ expr env ee cs e = do
                                           
    BracketRef (_, loc) e ie -> do
      (t'', _) <- expr env ee cs e
-     t' <- dotrefContext (unRec (refined t''))
+     t' <- dotrefContext (unRec t'')
      let t = unRec t'
      (it', _) <- expr env ee cs ie
-     let it = unRec (refined it')
-     unless (it <: intType) $ do
+     let it = unRec it'
+     when (not (it <: intType)) $ do
        subtypeError loc "obj[prop]" it intType
      case t of
        TApp "Array" [btype] -> return (btype, VPNone)
@@ -494,14 +490,14 @@ expr env ee cs e = do
    Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
    Lit (ArrayLit (_,p) es) -> do
      r <- mapM (expr env ee cs) es
-     let ts = (map (refined . fst) r)
+     let ts = map fst r
      let resT = (TSequence ts Nothing)
      let vp = VPLit (ArrayLit p (error "dont look inside VP arraylit"))
                     resT
-     case  (nub ts) of
+     case (nub ts) of
        -- If we have a homogenous array, let the sequence type be a refinement
        -- of the simpler homogenous type.
-       [t] -> return (TRefined (TApp "Array" [t]) resT, vp)
+       [t] -> return (resT, vp)
        otherwise -> return (resT, vp)
 
    Lit (ObjectLit (_, loc) props) -> do
@@ -631,7 +627,7 @@ unionEnv env1 env2 =
   foldl' (\env (id, maybeType) -> M.insertWith unionTypeVP id maybeType env)
          env1 (M.toList env2)
 
-uneraseEnv :: Env -> Map String (Type)
+uneraseEnv :: Env -> Map String Type
               -> ErasedEnv -> Lit (Int, SourcePos) 
               -> TypeCheck (Env, [TypeConstraint], Type, Type)
 uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
@@ -665,7 +661,7 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
       --the only typed things here are args and explicitly typed locals, both
       --of which have VPId name. if it doesn't have a type, it's an ANF var,
       --and it will be given one in due time.
-  let novp (a,Just t)  = (a, Just (t, VPId a))
+  let novp (a,Just t)  = (a, Just (t, t, True, VPId a))
       novp (a,Nothing) = (a, Nothing)
       env' = M.union (M.fromList (map novp $ argtypes++localtypes)) env 
   return (env', cs, rettype, functype)
@@ -695,8 +691,9 @@ typeCheckProgram env enclosingKindEnv constraints
   -- their declared types.
   -- This handles mutually-recursive functions correctly.  
   unless (length subEes == length subGraphs) $
-    fail "CATASTROPHIC FAILURE: erased env and functions have different \                \structures"
-  let localEnv = unrestrictEnv finalEnv
+    fail "CATASTROPHIC FAILURE: erased env and functions have different \
+         \structures"
+  let localEnv = globalizeEnv finalEnv
   mapM_ (typeCheckProgram localEnv kindEnv cs') (zip subEes subGraphs)
   return localEnv
 
@@ -755,7 +752,9 @@ loadCoreEnv env = do
     Right () -> do
       let unaliasedTypes = unaliasTypeEnv kinds types
       let unalias Nothing = Nothing -- strange
-          unalias (Just (t, vp)) = Just (unaliasType kinds unaliasedTypes t, vp)
+          unalias (Just (t, vp)) = Just (res, res, False, vp)
+            where res = unaliasType kinds unaliasedTypes t                
+
       return (M.map unalias env, unaliasedTypes)
 
 -- |Type-check a Typed JavaScript program.  
@@ -767,7 +766,7 @@ typeCheck prog = do
 
 
 -- convenience function to make testing faster
-typeCheckWithGlobals :: Env -> Map String (Type) -> 
+typeCheckWithGlobals :: Env -> Map String Type -> 
                         [TJS.Statement SourcePos] -> IO Env
 typeCheckWithGlobals venv tenv prog = do
   -- Build intraprocedural graphs for all functions and the top-level.
@@ -789,7 +788,8 @@ typeCheckWithGlobals venv tenv prog = do
 
   -- add this:
   let venv' = M.unions $ [venv] ++ 
-        [M.fromList [("this", Just (TObject [], VPId "this"))]]
+        [M.fromList [("this", 
+                      Just (TObject [], TObject [], False, VPId "this"))]]
   
   (env, state) <- runStateT (typeCheckProgram venv' basicKinds basicConstraints 
                                               (envs, intraprocs)) 

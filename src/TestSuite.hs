@@ -43,7 +43,7 @@ typeOfExpr expr' venv tenv = do
     Nothing -> fail $ "catastrophic failure: result unbound in " ++ show env
     Just Nothing -> fail "catastrophic result not found"
     
-    Just (Just (t, mvp)) -> return t
+    Just (Just (tDec, tAct, isLocal, mvp)) -> return tAct
 
 
 assertType pos expr expectedType venv tenv isSubTypeOf = do

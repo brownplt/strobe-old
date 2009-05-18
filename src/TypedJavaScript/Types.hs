@@ -10,7 +10,7 @@ module TypedJavaScript.Types
   , intType
   , doubleType
   , boolType
-  , inferLit, refined
+  , inferLit
   , deconstrFnType
   , substType 
   , unRec
@@ -105,11 +105,7 @@ checkKinds kinds t = case t of
     let kinds' = M.union (M.fromList (zip ids (repeat KindStar))) kinds
     assertKinds kinds' (t, KindStar)
     return KindStar
-  TRefined t1 t2 -> do
-    assertKinds kinds (t1, KindStar)
-    assertKinds kinds (t2, KindStar)
-    return KindStar
-
+  TEnvId id -> fail "TEnvId for checkkinds NYI"
 
 -- |Checks a type-environment for consistency, given a kind-environment.
 -- Once the type-environment has passes this check, attempts to substitute
@@ -129,6 +125,7 @@ unaliasType :: KindEnv -> Map String Type
             -> Type
             -> Type
 unaliasType kinds types type_ = case type_ of
+  TEnvId{} -> error "unaliasType TEnvId NYI"
   TId v -> case M.lookup v kinds of
     Just KindStar -> type_
     Just k -> error $ printf "unaliasType kindsTypeEnv: %s has kind %s" v 
@@ -156,8 +153,6 @@ unaliasType kinds types type_ = case type_ of
           ret' = unaliasType kinds types ret
   TApp s ts -> TApp s (map (unaliasType kinds types) ts)
   TUnion ts -> TUnion (map (unaliasType kinds types) ts)
-  TRefined t1 t2 -> 
-    TRefined (unaliasType kinds types t1) (unaliasType kinds types t2)
   TForall vs cs t -> TForall vs cs t' -- TODO: recur into cs?
     where types' = M.fromList (map (\v -> (v, TId v)) vs)
           t' = unaliasType kinds (M.union types' types) t
@@ -166,6 +161,7 @@ unaliasType' :: KindEnv -> Map String Type
             -> Type
             -> Type
 unaliasType' kinds types type_ = case type_ of
+  TEnvId{} -> error "unaliasType' TEnvId NYI"
   TId v -> case M.lookup v kinds of
     Just KindStar -> type_
     Just k -> error $ printf "unaliasType': %s has kind %s" v 
@@ -190,8 +186,6 @@ unaliasType' kinds types type_ = case type_ of
           ret' = unaliasType' kinds types ret
   TApp s ts -> TApp s (map (unaliasType' kinds types) ts)
   TUnion ts -> TUnion (map (unaliasType' kinds types) ts)
-  TRefined t1 t2 -> 
-    TRefined (unaliasType' kinds types t1) (unaliasType' kinds types t2)
   TForall vs cs t -> TForall vs cs t' -- TODO: recur into cs?
     where types' = M.fromList (map (\v -> (v, TId v)) vs)
           t' = unaliasType' kinds (M.union types' types) t
@@ -207,9 +201,8 @@ unaliasTypeEnv kinds aliasedTypes = types
 
 
 
---maps names to their type.
---ANF-generated variables have visible predicates.
-type Env = Map String (Maybe (Type, VP))
+--maps names to (declared type, actual type, vp)
+type Env = Map String (Maybe (Type, Type, Bool, VP))
 
 emptyEnv :: Env
 emptyEnv = M.empty
@@ -232,7 +225,6 @@ boolType = TId "bool"
 deconstrFnType :: Type 
                -> Maybe ([String], [TypeConstraint], [Type], Maybe Type, 
                          Type, LatentPred)
-deconstrFnType (TRefined main refined) = deconstrFnType refined
 deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
   deconstrFnType (substType id t t')
 deconstrFnType (TFunc args@(_:(TSequence _ vararg):_) result latentP) = 
@@ -271,9 +263,6 @@ substType var sub (TFunc args ret latentP) =
 substType var sub (TObject fields) =
   TObject (map (\(v,t) -> (v,substType var sub t)) fields)
 substType var sub (TEnvId x) = TEnvId x -- this is most certainly wrong.
-substType _ _ (TRefined _ _) = error "substType TRefined NYI"
-
-
 
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
 -- expressions in types
@@ -331,12 +320,6 @@ st env rel (t1, t2)
     (TId x, TId y) 
       | x == y   -> return rel
       | otherwise -> fail $ printf "%s is not a subtype of %s" x y
-    (TRefined declared1 refined1, TRefined declared2 refined2) ->
-      st env (S.insert (t1, t2) rel) (refined1, declared2)
-    (TRefined declared refined, other) ->
-      st env (S.insert (t1, t2) rel) (refined, other)
-    (other, TRefined declared refined) -> 
-      st env (S.insert (t1, t2) rel) (other, declared)
     (TApp c1 args1, TApp c2 args2) -> do
       assert (length args1 == length args2)
       assert (c1 == c2)
@@ -391,17 +374,11 @@ isSubType env cs t1 t2 = result where
   initial = S.fromList (map subtype cs)
   subtype (TCSubtype s t) = (s, t)
 
-
-unionType :: Maybe (Type) 
-          -> Maybe (Type)
-          -> Maybe (Type)
-unionType Nothing Nothing = error "unionType called with 2 Nothings"
-unionType Nothing (Just t) = Just $ TUnion [undefType, t]
-unionType (Just t) Nothing = Just $ TUnion [t, undefType]
-unionType (Just t1) (Just t2)
-  | t1 <: t2 = Just t2
-  | t2 <: t1 = Just t1
-  | otherwise = Just (TUnion [t1, t2]) -- TODO: What?
+unionType :: Type -> Type -> Type
+unionType t1 t2
+  | t1 <: t2 = t2
+  | t2 <: t1 = t1
+  | otherwise = TUnion [t1, t2]
 
 -- keep the VPs that are the same
 -- TODO: something like VPLit 3 "int", VPLit 4 "int" might be salvageable.
@@ -414,16 +391,19 @@ takeEquals (VPType t1 id1) (VPType t2 id2) =
   if id1 == id2 then (VPType (TUnion [t1, t2]) id1) else VPNone
 takeEquals v1 v2 = if v1 == v2 then v1 else VPNone
 
-unionTypeVP :: Maybe (Type, VP)
-            -> Maybe (Type, VP)
-            -> Maybe (Type, VP)
+unionTypeVP :: Maybe (Type, Type, Bool, VP)
+            -> Maybe (Type, Type, Bool, VP)
+            -> Maybe (Type, Type, Bool, VP)
 unionTypeVP Nothing Nothing = Nothing
-unionTypeVP Nothing (Just (t, v)) = Just (TUnion [undefType, t], VPNone)
-unionTypeVP (Just (t, v)) Nothing = Just (TUnion [t, undefType], VPNone)
-unionTypeVP (Just (t1, vp1)) (Just (t2, vp2)) = 
-  case unionType (Just t1) (Just t2) of
-    Nothing -> Nothing
-    Just t  -> Just (t, takeEquals vp1 vp2)
+unionTypeVP Nothing (Just (t, tact, b, v)) = 
+  Just (TUnion [undefType, t], TUnion [undefType, tact], b, VPNone)
+unionTypeVP (Just (t, tact, b, v)) Nothing = 
+  Just (TUnion [undefType, t], TUnion [undefType, tact], b, VPNone)
+unionTypeVP (Just (t1, t1act, b1, vp1)) (Just (t2, t2act, b2, vp2)) = 
+  if b1 /= b2 
+    then error "OMG"
+    else Just (unionType t1 t2, unionType t1act t2act, b1, takeEquals vp1 vp2)
+
 flattenUnion :: (Type) -> (Type)
 flattenUnion (TUnion ts) = 
 	case (foldl (\res t -> case t of 
@@ -438,9 +418,6 @@ flattenUnion  t = t
 
 -- Helpers for occurrence typing, from TypedScheme paper
 restrict :: Type -> Type -> Type
-restrict (TRefined main ref) t = case restrict ref t of
-  TRefined _ reallyrefined -> TRefined main reallyrefined
-  reallyrefined -> TRefined main reallyrefined
 restrict s t
  | s <: t = s -- usually, t <: s, so we do some work during restriction
  | otherwise = case t of
@@ -457,13 +434,10 @@ restrict s t
                                         TUnion ts -> ts
                                         _ -> [s]))
            in case rez of 
-                TUnion [] -> TRefined s t
-                _ -> TRefined s rez
+                TUnion [] -> t
+                _ -> rez
 
 remove :: (Type) -> (Type) -> (Type)
-remove (TRefined main ref) t = case remove ref t of
-  TRefined _ reallyrefined -> TRefined main reallyrefined
-  reallyrefined -> TRefined main reallyrefined
 remove s t
  | s <: t = TUnion  []
  | otherwise = case t of
@@ -471,7 +445,7 @@ remove s t
                         TUnion (map (remove s) ts)
      --TODO: make sure remove is correct; this is different than
      --the typed scheme paper
-     _ -> TRefined s $ flattenUnion $ 
+     _ -> flattenUnion $ 
             TUnion  
                    (filter (\hm -> not $ hm <: t)
                            (case s of
@@ -482,7 +456,8 @@ gammaPlus :: Env -> VP -> Env
 gammaPlus env (VPType t v) =  case M.lookup v env of
   Nothing -> env
   Just Nothing -> env
-  Just (Just (t', vp_t)) -> M.insert v (Just (restrict t' t, vp_t)) env
+  Just (Just (t', _, b, vp_t)) -> 
+    M.insert v (Just (t', restrict t' t, b, vp_t)) env
 -- if (x), when true, removes all things from x that are like "undefined"
 --gammaPlus g (VPId x) = gammaMinus g (VPType (TId noPos "undefined") x)
 gammaPlus g (VPNot vp) = gammaMinus g vp
@@ -493,7 +468,8 @@ gammaMinus :: Env -> VP -> Env
 gammaMinus env (VPType t v) = case M.lookup v env of
   Nothing -> env
   Just Nothing -> env
-  Just (Just (t', vp_t)) -> M.insert v (Just (remove t' t, vp_t)) env
+  Just (Just (t', _, b, vp_t)) -> 
+    M.insert v (Just (t', remove t' t, b, vp_t)) env
 -- if (x), when false, leaves only things in x that are like "undefined"
 --gammaMinus g (VPId x) = gammaPlus g (VPType (TId noPos "undefined") x)
 gammaMinus g (VPNot vp) = gammaPlus g vp
@@ -528,6 +504,3 @@ equalityvp a@(VPMulti{}) b = equalityvp b a
 
 equalityvp _ _ = VPNone
 
-refined :: Type -> Type
-refined (TRefined main ref) = ref
-refined t = t  
