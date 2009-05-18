@@ -44,7 +44,6 @@ data Type
   | TForall [String] [TypeConstraint] Type
   -- | TIndex Type Type String --obj[x] --> TIndex <obj> <x> "x"
   --the first type, 'refined' to the 2nd
-  | TRefined Type Type
   | TEnvId String -- ^a reference to an identifier in the environment
   deriving (Show, Eq, Ord)
 

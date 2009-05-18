@@ -50,7 +50,7 @@ toInterface env = map toExport (M.toList env) where
   toExport (v,t) = InterfaceExport v noPos
                                    (toContract' t)
   toContract' Nothing = error "Contracts.hs : export without type"
-  toContract' (Just (type_, vp)) = toContract type_
+  toContract' (Just (type_, _, _, vp)) = toContract type_
 
 -- |Wraps a Typed JavaScript module (after type-erasure) with contracts. The
 -- result is a single function-application statement.
