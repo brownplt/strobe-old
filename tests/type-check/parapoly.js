@@ -65,4 +65,13 @@ function() :: (->) {
 } @@ fails;
 
 
-// Test cases of map, filter, etc. are in arrays.js
+function() :: (->) {
+
+function map(f, arr) :: forall a b . (a -> b), Array<a> -> Array<b> {
+ var r :: Array<b> = [ ];
+ for (var i = 0; i < arr.length; i++) {
+   r.push(f(arr[i])); }
+ return r; }
+
+} @@succeeds;
+

@@ -229,6 +229,8 @@ deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
   deconstrFnType (substType id t t')
 deconstrFnType (TFunc args@(_:(TSequence _ vararg):_) result latentP) = 
   Just ([],[],args,vararg,result,latentP)
+deconstrFnType (TForall ids cs (TFunc args@(_:(TSequence _ vararg):_) r lp)) =
+  Just (ids, cs, args, vararg, r, lp)
 deconstrFnType _ = Nothing
 
 unRec :: Type -> Type
