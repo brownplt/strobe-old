@@ -353,12 +353,6 @@ st env rel (t1, t2)
     (TRec v t1', t2) -> do
       rez <- st env (S.insert (t1, t2) rel) (substType v t1 t1', t2)
       return rez
-    --special-case: arrays are subtypes of sequences.
-    --eventually remove this once we make arrays actually sequences.
-    (TApp "Array" [arrt], TSequence [] (Just seqt)) -> do
-      st env (S.insert (t1, t2) rel) (arrt, seqt)
-    (TSequence [] (Just seqt), TApp "Array" [arrt]) -> do
-      st env (S.insert (t1, t2) rel) (seqt, arrt)
     (TUnion ts1, t2) -> do
       foldM (\rel t1 -> st env rel (t1, t2)) rel ts1 -- all
     (t1, TUnion ts2) -> do

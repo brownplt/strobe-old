@@ -492,14 +492,21 @@ expr env ee cs e = do
    Lit (ArrayLit (_,p) es) -> do
      r <- mapM (expr env ee cs) es
      let ts = map fst r
+     
+     case ts of
+       [] -> typeError p "empty array needs a type"
+       (t:ts) -> do 
+         let tRes = TApp "Array" [foldr unionType t ts]
+         return $ (tRes, VPLit (ArrayLit p (error "VP of ArrayLit NYI"))
+                               tRes)
+     
+   Lit (ArgsLit (_,p) es) -> do
+     r <- mapM (expr env ee cs) es
+     let ts = map fst r
      let resT = (TSequence ts Nothing)
-     let vp = VPLit (ArrayLit p (error "dont look inside VP arraylit"))
+     let vp = VPLit (ArgsLit p (error "dont look inside VP argslit"))
                     resT
-     case (nub ts) of
-       -- If we have a homogenous array, let the sequence type be a refinement
-       -- of the simpler homogenous type.
-       [t] -> return (resT, vp)
-       otherwise -> return (resT, vp)
+     return (resT, vp)
 
    Lit (ObjectLit (_, loc) props) -> do
      let prop (Left s, (_, propLoc), e) = do
