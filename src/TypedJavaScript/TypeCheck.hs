@@ -273,8 +273,9 @@ stmt env ee cs rettype node s = do
               typeError p (printf "object does not have the property %s" prop)
             Just t' | isUnion tDec -> typeError p $ 
                         printf "cannot mutate to a union field"
-                    | isObject tDec -> typeError p $
-                        printf "cannot mutate to an object field"
+                    | isObject t' -> typeError p $
+                        printf "cannot mutate the field %s :: %s"
+                               prop (renderType t')
                     | t_rhs <: t' -> noop -- TODO: affect VP?
                     | otherwise -> 
                         subtypeError p "assignment to property" t_rhs t'

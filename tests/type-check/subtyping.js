@@ -13,8 +13,13 @@ function (b,a) :: ((int -> int), (double -> int) ->) { a = b; } @@ fails;
 
 //TODO: various things w/ req args, opt args, etc:
 
-//arrays: invariant:
-function (b,a) :: (Array<int>, Array<double> ->) { a = b; } @@ fails;
+function (b,a) :: (Array<int>, Array<double> ->) { a = b; } @@ succeeds;
+
+function (b,a) :: (Array<int>, Array<double> ->) {
+  a = b;
+  a[0] = 3.4;
+} @@ fails; 
+
 function (b,a) :: (Array<double>, Array<double> ->) { a = b; } @@ succeeds;
 function (b,a) :: (Array<double>, Array<int> ->) { a = b; } @@ fails;
 

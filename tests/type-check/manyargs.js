@@ -19,6 +19,7 @@ function () :: (-> string) {
 function (r1, r2, o1, o2) :: (int, int, int, double -> string) {
     return r1+r2+(o1 * 534) + "";
 } :: (int, int, int, double -> string);
+
 function() :: (-> string) {
   function inner(r1, r2, o1, o2) :: (double, double, double?, string? -> string) {
     return "cake" + r1+r2+(000 * 534);

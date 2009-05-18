@@ -145,5 +145,5 @@ function (x) :: (double -> ) {
   else
     return;
   ("hithere"=="" ? 'how' : 'areyou?');
-} :: (double -> );
+} @@ fails;
 
