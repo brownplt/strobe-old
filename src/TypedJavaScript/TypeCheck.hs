@@ -270,7 +270,9 @@ stmt env ee cs rettype node s = do
               typeError p (printf "object does not have the property %s" prop)
             Just t' | t_rhs <: t' -> noop -- TODO: affect VP?
                     | otherwise -> 
-                        subtypeError p "assignment to property" t_rhs t'
+                        typeError p $ printf
+                          "%s.%s = ... the field has type %s, but the RHS has \
+                          \type %s" obj prop (renderType t') (renderType t_rhs)
           t' -> typeError p (printf "expected object, received %s" (show t'))
     IndirectPropAssignStmt (_,p) obj method e -> do 
       (t_rhs, _) <- expr env ee cs e

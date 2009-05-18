@@ -17,37 +17,49 @@ function(obj) :: { either :: U (int, string) } -> undefined {
   }
 } @@ fails;
 
-function() :: (->) {
-
-  // y <: z
-  var z :: Array<{ field :: int }> = [ { field: 50 } ];
-  var y :: Array<{ field :: int, field2 :: int }> = 
-    [ { field: 50, field2: 9000 } ];
-
-  var t :: int = y[0].field2;
-  y = z; // this assignment should fail
-
-  // If the assignment does not fail, the following will signal a runtime type
-  // error
-  //  t = y[0].field2;
-
-} @@ fails;
 
 function() :: (->) {
 
   // z <: y
-  var z :: Array<{ field :: int, field2 :: int }> = 
-    [ { field: 50, field2: 9000 } ];
+  var z :: { field :: int, field2 :: int } = { field: 50, field2: 9000 } ;
+  var y :: { field :: int } = { field: 50 };
+
+  var t :: int = y.field;
+  y = z; // this assignment should succeed 
+
+  t = y.field;
+} @@ succeeds;
+
+function() :: (->) {
+
+  // z <: y
+  var z :: Array<{ field :: int, field2 :: int }> 
+    = [ { field: 50, field2: 9000 }  ];
   var y :: Array<{ field :: int }> = [ { field: 50 } ];
 
-  var t :: int = y[0].field2;
-  y = z; // this assignment should fail
+  var t :: int = y[0].field;
+  y = z; // this assignment should succeed 
 
-  // If the assignment does not fail, the following will signal a runtime type
-  // error
-  //  t = y[0].field2;
-
+  t = y[0].field;
 } @@ succeeds;
+
+function() :: (->) {
+
+  // z <: y
+  var z :: Array<{ field :: int, field2 :: int }> 
+    = [ { field: 50, field2: 9000 }  ];
+  var y :: Array<{ field :: int }> = [ { field: 50 } ];
+
+  var t :: int = y[0].field;
+  y = z; // this assignment should succeed 
+
+  t = y[0].field;
+
+  y[1] = {field: 5}; //this should fail
+  z[1].field2;
+} @@ fails;
+
+
 
 // We simply cannot have int <: double.  They are completely different types
 // what JavaScript has are implicit casts, which have nothing to do with
