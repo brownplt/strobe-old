@@ -328,7 +328,6 @@ st env rel (t1, t2)
                                 \not in the environment. t1 <: TEnvId y" y
 
     (_, TAny) -> return (S.insert (t1, t2) rel)
-    (TId "int", TId "double") -> return rel
     (TId x, TId y) 
       | x == y   -> return rel
       | otherwise -> fail $ printf "%s is not a subtype of %s" x y

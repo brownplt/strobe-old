@@ -459,11 +459,7 @@ expr env ee cs e = do
      case t of
        TObject props -> case lookup p props of
          Just t' -> return (t', VPNone)
-         Nothing -> case p of
-{-           "toString" -> return (TFunc [TId "any"] Nothing (TId "string") 
-                                       LPNone,
-                                 VPNone) -}
-           _ -> typeError loc (printf "expected object with field %s" p)
+         Nothing -> typeError loc (printf "expected object with field %s" p)
        otherwise -> typeError loc (printf "expected object, received %s, \
                                           \constraints were %s"
                                           (show t) (show cs))
@@ -564,17 +560,24 @@ operator cs loc op argsvp = do
       rvp = vps !! 1                      
   let cmp = do
         unless ((lhs == stringType && rhs == stringType) ||
-                (lhs <: doubleType && rhs <: doubleType)) $ do
+                ((lhs == doubleType || lhs == intType) && 
+                 (rhs == doubleType || rhs == intType))) $ do
           typeError loc (printf "can only compare numbers and strings")
         return $ novp boolType
   let numeric requireInts returnDouble = do
-        let sup = if requireInts then intType else doubleType
-        unless (lhs <: sup && rhs <: sup) $ do
-          typeError loc (printf "expected arguments of type %s" (show sup))
-        if returnDouble
-          then return $ novp doubleType
-          else return $ novp (if lhs <: intType then rhs else lhs)
-
+        let result = if returnDouble 
+                       then return (novp doubleType)
+                       else return $ novp (if lhs == intType then rhs else lhs)
+        case requireInts of
+          True -> do
+            unless (lhs == intType && rhs == intType) $
+              typeError loc $ printf "operator expects int arguments"
+            result
+          False -> do
+            unless  ((lhs == intType || lhs == doubleType) ||
+                     (rhs == intType || rhs == doubleType)) $
+              typeError loc $ printf "operator expects double/int arguments"
+            result
   case op of
     OpLT -> cmp
     OpLEq -> cmp
@@ -606,10 +609,11 @@ operator cs loc op argsvp = do
       case lvp of
         VPNot v -> return (boolType, v)
         v -> return (boolType, VPNot v)
-    PrefixBNot | lhs <: intType -> return (novp intType)
+    PrefixBNot | lhs == intType -> return (novp intType)
                | otherwise -> subtypeError loc "!expr" lhs intType
-    PrefixMinus | lhs <: doubleType -> return (novp lhs)
-                | otherwise -> subtypeError loc "-expr" lhs doubleType
+    PrefixMinus | lhs == doubleType -> return (novp lhs)
+	              | lhs == intType -> return (novp lhs)
+                | otherwise -> typeError loc "prefix - expects int/double"
     PrefixVoid -> do
       catastrophe loc (printf "void has been removed")
     PrefixTypeof ->

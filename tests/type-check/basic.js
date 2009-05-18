@@ -20,6 +20,10 @@ function(x,x) :: int, int -> int {
 5.0 >> 3 @@ fails;
 5e9 >> 7 @@ fails;
 
+-"arjun" @@ fails;
+-5 @@ succeeds;
+-7.3 @@ succeeds;
+
 4 / 343 :: double;
 
 true && false :: bool;
