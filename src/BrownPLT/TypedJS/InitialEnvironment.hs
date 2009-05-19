@@ -25,6 +25,7 @@ idlFiles =
   , "idl" </> "views.idl"
   , "idl" </> "window.idl"
   , "idl" </> "typedjs-extras.idl"
+  , "idl" </> "typedjs-core.idl"
   ]
 
 -- |Search for typedef in the DOM IDLs.  We need an entry for each typedef.

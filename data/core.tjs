@@ -1,24 +1,56 @@
-//every type must only include types before it
-//only bool, int, string, are given. (Also, Array for now is given)
-//everything in here should automatically be recursve
-// it should really be all mutually recursive
-
-
 //methods of Array should go here
 
-//constructors should go here; can't do that, yet.
-//we can have certain types, though:
-type RegExp :: {global :: bool,
+//constructors should go here, too
+
+type Object :: rec Object . {
+  constructor :: (any... -> any), //super-type of all functions
+  hasOwnProperty :: ([Object] string -> bool),
+  isPrototypeOf :: ([Object] {} -> bool),
+  propertyIsEnumerable :: ([Object] string -> bool),
+  toLocaleString :: ([Object] -> string),
+  toString :: ([Object] -> string),
+  valueOf :: ([Object] -> any),
+};
+
+type Number :: rec Number . {
+  toExponential :: ([Number] int? -> string),
+  toFixed :: ([Number] int? -> string),
+  toPrecision :: ([Number] int? -> string),
+  toString :: ([Number] -> string),
+  toLocaleString :: ([Number] -> string),
+    //toString is re-defined here because a TypeError results if the function
+    //is called on an object that is not a string.
+  valueOf :: ([Number] -> double) //should make sure this is a subtype
+                                  //of object's valueOf
+};
+
+external Number_ :: {
+  //static constants
+  MAX_VALUE :: double,
+  MIN_VALUE :: double,
+  NaN :: double,
+  NEGATIVE_INFINITY :: double,
+  POSITIVE_INFINITY :: double,
+};
+
+type String :: rec String . {
+  length :: int,
+  match :: ([String] string -> Array<string>?),
+  toString :: ([String] -> string),
+};
+
+type Boolean :: rec Boolean . {
+  valueOf :: ([Boolean] -> bool),
+  toString :: ([Boolean] -> string),
+};
+
+type RegExp :: rec RegExp . {global :: bool,
                 ignoreCase :: bool,
                 lastIndex :: int,
                 multiline :: bool,
                 source :: string,
-                exec :: (string -> Array<string>),
-                test :: (string -> bool)};
-//all this is missing is what to do when you say "new RegExp".
-
-type String :: rec self . {length :: int,
-                match :: ([self] string -> Array<string>?)};
+                exec :: ([RegExp] string -> Array<string>),
+                test :: ([RegExp] string -> bool)};
 
 //conversion to boolean func (available in pJS):
 external Boolean :: (any -> bool);

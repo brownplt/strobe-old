@@ -913,6 +913,7 @@ parseToplevel = externalStmt <|> typeStmt
 parseToplevels = do
   whiteSpace
   res <- parseToplevel `sepBy` whiteSpace
+  eof
   return res
 
 parseListExpr =

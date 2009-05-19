@@ -280,7 +280,9 @@ stmt env ee cs rettype node s = do
           -- Variable is in scope but is yet to be defined.
           fail $ printf "at %s: can't assign to obj %s; has no type yet"
                    (show p) obj
-        Just (Just (tDec, tAct, isLocal, vp)) -> case unRec tAct of
+        Just (Just (tDec, tAct', isLocal, vp)) -> do
+         tAct <- dotrefContext tAct'
+         case unRec tAct of
           TObject props -> case lookup prop props of
             Nothing -> 
               typeError p (printf "object does not have the property %s" prop)
@@ -430,10 +432,18 @@ stmt env ee cs rettype node s = do
 -- but they're not objects; they get converted.
 -- this function does this conversion
 dotrefContext :: Type -> TypeCheck (Type)
-dotrefContext (TId "string") = do
-  return stringType
-dotrefContext t = return t
-
+dotrefContext t = do
+  state <- get
+  let tenv = stateTypeEnv state
+      mobj = case t of
+               TId "string" -> M.lookup "String" tenv
+               TId "int"    -> M.lookup "Number" tenv
+               TId "double" -> M.lookup "Number" tenv
+               TId "bool"   -> M.lookup "Boolean" tenv
+               _            -> Just t
+  case mobj of
+    Nothing -> fail $ "core.js is broken: String/Number/Boolean is missing"
+    (Just obj) -> return obj
 
 lookupConstraint :: Type -> [TypeConstraint] -> Type
 lookupConstraint t [] = t
@@ -658,15 +668,15 @@ uneraseEnv :: Env -> Map String Type
            -> Map String Kind
            -> ErasedEnv -> Lit (Int, SourcePos) 
            -> TypeCheck (Env, [TypeConstraint], Type, Type)
-uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
+uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do          
   let newNames = map fst (args ++ locals)
   unless (newNames == nub newNames) $ do
     typeError pos "duplicate argument/local names"
-  let functype = case M.lookup pos ee of
-        Just [t] -> t
-        Nothing -> error $ "uneraseEnv: no type for function at " ++ show pos
+  functype <- case M.lookup pos ee of
+        Just [t] -> return t
+        Nothing -> fail $ "uneraseEnv: no type for function at " ++ show pos
         Just ts -> 
-          error $ printf "uneraseEnv: multiple types for the function at %s, \
+          fail $ printf "uneraseEnv: multiple types for the function at %s, \
                          \types were %s" (show pos) (show ts)
 
   let Just (tVars, cs, types, vararg, rettype, lp) = deconstrFnType functype
@@ -676,18 +686,19 @@ uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
   let lookupEE p name = case M.lookup p ee of
         Nothing -> return Nothing
         Just t | head name == '@' -> return Nothing
-               | otherwise -> do
-                   let t' = map (unaliasType localKindEnv tenv) t
-                   return $ Just t'
-
-
+               | otherwise -> return (Just t)
+               
   let (this:argsarray:types') = types ++ (case vararg of
         Nothing -> []
         Just vt -> [TApp "Array" [vt]])
   argtypes <- return $ zip (map fst args) (map Just (this:argsarray:types'))
   localtypes <- mapM (\(name,(_, pos)) -> do
-                        t <- lookupEE pos name
-                        return (name, liftM head t))
+                        t' <- lookupEE pos name
+                        case t' of
+                          Nothing -> return (name, Nothing)
+                          Just [] -> fail "Uhm... "
+                          Just (t:rest) -> do
+                            return (name, Just t))
                      locals
       --the only typed things here are args and explicitly typed locals, both
       --of which have VPId name. if it doesn't have a type, it's an ANF var,
@@ -700,7 +711,6 @@ uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
 uneraseEnv env tenv ee _ _ = 
   error "coding fail - uneraseEnv given a function-not"
 
-  
 typeCheckProgram :: Env
                  -> KindEnv
                  -> [TypeConstraint]
@@ -708,17 +718,23 @@ typeCheckProgram :: Env
                      Tree (Int, Lit (Int, SourcePos), Graph))
                  -> TypeCheck Env
 typeCheckProgram env enclosingKindEnv constraints
-                 (Node ee subEes, Node (_, lit, gr') subGraphs) = do
+                 (Node ee' subEes, Node (_, lit, gr') subGraphs) = do
   let gr = G.mkGraph (G.labNodes gr') (G.labEdges gr')
   state <- get
   put $ state { stateGraph = gr, stateEnvs = M.empty }
+  
+  let tenv = stateTypeEnv state
+  let ee = M.mapWithKey (replaceAliases enclosingKindEnv tenv) ee'  
+
   (env', cs, rettype, fnType) <- uneraseEnv env (stateTypeEnv state)
                                             enclosingKindEnv ee lit
+
   let kindEnv = M.union (freeTypeVariables fnType) enclosingKindEnv
+      
   checkDeclaredKinds kindEnv ee
   let cs' = cs ++ constraints
   finalEnv <- body env' ee cs' rettype (enterNodeOf gr) (exitNodeOf gr)
-  -- When we descent into nested functions, we ensure that functions satisfy
+  -- When we descend into nested functions, we ensure that functions satisfy
   -- their declared types.
   -- This handles mutually-recursive functions correctly.  
   unless (length subEes == length subGraphs) $
@@ -727,7 +743,6 @@ typeCheckProgram env enclosingKindEnv constraints
   let localEnv = globalizeEnv finalEnv
   mapM_ (typeCheckProgram localEnv kindEnv cs') (zip subEes subGraphs)
   return localEnv
-
 
 -- |Checks user-specified type annotations for kind-errors.  We assume that
 -- types derived by our type-checker are well-kinded.  Therefore, this is

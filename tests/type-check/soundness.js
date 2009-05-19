@@ -25,7 +25,7 @@ function() :: (->) {
   var y :: { field :: int } = { field: 50 };
 
   var t :: int = y.field;
-  y = z; // this assignment should succeed 
+  y = z; // this assignment should succeed
 
   t = y.field;
 } @@ succeeds;
@@ -33,12 +33,12 @@ function() :: (->) {
 function() :: (->) {
 
   // z <: y
-  var z :: Array<{ field :: int, field2 :: int }> 
+  var z :: Array<{ field :: int, field2 :: int }>
     = [ { field: 50, field2: 9000 }  ];
   var y :: Array<{ field :: int }> = [ { field: 50 } ];
 
   var t :: int = y[0].field;
-  y = z; // this assignment should succeed 
+  y = z; // this assignment should succeed
 
   t = y[0].field;
 } @@ succeeds;
@@ -46,12 +46,12 @@ function() :: (->) {
 function() :: (->) {
 
   // z <: y
-  var z :: Array<{ field :: int, field2 :: int }> 
+  var z :: Array<{ field :: int, field2 :: int }>
     = [ { field: 50, field2: 9000 }  ];
   var y :: Array<{ field :: int }> = [ { field: 50 } ];
 
   var t :: int = y[0].field;
-  y = z; // this assignment should succeed 
+  y = z; // this assignment should succeed
 
   t = y[0].field;
 
@@ -64,3 +64,78 @@ function() :: (->) {
 // We simply cannot have int <: double.  They are completely different types
 // what JavaScript has are implicit casts, which have nothing to do with
 // subtyping.
+
+function() :: (->) {
+
+	// z <: y
+	var z :: {x :: { field :: int, field2 :: int }} =
+		{x : {field: 50, field2: 9000 } };
+	var y :: {x :: { field :: int }} =
+		{x : {field: 50 }};
+
+	var t :: int = y.x.field;
+	y = z; // this assignment should succeed
+
+	t = y.x.field;
+
+  y.x = {field: 30}; //this should fail, because now z.x.field2 is broken.
+} @@ fails;
+
+function () :: (->) {
+  function oomra(y) :: ({x :: {field :: int}} ->) {
+    y.x = {field: 30};
+  }
+
+  var z = {x : {field:50, field2: 9000}};
+  oomra(z);
+  z.x.field2;
+} @@ fails;
+
+function () :: (->) {
+  function oomra(y) :: ({x :: {field :: int}} ->) {
+    y.x.field = 30;
+  }
+
+  var z = {x : {field:50, field2: 9000}};
+  oomra(z);
+  z.x.field2;
+} @@ succeeds;
+
+function() :: (->) {
+  function writeToF2(bar) :: ({field::int, field2::int} -> ) {
+    bar.field2 = 50;
+  };
+
+	// z <: y
+	var z :: {x :: { field :: int, field2 :: int }} =
+		{x : {field: 50, field2: 9000 } };
+	var y :: {x :: { field :: int }} =
+		{x : {field: 50 }};
+
+	var t :: int = y.x.field;
+	y = z; // this assignment should succeed
+  writeToF2(y.x); //should work
+} @@ succeeds;
+
+//must make sure block level scoping is ok.
+/*
+{
+  var z :: (-> int) = function() :: (-> int) { return 3; };
+
+  if (false)
+  {
+    var x :: int = 5;
+    z = function() :: (-> int) { return x; };
+  }
+
+  z();
+}
+  */
+
+function() :: (->) {
+  function bar() :: -> int { return x; }
+  bar();
+  var x :: int = 10;
+} @@ fails;
+
+

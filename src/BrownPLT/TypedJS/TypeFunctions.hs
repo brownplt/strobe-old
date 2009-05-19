@@ -3,6 +3,7 @@ module BrownPLT.TypedJS.TypeFunctions
   , freeTypeVariables
   , isUnion
   , isObject
+  , replaceAliases
   ) where
 
 import qualified Data.Map as M
@@ -38,6 +39,19 @@ isUnion :: Type -> Bool
 isUnion (TUnion _) = True
 isUnion _ = False
 
+
 isObject :: Type -> Bool
 isObject (TObject _) = True
 isObject _ = False
+
+
+
+lookupAlias :: KindEnv -> Map String Type -> SourcePos -> Type -> Type
+lookupAlias kindEnv tenv pos t = case t of
+  TId v -> case M.lookup v kindEnv of
+    Just _ -> (TId v)
+    Nothing -> case M.lookup v tenv of
+      Just t -> t
+      Nothing -> (TId v) --real unbound ids will be checked later
+  otherwise -> t
+replaceAliases kindEnv tenv p t = everywhere (mkT(lookupAlias kindEnv tenv p)) t

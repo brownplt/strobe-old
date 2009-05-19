@@ -29,6 +29,7 @@ import TypedJavaScript.Types (isSubType)
 import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
 import BrownPLT.TypedJS.InitialEnvironment
+import BrownPLT.TypedJS.TypeFunctions
 
 import Text.ParserCombinators.Parsec.Pos (initialPos, SourcePos)
 
@@ -46,15 +47,16 @@ typeOfExpr expr' venv tenv = do
     Just (Just (tDec, tAct, isLocal, mvp)) -> return tAct
 
 
-assertType pos expr expectedType venv tenv isSubTypeOf = do
+assertType pos expr expectedType' venv tenv isSubTypeOf = do
+  let expectedType = replaceAliases M.empty tenv pos expectedType'
   actualType <- E.try (typeOfExpr expr venv tenv)
   case actualType of
     Left (err::(E.SomeException)) -> assertFailure (
       (showSp pos) ++ ": " ++ (show err))
     Right (exprType) -> do
       assertBool ((showSp pos) ++ ": type mismatch, " ++ 
-                  (show exprType) ++ " is not a subtype of " ++ 
-                  (show expectedType)) 
+                  (renderType exprType) ++ " is not a subtype of " ++ 
+                  (renderType expectedType)) 
                  (exprType `isSubTypeOf` expectedType)
 
 

@@ -65,11 +65,26 @@ function () :: (-> Array<int>) {
 
   var z :: Array<int> = [1];
   var y :: Array<double> = [2.0];
-  // y[0].floor() works
-  y = z; // this test fails because of this assignment.
- // y[0].floor() signals a method not found exception.
+  y = z; // this assignment is OK as long as you don't mutate anything
   return z;
-} @@ fails; //:: (-> Array<int>);
+} @@ succeeds; //fails; //:: (-> Array<int>);
+
+function (x) :: (Array<int> -> int) {
+  return x[0];
+} :: (Array<int> -> int);
+
+function () :: (-> Array<int>) {
+  // According to our defintiions, int <: double.
+
+  // However, it is not the case that the interface for ints has more methods
+  // than double.  This is messed up.
+
+  var z :: Array<int> = [1];
+  var y :: Array<double> = [2.0];
+  y = z; // this assignment is OK as long as you don't mutate anything
+  y[0] = 3.1; //this should fail
+  return z;
+} @@ succeeds;
 
 
 //arrays of objects:
@@ -83,8 +98,8 @@ function (ptarray) :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<
 } :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>);
 
 function (ptarray) :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>) {
-  function map(pt2dub, arry) :: (({x :: int, y :: int, mag :: (-> double)} -> double), 
-                                 Array<{x :: int, y :: int, mag :: (-> double)}> -> 
+  function map(pt2dub, arry) :: (({x :: int, y :: int, mag :: (-> double)} -> double),
+                                 Array<{x :: int, y :: int, mag :: (-> double)}> ->
                                  Array<double>) {
     var rezarray :: Array<double> = [1.0];
     for (var i=0; i < arry.length; ++i) {
