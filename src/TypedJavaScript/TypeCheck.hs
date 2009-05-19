@@ -637,9 +637,10 @@ unionEnv env1 env2 =
          env1 (M.toList env2)
 
 uneraseEnv :: Env -> Map String Type
-              -> ErasedEnv -> Lit (Int, SourcePos) 
-              -> TypeCheck (Env, [TypeConstraint], Type, Type)
-uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
+           -> Map String Kind
+           -> ErasedEnv -> Lit (Int, SourcePos) 
+           -> TypeCheck (Env, [TypeConstraint], Type, Type)
+uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
   let newNames = map fst (args ++ locals)
   unless (newNames == nub newNames) $ do
     typeError pos "duplicate argument/local names"
@@ -656,7 +657,7 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
         Just ts -> 
           error $ printf "uneraseEnv: multiple types for the function at %s, \
                          \types were %s" (show pos) (show ts)
-  let functype = unaliasType basicKinds tenv functype'
+  let functype = unaliasType kindEnv tenv functype'
   let Just (_, cs, types, vararg, rettype, lp) = deconstrFnType functype
       -- undefined for arguments
   let (this:argsarray:types') = types ++ (case vararg of
@@ -675,7 +676,8 @@ uneraseEnv env tenv ee (FuncLit (_, pos) args locals _) = do
       env' = M.union (M.fromList (map novp $ argtypes++localtypes)) env 
   return (env', cs, rettype, functype)
 
-uneraseEnv env tenv ee _ = error "coding fail - uneraseEnv given a function-not"
+uneraseEnv env tenv ee _ _ = 
+  error "coding fail - uneraseEnv given a function-not"
 
   
 typeCheckProgram :: Env
@@ -685,13 +687,12 @@ typeCheckProgram :: Env
                      Tree (Int, Lit (Int, SourcePos), Graph))
                  -> TypeCheck Env
 typeCheckProgram env enclosingKindEnv constraints
-                 (Node ee' subEes, Node (_, lit, gr') subGraphs) = do
+                 (Node ee subEes, Node (_, lit, gr') subGraphs) = do
   let gr = G.mkGraph (G.labNodes gr') (G.labEdges gr')
   state <- get
   put $ state { stateGraph = gr, stateEnvs = M.empty }
-  -- When type-checking the body, we assume the declared types for functions.
-  ee <- resolveAliasesEE enclosingKindEnv (stateTypeEnv state) ee'
-  (env', cs, rettype, fnType) <- uneraseEnv env (stateTypeEnv state) ee lit
+  (env', cs, rettype, fnType) <- uneraseEnv env (stateTypeEnv state)
+                                            enclosingKindEnv ee lit
   let kindEnv = M.union (freeTypeVariables fnType) enclosingKindEnv
   checkDeclaredKinds kindEnv ee
   let cs' = cs ++ constraints
@@ -705,19 +706,6 @@ typeCheckProgram env enclosingKindEnv constraints
   let localEnv = globalizeEnv finalEnv
   mapM_ (typeCheckProgram localEnv kindEnv cs') (zip subEes subGraphs)
   return localEnv
-
-
-resolveAliasesEE :: (MonadIO m) => KindEnv -> Map String Type
-                  -> ErasedEnv -> m ErasedEnv
-resolveAliasesEE kinds types ee = do
-  let procp (k, v) = do
-        -- TODO: Must check that this is well formed
-        let v' = map (unaliasType kinds types) v
-        return (k, v')
-  resl <- mapM procp (M.toList ee)
-  return $ M.fromList resl
-
-
 
 
 -- |Checks user-specified type annotations for kind-errors.  We assume that
