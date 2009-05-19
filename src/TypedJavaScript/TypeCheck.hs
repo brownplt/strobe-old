@@ -161,26 +161,46 @@ assert :: Monad m => Bool -> String -> m ()
 assert True _ = return ()
 assert False msg = fail ("CATASPROPHIC FAILURE: " ++  msg)
 
-doAssignment :: (Monad m) => (Type -> Type -> Bool)
-             -> SourcePos -> Env -> Id -> Type -> VP -> m Env
+doAssignment :: (Monad m) 
+             => (Type -> Type -> Bool) -- ^local subtype relation
+             -> SourcePos -- ^for type errors
+             -> Env -- ^current environment
+             -> Id -- ^LHS of assignment
+             -> Type -- ^type of the RHS of assignment
+             -> VP  -- ^visible predicate on the RHS
+             -> m Env -- ^resulting environment
 doAssignment (<:) p env v te e_vp = case M.lookup v env of        
-  Nothing -> --unbound id
-    fail $ printf "at %s: id. %s is unbound" (show p) v
-  Just Nothing -> do --ANF variable, or locally inferred variable
+  Nothing -> typeError p (v ++ " is unbound")
+  -- ANF variable, or locally inferred variable.  ANF variables may be
+  -- assigned to multiple times in parallel branches, 
+  -- possibly creating a union in unionEnv.
+  -- Locally inferred variables may also be assigned to multiple times.
+  -- However, since their initialization dominates subsequent assignments,
+  -- they will subsequently act as declared variables and won't be permitted
+  -- to "change types."
+  Just Nothing -> do 
     return $ M.insert v (Just (te, te, True,
                                VPMulti [VPId v, e_vp])) env
+  -- Local variable (3rd element of the tuple is True).  Local variables
+  -- may be assigned to so long as the subtype relation is preserved.  The
+  -- assignment locally refines tDec to te.
   Just (Just (tDec, tAct, True, v_vp)) --local variable
     | te <: tDec ->  do
         -- TODO: remove, from environment, any VP referring to this var!
-        let env' = M.insert v (Just (tDec, te, True,
-                                     VPMulti [VPId v, v_vp])) 
+        let env' = M.insert v (Just (tDec, te, True, VPMulti [VPId v, v_vp])) 
                             env
         return env'
    | otherwise -> typeError p $
        printf "assigning to %s :: %s; given an expression of type %s"
               v (renderType tDec) (renderType te)
-
-  Just (Just (tDec, tAct, False, v_vp)) --global var
+  -- Variable in an enclosing scope.  If its type is a union, it is possible
+  -- that a function in the dynamic calling context has locally refined tDec to
+  -- a more precise type.  Due to such cases, we cannot permit any assignment
+  -- to unions in enclosing scopes.
+  -- If the variable is not a union, we may assign a new value.  However, this
+  -- precludes visible-predicates from refining types to specific /values/.
+  -- For example, we cannot refine to false.
+  Just (Just (tDec, tAct, False, v_vp))
     | isUnion tDec -> typeError p $ 
         printf "cannot assign to global union %s :: %s"
                v (renderType tDec)
