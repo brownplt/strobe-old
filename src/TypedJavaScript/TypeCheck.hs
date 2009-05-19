@@ -48,13 +48,6 @@ basicKinds = M.fromList
   ]
 
 
-basicConstraints :: [TypeConstraint]
-basicConstraints =
-  [ TCSubtype (TApp "Array" [TAny])
-              (TObject [("length", TId "int")])
-  ]
-
-
 type TypeCheck a = StateT TypeCheckState IO a
 
 -- |Returns the successors of the node, paired with the labels on the
@@ -320,21 +313,21 @@ stmt env ee cs rettype node s = do
         case deconstrFnType f of
           Nothing -> typeError p ("expected function; received " ++ show f)
           Just (vs, cs', formals', vararg, r, latentPred) -> do
---            unless (vararg == Nothing) 
---              (fail "calling a vararg function NYI")
-            let t1 <: t2 = isSubType (stateTypeEnv state) (cs' ++ cs) t1 t2
-
             unless (length vs == length insts) $ do
               typeError p (printf "expected %d type argument(s), received %d"
                                   (length vs) (length insts))
 
-            let checkTypeArg (v, t) 
-                  | (TId v) <: t = return ()
-                  | otherwise = do
-                      typeError p 
-                        (printf "supplied type-parameter, %s for %s is invalid"
-                                (show t) v)
-            mapM_ checkTypeArg (zip vs insts)
+            let checkInst (t, v, TCSubtype _ t')
+                  | t <: t' = return (TCSubtype v t)
+                  | otherwise = typeError p $ printf
+                      "supplied type %s for %s does not satisfy the %s <: %s"
+                        (renderType t) v v (renderType t')
+
+            instConstraints <- mapM checkInst (zip3 insts vs cs')
+
+            let t1 <: t2 = isSubType (stateTypeEnv state) 
+                                     (instConstraints ++ cs' ++ cs) 
+                                      t1 t2
             
             let substVar (v, t) t' = substType v t t'
             let apply t = foldr substVar t (zip vs insts)
@@ -425,11 +418,11 @@ dotrefContext t = return t
 lookupConstraint :: Type -> [TypeConstraint] -> Type
 lookupConstraint t [] = t
 lookupConstraint t@(TId x) (tc:tcs) = case tc of
-  TCSubtype (TId y) t | x == y -> t
+  TCSubtype y t | x == y -> t
   otherwise -> lookupConstraint t tcs
 
 lookupConstraint t (tc:tcs) = case tc of
-  TCSubtype t1 t2 | isSubType M.empty [] t t1 -> t2
+  TCSubtype t1 t2 | isSubType M.empty [] t (TId t1) -> t2
                   | otherwise -> lookupConstraint t tcs
   
 
@@ -450,11 +443,14 @@ expr env ee cs e = do
        VPNone -> return (tAct, VPId id)
        _      -> return (tAct, VPMulti [VPId id, vp])
    DotRef (_, loc) e p -> do
-     --I'm uneasy about needing all of the following 3 lines
+     --I'm uneasy about needing all of the following 3 lines.
+     -- but why? - arjun
      (t'', _) <- expr env ee cs e
      t' <- dotrefContext (unRec t'')
      let t = unConstraint (unRec t')
      case t of
+       -- Awful hack
+       TApp "Array" [_] | p == "length" -> return (intType, VPNone)
        TObject props -> case lookup p props of
          Just t' -> return (t', VPNone)
          Nothing -> typeError loc (printf "expected object with field %s" p)
@@ -636,6 +632,8 @@ unionEnv env1 env2 =
   foldl' (\env (id, maybeType) -> M.insertWith unionTypeVP id maybeType env)
          env1 (M.toList env2)
 
+-- |Returns the local environment for a function, type constraints in its
+-- signature, its return type and its full type.
 uneraseEnv :: Env -> Map String Type
            -> Map String Kind
            -> ErasedEnv -> Lit (Int, SourcePos) 
@@ -644,22 +642,25 @@ uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
   let newNames = map fst (args ++ locals)
   unless (newNames == nub newNames) $ do
     typeError pos "duplicate argument/local names"
-
-  let lookupEE p name = case M.lookup p ee of
-        Nothing -> return Nothing
-        Just t | head name == '@' -> return Nothing
-               | otherwise -> do
-                   let t' = map (unaliasType basicKinds tenv) t
-                   return $ Just t'
-      functype' = case M.lookup pos ee of
+  let functype = case M.lookup pos ee of
         Just [t] -> t
         Nothing -> error $ "uneraseEnv: no type for function at " ++ show pos
         Just ts -> 
           error $ printf "uneraseEnv: multiple types for the function at %s, \
                          \types were %s" (show pos) (show ts)
-  let functype = unaliasType kindEnv tenv functype'
-  let Just (_, cs, types, vararg, rettype, lp) = deconstrFnType functype
-      -- undefined for arguments
+
+  let Just (tVars, cs, types, vararg, rettype, lp) = deconstrFnType functype
+  
+  let localKindEnv = M.union (freeTypeVariables functype) kindEnv  
+
+  let lookupEE p name = case M.lookup p ee of
+        Nothing -> return Nothing
+        Just t | head name == '@' -> return Nothing
+               | otherwise -> do
+                   let t' = map (unaliasType localKindEnv tenv) t
+                   return $ Just t'
+
+
   let (this:argsarray:types') = types ++ (case vararg of
         Nothing -> []
         Just vt -> [TApp "Array" [vt]])
@@ -788,7 +789,7 @@ typeCheckWithGlobals venv tenv prog = do
         [M.fromList [("this", 
                       Just (TObject [], TObject [], False, VPId "this"))]]
   
-  (env, state) <- runStateT (typeCheckProgram venv' basicKinds basicConstraints 
+  (env, state) <- runStateT (typeCheckProgram venv' basicKinds [] 
                                               (envs, intraprocs)) 
                             (TypeCheckState G.empty M.empty tenv)
   return env

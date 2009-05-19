@@ -33,7 +33,7 @@ hangBraces doc = lbrace $$ (nest 2 doc) $$ rbrace
 
 typeConstraint :: TypeConstraint -> Doc
 typeConstraint tc = case tc of
-  TCSubtype t1 t2 ->  type_ t1 <+> text "<:" <+> type_ t2
+  TCSubtype v t2 ->  text v <+> text "<:" <+> type_ t2
 
 
 renderType :: Type -> String

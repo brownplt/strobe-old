@@ -31,7 +31,7 @@ import Control.Monad.Trans (MonadIO,liftIO)
 import Numeric(readDec,readOct,readHex)
 import Data.Char(chr)
 import Data.Char
-import qualified Data.List as L
+import Data.List
  
 -- We parameterize the parse tree over source-locations.
 type ParsedStatement = Statement SourcePos
@@ -58,10 +58,34 @@ identifier =
  -}
 typeConstraint :: CharParser st TypeConstraint
 typeConstraint = do
-  t1 <- (Lexer.identifier >>= \x -> return (TId x)) <|> (parens type_)
+  v <- Lexer.identifier 
   reservedOp "<:"
-  t2 <- type_
-  return (TCSubtype t1 t2)
+  t <- type_
+  return (TCSubtype v t)
+
+-- |Creates a constraint for each type variable in a TForall.  Unconstrained
+-- variables x, are x <: Any.  Furthermore, constraints and variables are
+-- ordered.  Fails if a variable is constrained multiple times.
+normalizeTForall :: Monad m => Type -> m Type
+normalizeTForall (TForall ids cs t) = do
+  let tcOrder (TCSubtype x _) (TCSubtype y _) = compare x y
+  let defaultConstraint v = (v, TCSubtype v TAny)
+  let check [] [] = return []
+      -- trailing list of unconstrained type variables; this is the common
+      -- case of unbounded polymorphism.
+      check vs [] = return (map defaultConstraint vs)
+      check [] cs = fail $ "dangling constraints"
+      check (v:vs) ((TCSubtype v' t):cs) = case compare v v' of
+        -- Since both are ordered, v is missing a constraint.
+        LT -> do rest <- check vs ((TCSubtype v' t):cs)
+                 return ((defaultConstraint v):rest)
+        EQ -> do rest <- check vs cs
+                 return ((v, (TCSubtype v' t)):rest)
+        GT -> fail $ "duplicate / dangling constraint on " ++ v'
+  r <- check (sort ids) (sortBy tcOrder cs)
+  let (ids', cs') = unzip r
+  return (TForall ids' cs' t)
+normalizeTForall t = return t
 
 {- The syntax for types is:
 
@@ -114,7 +138,7 @@ type_ = do
                        (return [])
         reservedOp "."
         t <- type_fn
-        return (TForall ids constraints t)
+        normalizeTForall (TForall ids constraints t)
   let rec = do
         p <- getPosition
         reserved "rec"
@@ -130,7 +154,7 @@ type_ = do
               reservedOp "->"
               p' <- getPosition
               r <- type_ <|> (return Types.undefType)
-              let arguments = TSequence (L.init ts) (Just (L.last ts))
+              let arguments = TSequence (init ts) (Just (last ts))
               return (TFunc (thisType:arguments:ts) r (LPNone))
         let func = do
               reservedOp "->"
@@ -152,7 +176,7 @@ type_fn = do
   let vararity = do
         reservedOp "..."
         reservedOp "->"
-        let arguments = TSequence (L.init ts) (Just (L.last ts))
+        let arguments = TSequence (init ts) (Just (last ts))
         r <- type_ <|> (return Types.undefType)
         return (TFunc (thisType:arguments:ts) r LPNone)
   let func = do
@@ -186,7 +210,7 @@ type_'' =
         fields' <- noDupFields fields
         return (TObject fields')
       noDupFields fields
-        | length (L.nub $ map fst fields) == length fields = return fields
+        | length (nub $ map fst fields) == length fields = return fields
         | otherwise = fail "duplicate fields in an object type specification"
       any = do
         reserved "any"

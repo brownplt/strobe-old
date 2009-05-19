@@ -306,6 +306,7 @@ st env rel (t1, t2)
   | (t1, t2) `S.member` rel = return rel
   | otherwise = do
    case (t1, t2) of
+    (TApp "Array" _, TObject [("length", TId "int")]) -> return rel
     -- If x == y, then (env ! x) == (env ! y), so t1 <: t2
     (TEnvId x, TEnvId y) | x == y -> return rel
     -- However, if x != y, they may still be structurally equivalent.
@@ -419,7 +420,7 @@ isSubType env cs t1 t2 = result where
     Just _ -> True
     Nothing -> False
   initial = S.fromList (map subtype cs)
-  subtype (TCSubtype s t) = (s, t)
+  subtype (TCSubtype v t) = (TId v, t)
 
 unionType :: Type -> Type -> Type
 unionType t1 t2

@@ -27,7 +27,7 @@ data Id a = Id a String
   deriving (Show, Ord, Data, Typeable)
 
 data TypeConstraint
-  = TCSubtype Type Type
+  = TCSubtype String Type
   deriving (Show, Eq,Ord)
 
 data Type
