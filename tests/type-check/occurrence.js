@@ -401,6 +401,7 @@ function (x) :: (U(int, string, bool) -> int) {
   return 13;
 } :: U(int, string, bool) -> int;
 
+//VPWeakType:
 function (x) :: U(int, bool) -> int {
   var b :: bool = true;
   if (x == 3)
@@ -411,6 +412,12 @@ function (x) :: U(int, bool) -> int {
     return 5;
   }
 } @@ fails;
+function (x) :: U(int, bool) -> int {
+  if (x != 3) {
+    return 4;
+  }
+  return x;
+} :: U(int, bool) -> int;
 function (x) :: U(int, bool) -> int {
   var b :: bool = true;
   if (x == 3)
