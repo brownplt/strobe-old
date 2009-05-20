@@ -73,30 +73,10 @@ function (x) :: (Array<int> -> int) {
   return x[0];
 } :: (Array<int> -> int);
 
-function () :: (-> Array<int>) {
-  // According to our defintiions, int <: double.
+// According to our defintiions, int <: double.
 
-  // However, it is not the case that the interface for ints has more methods
-  // than double.  This is messed up.
-
-  var z :: Array<int> = [1];
-  var y :: Array<double> = [2.0];
-  y = z; // this assignment is OK as long as you don't mutate anything
-  y[0] = 3.1; //this should fail
-  return z;
-} @@ fails;
-
-function () :: (-> ) {
-  function inner(x) :: (Array<double> ->) {
-    x[0] = 3.1;
-  };
-
-  var z :: Array<int> = [1];
-  var y :: Array<double> = [2.0];
-  y = z;
-  inner(y); //this call should fail, cause inner mutates stuff
-} @@ fails;
-
+// However, it is not the case that the interface for ints has more methods
+// than double.  This is messed up.
 
 //arrays of objects:
 //TODO: make these use iterators once those work.
@@ -185,7 +165,6 @@ function () :: (-> double) {
   return z[0];
 } :: (-> double);
 
-//TODO: subtyping for functions
 function () :: (->) {
   var x :: Array<string> = [1];
 } @@ fails;
@@ -197,4 +176,12 @@ function () :: (->) {
 
 [1,2,3] :: Array<int>;
 
+//arrays as objects:
+function (start, end) :: (int, int -> Array<int>) {
+  var r = [];
+  for (var i = start; i < end; i++) {
+    r.push(i);
+  }
+  return r;
+} :: (int, int -> Array<int>);
 

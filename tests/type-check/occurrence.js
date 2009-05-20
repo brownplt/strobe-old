@@ -20,8 +20,6 @@ function (x) :: U(string, bool) -> string {
 
 function (x) :: (U(string, bool) -> string) {
   if (typeof x == "string") {
-    //TODO: change return stmt checking so that occurrence typing has an effect
-    //on it! (i.e. move it into typeCheckStmts)
     return x;
   }
   return "was not a string";
@@ -320,4 +318,110 @@ function() :: (->) {
 
 } @@ succeeds;
 
+//switch statements:
+function (x) :: (U(string, bool) -> string) {
+  switch (typeof x) {
+    case 'string':
+      return x;
+    default:
+      return "was not a string";
+  };
+} :: (U(string, bool) -> string);
+
+function (x) :: (U(int, string, bool) -> int) {
+  switch (typeof x) {
+    case 'number':
+     return x;
+     break;
+    case 'string':
+     return 33;
+     break;
+    case 'bool':
+     if (x) return 0; else return 1;
+     break;
+  };
+  //we only get here if something is whacked out
+  return 13;
+} :: U(int, string, bool) -> int;
+
+function (x) :: (U(int, string, bool) -> int) {
+  var z :: int = 1;
+  var s :: string = "s";
+  var b :: bool = true;
+  switch (typeof x) {
+    case 'number':
+     z = x;
+     break;
+    case 'string':
+     s = x;
+     break;
+    default:
+     b = x;
+     break;
+  };
+  return 13;
+} :: U(int, string, bool) -> int;
+//if equivalent:
+function (x) :: (U(int, string, bool) -> int) {
+  var z :: int = 1;
+  var s :: string = "s";
+  var b :: bool = true;
+  if (typeof x == "number") {
+    z = x;
+  } else {
+    if (typeof x == "string") {
+      s = x;
+    } else {
+      b = x;
+    }
+  }
+  return 13;
+} :: U(int, string, bool) -> int;
+
+
+function (x) :: int -> int {
+  switch (typeof x) {
+    default:
+     return x;
+  }
+} :: int -> int;
+
+function (x) :: (U(int, string, bool) -> int) {
+  var z :: int = 1;
+  var s :: string = "s";
+  var b :: bool = true;
+  switch (x) {
+    case 3:
+     z = x;
+     break;
+    case 'string':
+     s = x;
+     break;
+  };
+  return 13;
+} :: U(int, string, bool) -> int;
+
+function (x) :: U(int, bool) -> int {
+  var b :: bool = true;
+  if (x == 3)
+    return x;
+  else
+  {
+    b = x; //x is still U(int, bool) here.
+    return 5;
+  }
+} @@ fails;
+function (x) :: U(int, bool) -> int {
+  var b :: bool = true;
+  if (x == 3)
+    return x;
+  else {
+    if (x == true)
+    {
+      b = x;
+      return 3;
+    }
+    return 4;
+  }
+} :: U(int, bool) -> int;
 

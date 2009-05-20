@@ -428,7 +428,16 @@ stmt env ee cs rettype node s = do
     LabelledStmt _ _ _ -> noop
     BreakStmt _ _ -> noop
     ContinueStmt _ _ -> noop
-    SwitchStmt _ e cases default_ -> error "switch stmt NYI"
+    SwitchStmt (i,p) id cases default_ -> do
+      --assumption: succs contains the same lits that cases does
+      (t, vp) <- expr env ee cs (VarRef (i,p) id)
+      let occurit (node, Just lit) = do
+            (tlit, vplit) <- expr env ee cs (Lit lit)
+            return (node, gammaPlus env (equalityvp vp vplit))
+          occurit (node, Nothing) = do --default branch
+            tsvps <- mapM (expr env ee cs . Lit) (map fst cases)
+            return (node,foldl gammaMinus env (map (equalityvp vp . snd) tsvps))
+      mapM occurit succs
 
 -- in pJS, string, int, etc. can all be used as objects.
 -- but they're not objects; they get converted.

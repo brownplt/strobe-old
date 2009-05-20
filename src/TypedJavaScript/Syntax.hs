@@ -60,6 +60,7 @@ data VP = VPId String
         | VPType Type String
         | VPNone
         --TODO: Justify the following VPs:
+        | VPWeakType Type String --result of "x == 3"
         | VPTypeof String
         | VPNot VP
         | VPLit (Lit SourcePos) Type

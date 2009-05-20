@@ -504,19 +504,20 @@ gammaPlus :: Env -> VP -> Env
 gammaPlus env (VPType t v) =  case M.lookup v env of
   Nothing -> env
   Just Nothing -> env
-  Just (Just (t', _, b, vp_t)) -> 
+  Just (Just (_, t', b, vp_t)) -> 
     M.insert v (Just (t', restrict t' t, b, vp_t)) env
 -- if (x), when true, removes all things from x that are like "undefined"
 --gammaPlus g (VPId x) = gammaMinus g (VPType (TId noPos "undefined") x)
 gammaPlus g (VPNot vp) = gammaMinus g vp
 gammaPlus g (VPMulti vs) = foldl gammaPlus g vs
+gammaPlus env (VPWeakType t v) = gammaPlus env (VPType t v)
 gammaPlus g _ = g
 
 gammaMinus :: Env -> VP -> Env
 gammaMinus env (VPType t v) = case M.lookup v env of
   Nothing -> env
   Just Nothing -> env
-  Just (Just (t', _, b, vp_t)) -> 
+  Just (Just (_, t', b, vp_t)) -> 
     M.insert v (Just (t', remove t' t, b, vp_t)) env
 -- if (x), when false, leaves only things in x that are like "undefined"
 --gammaMinus g (VPId x) = gammaPlus g (VPType (TId noPos "undefined") x)
@@ -540,6 +541,11 @@ equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId "string")) = case s of
   _           -> VPNone
 equalityvp a@(VPLit (StringLit l s) (TId "string")) b@(VPTypeof x) = 
   equalityvp b a
+
+-- "x == 3" restricts x to be an integer!
+-- but it doesn't restrict x to _not_ be an integer, so we can't use VPType.
+equalityvp (VPId x) (VPLit _ t) = VPWeakType t x
+equalityvp (VPLit _ t) (VPId x) = VPWeakType t x
 
 -- yay for cartesian product.
 -- this could be done implicitly from the other equalityvp definition, but

@@ -70,8 +70,9 @@ function() :: (->) {
 function map(f, arr) :: forall a b . (a -> b), Array<a> -> Array<b> {
  var r :: Array<b> = [ ];
  for (var i = 0; i < arr.length; i++) {
-   r.push(f(arr[i])); }
+   r[i] = f(arr[i]); 
+ }
  return r; }
 
-} @@succeeds;
+} @@ succeeds;
 
