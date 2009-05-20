@@ -3,6 +3,8 @@ module BrownPLT.TypedJS.TypeFunctions
   , freeTypeVariables
   , isUnion
   , isObject
+  , isAny
+  , isVarRef
   , replaceAliases
   ) where
 
@@ -10,6 +12,7 @@ import qualified Data.Map as M
 
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.TypeDefinitions
+import BrownPLT.JavaScript.Analysis.ANF
 
 import TypedJavaScript.Types
 
@@ -44,7 +47,14 @@ isObject :: Type -> Bool
 isObject (TObject _) = True
 isObject _ = False
 
+isAny :: Type -> Bool
+isAny TAny = True
+--isAny (TIterator _) = True --these practically act like anyes
+--isAny (TProperty _) = True
+isAny _ = False
 
+isVarRef (VarRef{}) = True
+isVarRef _ = False
 
 lookupAlias :: KindEnv -> Map String Type -> SourcePos -> Type -> Type
 lookupAlias kindEnv tenv pos t = case t of

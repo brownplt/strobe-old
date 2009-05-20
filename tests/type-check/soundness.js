@@ -223,3 +223,39 @@ function () :: (->) {
 } @@ fails;
 
 
+//can't assign to global 'anys'
+function () :: (-> int) {
+  var x :: any = 4;
+  function inner() :: (->) {
+    x = "AHAH";
+  };
+  inner();
+  return x;
+} @@ fails;
+
+function () :: (-> int) {
+  var x :: any = 4;
+  function inner() :: (->) {
+  };
+  return x;
+} @@ succeeds;
+
+function () :: (-> int) {
+  var x :: any = 4;
+  function inner(x) :: (any ->) {
+    x = "FRFR";
+  };
+  inner(x);
+  return x;
+} @@ succeeds;
+
+function () :: (-> int) {
+  var x :: any = 4;
+  function inner(x) :: (string ->) {
+    x = "FRFR";
+  };
+  x = "he";
+  inner(x);
+  x = 3;
+  return x;
+} @@ succeeds;

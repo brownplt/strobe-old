@@ -45,6 +45,8 @@ data Type
   -- | TIndex Type Type String --obj[x] --> TIndex <obj> <x> "x"
   --the first type, 'refined' to the 2nd
   | TEnvId String -- ^a reference to an identifier in the environment
+  | TIterator String -- ^iterator for the object referred to by the string
+  | TProperty String -- ^property of object given by string, accessed by iter
   deriving (Show, Eq, Ord, Data, Typeable)
 
 -- the following are constructs which just assign types to IDs, either

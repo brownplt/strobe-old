@@ -204,6 +204,7 @@ doAssignment (<:) p env v te e_vp = case M.lookup v env of
     | isUnion tDec -> typeError p $ 
         printf "cannot assign to global union %s :: %s"
                v (renderType tDec)
+    | isAny tDec -> typeError p "cannot assign to global anys"
     | te <: tDec ->  do
         -- TODO: remove, from environment, any VP referring to this var!
         let env' = M.insert v (Just (tDec, te, False,
@@ -271,6 +272,7 @@ stmt env ee cs rettype node s = do
       return $ zip (map fst succs) (repeat env')
 
     -- THE FOLLOWING IS MUTATION!!! WARNING!!! CHIDLREN WILL GET HRUT
+    -- TODO: make a doMutation function, use it for the following 2 cases
     DirectPropAssignStmt (_,p) obj prop e -> do
       (t_rhs, e_vp) <- expr env ee cs e
       case M.lookup obj env of
@@ -286,6 +288,8 @@ stmt env ee cs rettype node s = do
           TObject props -> case lookup prop props of
             Nothing -> 
               typeError p (printf "object does not have the property %s" prop)
+            -- TODO: detect if a field was discovered and, if so,
+            -- disallow mutation to it.
             Just t' | isUnion t' -> typeError p $ 
                         printf "cannot mutate to a union field"
                     | isObject t' -> typeError p $
@@ -410,7 +414,42 @@ stmt env ee cs rettype node s = do
     WhileStmt _ e s -> do
       expr env ee cs e -- this permits non-boolean tests
       noop -- will change for occurrence types
-    ForInStmt _ id e s -> fail "ForIn NYI"
+    ForInStmt (_,p) id e s -> do
+      unless (isVarRef e) $
+        typeError p (printf "can only forin through a named object, given %s"
+                       (show e))
+      let VarRef _ oid = e
+      (t, vp) <- expr env ee cs e
+      case t of
+        TObject fields ->        
+          case M.lookup id env of 
+            Nothing -> typeError p
+              (printf "id %s for forin loop is unbound" id)
+            Just (Just (tDec, tAct', isLocal, vp)) -> typeError p 
+              (printf "id %s already has a type in a forin, but it shouldnt")
+            Just Nothing -> do
+              let env' = M.insert id
+                           (Just (TIterator oid, TIterator oid, 
+                                  True, VPNone)) env
+              return (zip (map fst succs) (repeat env'))
+        _ -> typeError p (printf "trying to forin through %s, not obj" 
+                            (renderType t))
+
+-- Lit (StringLit (_,a) s) -> 
+
+{-      Just Nothing -> do
+        let env' = M.insert v 
+                     (Just (TSequence [] Nothing, TSequence [] Nothing, 
+                            True, VPNone)) env
+        return (zip (map fst succs) (repeat env'))
+
+          M.insert 
+          fail $ printf "at %s: can't assign to obj %s; has no type yet"
+                   (show p) obj
+
+
+      let itype = TIterator 
+      fail "ForIn NYI" -}
     TryStmt _ s id catches finally  -> fail "TryStmt NYI"
     ThrowStmt _ e -> do
       expr env ee cs e
@@ -505,10 +544,19 @@ expr env ee cs e = do
      let t = unRec t'
      (it', _) <- expr env ee cs ie
      let it = unRec it'
-     when (not (it <: intType)) $ do
-       subtypeError loc "obj[prop]" it intType
      case t of
-       TApp "Array" [btype] -> return (btype, VPNone)
+       TApp "Array" [btype]
+         | not (it <: intType) -> subtypeError loc "obj[prop]" intType it
+         | otherwise -> return (btype, VPNone)
+       TObject props
+         | isVarRef e -> case it of
+             TIterator z -> do
+               let (VarRef _ ename) = e
+               if ename == z
+                 then return (TProperty ename, VPNone)
+                 else typeError loc $ printf "fail to obj[prop]: obj's name \
+                                           \doesn't match name iterator is for"
+             _ -> typeError loc (printf "can only bracketref obj with iterator")
        _ -> fail $ printf "at %s: expected array, got %s" (show loc) (show t)
    OpExpr (_,p) f args_e -> do
      args <- mapM (expr env ee cs) args_e

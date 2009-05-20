@@ -39,6 +39,12 @@ function() :: (->) {
   function lawl2(x) :: (int -> int) { return lawl1(3); }
 } :: (->);
 
+function() :: (->) {
+  function lawl1(x) :: (int -> int) { return lawl2(3); }
+  lawl1(3);
+  function lawl2(x) :: (int -> int) { return lawl1(3); }
+} @@ fails;
+
 //vars are actually undefined before they are assigned:
 function() :: (->) {
   function add(a,b) :: int, int -> int {

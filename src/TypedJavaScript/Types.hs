@@ -306,6 +306,9 @@ st env rel (t1, t2)
   | (t1, t2) `S.member` rel = return rel
   | otherwise = do
    case (t1, t2) of
+    --titerator is actually a string!
+    (TIterator _, TId "string") -> return rel
+    (TId "string", TIterator _) -> return rel
     (TApp "Array" _, TObject [("length", TId "int")]) -> return rel
     -- If x == y, then (env ! x) == (env ! y), so t1 <: t2
     (TEnvId x, TEnvId y) | x == y -> return rel
@@ -504,8 +507,8 @@ gammaPlus :: Env -> VP -> Env
 gammaPlus env (VPType t v) =  case M.lookup v env of
   Nothing -> env
   Just Nothing -> env
-  Just (Just (_, t', b, vp_t)) -> 
-    M.insert v (Just (t', restrict t' t, b, vp_t)) env
+  Just (Just (tDec, t', b, vp_t)) -> 
+    M.insert v (Just (tDec, restrict t' t, b, vp_t)) env
 -- if (x), when true, removes all things from x that are like "undefined"
 --gammaPlus g (VPId x) = gammaMinus g (VPType (TId noPos "undefined") x)
 gammaPlus g (VPNot vp) = gammaMinus g vp
@@ -517,8 +520,8 @@ gammaMinus :: Env -> VP -> Env
 gammaMinus env (VPType t v) = case M.lookup v env of
   Nothing -> env
   Just Nothing -> env
-  Just (Just (_, t', b, vp_t)) -> 
-    M.insert v (Just (t', remove t' t, b, vp_t)) env
+  Just (Just (tDec, t', b, vp_t)) -> 
+    M.insert v (Just (tDec, remove t' t, b, vp_t)) env
 -- if (x), when false, leaves only things in x that are like "undefined"
 --gammaMinus g (VPId x) = gammaPlus g (VPType (TId noPos "undefined") x)
 gammaMinus g (VPNot vp) = gammaPlus g vp
@@ -535,9 +538,12 @@ equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId "string")) = case s of
   "undefined" -> VPType undefType x
   "boolean"   -> VPType (TId "bool") x
   "string"    -> VPType (TId "string") x
+  --this should be: the function that all funcs are subtypes of
   "function"  -> 
     VPType (TFunc [TUnion [], TSequence [] Nothing] (TId "any") LPNone) x
-  "object"    -> error "vp for typeof x == 'object' nyi"
+  --this should be: the object that all objects are subtypes of
+  -- but without any specific attributes... dnno!
+  "object"    -> error "equalityvp for object nyi" --VPType (TObject []) x
   _           -> VPNone
 equalityvp a@(VPLit (StringLit l s) (TId "string")) b@(VPTypeof x) = 
   equalityvp b a

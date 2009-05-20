@@ -74,6 +74,8 @@ type_ t = case t of
       where constraintsDoc = case cs of
               [] -> empty
               otherwise -> text ":" <+> commas (map typeConstraint cs)
+  TIterator i -> text "TIterator" <+> text i
+  TProperty i -> text "TProperty" <+> text i
 
 
 id :: Id a -> Doc

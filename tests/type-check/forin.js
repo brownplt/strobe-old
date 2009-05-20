@@ -21,8 +21,8 @@ function () :: (->) {
 } :: (->);
 
 function () :: (->) {
-  var pt = {x:1, y:5, z:"stringy"};
-  var pt2 = {x:10, y:10.3, z:"alsostring"};
+  var pt = {x:1, y:true, z:"stringy"};
+  var pt2 = {x:10, y:false, z:"alsostring"};
   for (var x in pt) {
     pt2[x] = pt[x];
   }
@@ -33,6 +33,18 @@ function () :: (->) {
   var pt2 = {x:10, y:10.3, z:"alsostring"};
   for (var x in pt) {
     pt2[x] = pt[x];
+  }
+} @@ fails;
+
+function () :: (->) {
+  function mutatestr(o) :: ({foo :: string} ->) {
+    o.foo = "HAHAHAH";
+  }
+  var pt = {x:1, y:2};
+  var res = "";
+  for (var x in pt) {
+    mutatestr({foo: x});
+    res += pt[x];
   }
 } @@ fails;
 
