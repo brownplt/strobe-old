@@ -84,7 +84,18 @@ function () :: (-> Array<int>) {
   y = z; // this assignment is OK as long as you don't mutate anything
   y[0] = 3.1; //this should fail
   return z;
-} @@ succeeds;
+} @@ fails;
+
+function () :: (-> ) {
+  function inner(x) :: (Array<double> ->) {
+    x[0] = 3.1;
+  };
+
+  var z :: Array<int> = [1];
+  var y :: Array<double> = [2.0];
+  y = z;
+  inner(y); //this call should fail, cause inner mutates stuff
+} @@ fails;
 
 
 //arrays of objects:

@@ -310,7 +310,9 @@ stmt env ee cs rettype node s = do
           | t_prop <: stringType ->
               subtypeError p "array insertion" t_rhs t_elem
           | otherwise -> do
-              subtypeError p "array index not an integer" t_prop intType
+              if (not $ t_prop <: intType)
+                then subtypeError p "array index not an integer" intType t_prop
+                else subtypeError p "array rhs wrong" t_elem t_rhs
         (Just (Just (_, TApp "Array" [t_elem], _, _)), Just Nothing) ->
           typeError p (printf "index variable %s is undefined" method)
         z -> do
