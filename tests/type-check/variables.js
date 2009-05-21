@@ -85,7 +85,8 @@ function (x) :: (double -> string) {
   var y = "stringy";
   return y;
 } @@ fails;
-//javascript doesn't have scoping, so this also should fail:
+
+//javascript doesn't have block scoping, so this also should fail:
 function (x) :: (double -> string) {
   var y = 5;
   if (true)
@@ -93,22 +94,25 @@ function (x) :: (double -> string) {
     var y = "stringy";
     y += "4aaa";
   }
-  return y;
+  return y; // use before definition here
 } @@ fails;
 
 //the next one should fail, since z has type string?
 function (x) :: (double -> string) {
   var y = 5;
+  var z :: U(string,undefined) = undefined;
   if (true)
   {
-    var z = "stringy";
+    z = "stringy";
     z += y;
   }
   return z;
 } @@ fails;
+
 //but the next one should succeed
 function (x) :: (double -> string?) {
   var y = 5;
+  var z :: U(string,undefined) = undefined;
   if (true)
   {
     var z = "stringy";
