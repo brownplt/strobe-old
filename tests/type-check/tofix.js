@@ -1,10 +1,10 @@
-//functions are processed before other things:
+//functions are processed before other things: BUT NOT IN TYPED JAVASCRIPT LAND.
 function () :: (->) {
   var z = myadder(3, 2);
   function myadder(a, b) :: int, int -> int {
     return a+b;
   }
-} :: (->);
+} @@ fails;
 
 //variables assignments are not:
 function () :: (->) {
