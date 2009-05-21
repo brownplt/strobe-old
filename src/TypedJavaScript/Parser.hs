@@ -170,9 +170,9 @@ type_ = do
 type_fn :: CharParser st (Type)
 type_fn = do
   p <- getPosition
-  let globalThis = TObject [] -- TODO: make this the global this
+  let globalThis = TObject True [] -- TODO: make this the global this
   ts <- type_' `sepBy` comma
-  let thisType = TObject []
+  let thisType = TObject True []
   let vararity = do
         reservedOp "..."
         reservedOp "->"
@@ -206,9 +206,12 @@ type_'' =
         reservedOp "U";
         liftM TUnion (parens (type_'' `sepEndBy` comma))
       object = do
-        fields <- braces $ field `sepEndBy` comma
+        (fields, hasSlack) <- braces $ do
+          fs <- field `sepEndBy` comma
+          hasSlack <- (reservedOp "..." >> return True) <|> (return False)
+          return (fs, hasSlack)
         fields' <- noDupFields fields
-        return (TObject fields')
+        return (TObject hasSlack fields')
       noDupFields fields
         | length (nub $ map fst fields) == length fields = return fields
         | otherwise = fail "duplicate fields in an object type specification"

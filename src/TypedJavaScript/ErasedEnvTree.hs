@@ -126,6 +126,6 @@ buildErasedEnvTree stmts =
         -- If the filename of the Typed JavaScript program is 
         -- Intraprocedural.hs, this may be problematic.
         topLevel = single (initialPos "Intraprocedural.hs")
-                          (TFunc [TObject [], TSequence [] Nothing] 
+                          (TFunc [TObject True [], TSequence [] Nothing] 
                                  (TId "undefined")
                                  LPNone)

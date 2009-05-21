@@ -3,6 +3,7 @@ module BrownPLT.TypedJS.TypeFunctions
   , freeTypeVariables
   , isUnion
   , isObject
+  , isSlackObject
   , isAny
   , isVarRef
   , replaceAliases
@@ -30,7 +31,7 @@ freeTypeVariables t = fv t where
   fv (TSequence args Nothing) = M.unions (map fv args)
   fv (TSequence args (Just opt)) = M.unions (map fv (opt:args))
   fv (TId _) = M.empty
-  fv (TObject props) = M.unions (map (fv.snd) props)
+  fv (TObject _ props) = M.unions (map (fv.snd) props)
   fv TAny = M.empty
   fv (TRec id t) = M.insert id KindStar (fv t)
   fv (TUnion ts) = M.unions (map fv ts)
@@ -44,8 +45,15 @@ isUnion _ = False
 
 
 isObject :: Type -> Bool
-isObject (TObject _) = True
+isObject (TObject _ _) = True
 isObject _ = False
+
+
+isSlackObject :: Type -> Bool
+isSlackObject (TObject True _) = True
+isSlackObject _ = False
+
+
 
 isAny :: Type -> Bool
 isAny TAny = True

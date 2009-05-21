@@ -64,8 +64,11 @@ type_ t = case t of
   TApp s ts -> text s <> text "<" <> commas (map type_ ts) <> text ">"
   TAny -> text "any"
   TRec id t -> hang (text "rec" <+> text id <+> text ".") 2 (type_ t)
-  TObject fields -> braces (nest 2 $ commas (map field fields))
+  TObject hasSlack fields -> braces $ nest 2 (commas (map field fields) <> s)
     where field (id, t') = text id <+> text "::" <+> type_ t'
+          s = case hasSlack of
+                True -> text ", ..."
+                False -> empty
   TUnion ts -> text "U" <+> parens (commas (map type_ ts))
   TId v -> text v
   TForall ids cs t' ->

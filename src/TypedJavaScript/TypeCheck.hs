@@ -286,20 +286,21 @@ stmt env ee cs rettype node s = do
         Just (Just (tDec, tAct', isLocal, vp)) -> do
          tAct <- dotrefContext tAct'
          case unRec tAct of
-          TObject props -> case lookup prop props of
+          TObject _ props -> case lookup prop props of
             Nothing -> 
               typeError p (printf "object does not have the property %s" prop)
             -- TODO: detect if a field was discovered and, if so,
             -- disallow mutation to it.
             Just t' | isUnion t' -> typeError p $ 
                         printf "cannot mutate to a union field"
-                    | isObject t' -> typeError p $
+                    | isSlackObject t' -> typeError p $
                         printf "cannot mutate the field %s :: %s"
                                prop (renderType t')
                     | t_rhs <: t' -> noop -- TODO: affect VP?
                     | otherwise -> 
                         subtypeError p "assignment to property" t_rhs t'
-          t' -> typeError p (printf "expected object, received %s" (show t'))
+          t' -> typeError p $ printf "expected object, received %s" 
+                  (renderType t')
           
     IndirectPropAssignStmt (_,p) obj method e -> do 
       (t_rhs, _) <- expr env ee cs e
@@ -422,7 +423,7 @@ stmt env ee cs rettype node s = do
       let VarRef _ oid = e
       (t, vp) <- expr env ee cs e
       case t of
-        TObject fields ->        
+        TObject _ fields ->        
           case M.lookup id env of 
             Nothing -> typeError p
               (printf "id %s for forin loop is unbound" id)
@@ -532,12 +533,12 @@ expr env ee cs e = do
      case t of
        -- Awful hack
        TApp "Array" [_] | p == "length" -> return (intType, VPNone)
-       TObject props -> case lookup p props of
+       TObject _ props -> case lookup p props of
          Just t' -> return (t', VPNone)
          Nothing -> typeError loc (printf "expected object with field %s" p)
        otherwise -> typeError loc (printf "expected object, received %s, \
                                           \constraints were %s"
-                                          (show t) (show cs))
+                                          (renderType t) (show cs))
                                           
    BracketRef (_, loc) e ie -> do
      (t'', _) <- expr env ee cs e
@@ -549,7 +550,7 @@ expr env ee cs e = do
        TApp "Array" [btype]
          | not (it <: intType) -> subtypeError loc "obj[prop]" intType it
          | otherwise -> return (btype, VPNone)
-       TObject props
+       TObject _ props
          | isVarRef e -> case it of
              TIterator z -> do
                let (VarRef _ ename) = e
@@ -610,8 +611,7 @@ expr env ee cs e = do
          prop (Right n, (_, propLoc), e) = do
            catastrophe propLoc "object literals with numeric keys NYI"
      propTypes <- mapM prop props
-     let t = TObject propTypes
-     return (t, VPNone)
+     return (TObject False propTypes, VPNone)
    Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
      Nothing -> catastrophe p "function lit is not in the erased environment"
      Just [t] -> do
