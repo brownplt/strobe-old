@@ -530,16 +530,10 @@ expr env ee cs e = do
      (t'', _) <- expr env ee cs e
      t' <- dotrefContext (unRec t'')
      let t = unConstraint (unRec t')
-     case t of
-       -- Awful hack
-       TApp "Array" [_] | p == "length" -> return (intType, VPNone)
-       TObject _ props -> case lookup p props of
-         Just t' -> return (t', VPNone)
-         Nothing -> typeError loc (printf "expected object with field %s" p)
-       otherwise -> typeError loc (printf "expected object, received %s, \
-                                          \constraints were %s"
-                                          (renderType t) (show cs))
-                                          
+     case fieldType p t of
+       Just t' -> return (t', VPNone)
+       Nothing -> typeError loc $ printf
+         "expected object with field %s, received %s" p (renderType t)
    BracketRef (_, loc) e ie -> do
      (t'', _) <- expr env ee cs e
      t' <- dotrefContext (unRec t'')

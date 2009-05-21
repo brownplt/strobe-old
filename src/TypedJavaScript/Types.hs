@@ -24,6 +24,7 @@ module TypedJavaScript.Types
   , VP (..)
   , TypeConstraint (..)
   , LatentPred (..)
+  , flattenUnion
   ) where
 
 import Debug.Trace

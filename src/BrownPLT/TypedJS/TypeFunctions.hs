@@ -1,5 +1,6 @@
 module BrownPLT.TypedJS.TypeFunctions
   ( globalizeEnv
+  , fieldType
   , freeTypeVariables
   , isUnion
   , isObject
@@ -37,6 +38,15 @@ freeTypeVariables t = fv t where
   fv (TUnion ts) = M.unions (map fv ts)
   fv (TForall ids _ t) = M.union (M.fromList (zip ids (repeat KindStar)))
                                  (fv t)
+
+
+fieldType :: Id -> Type -> Maybe Type
+fieldType id (TObject _ ts) = lookup id ts
+fieldType id (TUnion ts) = do
+  types <- mapM (fieldType id) ts
+  return (flattenUnion (TUnion types))
+fieldType "length" (TApp "Array" [_]) = return intType
+fieldType _ _ = Nothing
 
 
 isUnion :: Type -> Bool
