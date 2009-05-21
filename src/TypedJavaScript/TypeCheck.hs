@@ -21,7 +21,7 @@ import TypedJavaScript.ErasedEnvTree
 import TypedJavaScript.TypeErasure
 import BrownPLT.TypedJS.InitialEnvironment
 import BrownPLT.TypedJS.TypeFunctions
-import BrownPLT.JavaScript.Analysis.DefineBeforeUse (assertDefineBeforeUse)
+import BrownPLT.JavaScript.Analysis.DefineBeforeUse
 
 import Paths_TypedJavaScript
 import Text.ParserCombinators.Parsec (parseFromFile)
@@ -863,9 +863,12 @@ typeCheckWithGlobals :: Env -> Map String Type ->
                         [TJS.Statement SourcePos] -> IO Env
 typeCheckWithGlobals venv tenv prog = do
   let assertDefUse env anf = 
-        case assertDefineBeforeUse (S.fromList (M.keys env)) anf of
+        case defineBeforeUse (S.fromList (M.keys env)) anf of
           Right () -> return ()
-          Left errs -> fail $ concat (intersperse "\n" errs)
+          Left errs ->
+            fail $ concat (intersperse "\n" (map f errs))
+              where f (v, p) = printf "%s: %s may be used before it is defined"
+                                      (show p) v
 
   -- Build intraprocedural graphs for all functions and the top-level.
   -- These graphs are returned in a tree that mirrors the nesting structure
