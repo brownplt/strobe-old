@@ -21,6 +21,7 @@ import TypedJavaScript.ErasedEnvTree
 import TypedJavaScript.TypeErasure
 import BrownPLT.TypedJS.InitialEnvironment
 import BrownPLT.TypedJS.TypeFunctions
+import BrownPLT.JavaScript.Analysis.DefineBeforeUse (assertDefineBeforeUse)
 
 import Paths_TypedJavaScript
 import Text.ParserCombinators.Parsec (parseFromFile)
@@ -861,6 +862,11 @@ typeCheck prog = do
 typeCheckWithGlobals :: Env -> Map String Type -> 
                         [TJS.Statement SourcePos] -> IO Env
 typeCheckWithGlobals venv tenv prog = do
+  let assertDefUse env anf = 
+        case assertDefineBeforeUse (S.fromList (M.keys env)) anf of
+          Right () -> return ()
+          Left errs -> fail $ concat (intersperse "\n" errs)
+
   -- Build intraprocedural graphs for all functions and the top-level.
   -- These graphs are returned in a tree that mirrors the nesting structure
   -- of the program.  The graphs are for untyped JavaScript in ANF.  This
@@ -868,6 +874,8 @@ typeCheckWithGlobals venv tenv prog = do
   -- original program.  For now, we assume that the conversion to ANF preserves
   -- the type structure of the program.
   let (topDecls, anfProg) = jsToCore (simplify (eraseTypes prog))
+  
+  
   let (anf, intraprocs) = allIntraproceduralGraphs (topDecls, anfProg)
   -- Since all type annotations are erased in the previous step, map locations
   -- to type annotations, so they may be recovered later.  The locations are
@@ -879,10 +887,12 @@ typeCheckWithGlobals venv tenv prog = do
   let envs = buildErasedEnvTree prog
 
   -- add this:
-  let venv' = M.unions $ [venv] ++ 
-        [M.fromList [("this", 
-                      Just (TObject [], TObject [], False, VPId "this"))]]
+  let venv' = 
+        M.insert "this" 
+                 (Just (TEnvId "Window", TEnvId "Window", False, VPNone)) venv
   
+  assertDefUse venv' (topDecls, anfProg)
+
   (env, state) <- runStateT (typeCheckProgram venv' basicKinds [] 
                                               (envs, intraprocs)) 
                             (TypeCheckState G.empty M.empty tenv)

@@ -2,6 +2,8 @@
 
 //constructors should go here, too
 
+
+
 type Object :: rec Object . {
   constructor :: (any... -> any), //super-type of all functions
   hasOwnProperty :: ([Object] string -> bool),
@@ -105,6 +107,8 @@ external Array_each :: forall a. Array<a>, (a -> ) ->;
 
 
 external document :: HTMLDocument;
+
+external Window :: Window;
 
 
 
