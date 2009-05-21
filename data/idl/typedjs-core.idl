@@ -1,0 +1,25 @@
+/*interface RegExp {
+  attribute bool   global;
+  attribute bool   ignoreCase;
+  attribute int    lastIndex;
+  attribute bool   multiline;
+  attribute string source;
+  Array<string> exec(in string);
+  bool          test(in string);
+};
+
+interface String {
+  attribute int length;
+  union { Array<string>, undefined } match(in string);
+};*/
+
+//seems silly to re-encode everything in terms
+//of IDLs...
+
+/*
+interface Object {
+  attribute function constructor;
+  bool hasOwnProperty(in string propname);
+  bool isPrototypeOf(in any o);
+  bool propertyIsEnumerable(in string propname);
+*/
