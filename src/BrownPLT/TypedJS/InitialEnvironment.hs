@@ -32,7 +32,7 @@ idlFiles =
 extras :: [(String, Type)]
 extras = 
   [ ("DOMString", stringType)
-  , ("DOMObject", TObject [])
+  , ("DOMObject", TObject True [])
   , ("DOMUserData", TAny)
   , ("DOMTimeStamp", intType)
   ]
@@ -52,8 +52,8 @@ parseIDLType t = case t of
 -- Silently drops the readonly modifier on attributes.
 objectFromIDL :: String -- ^self id
               -> [IDL.Definition] -- ^methods, attributes, etc.
-              -> Type -- ^a TObject
-objectFromIDL self members = TObject (map field members)
+              -> Type -- ^a TObject with slack
+objectFromIDL self members = TObject True (map field members)
   where field (IDL.Const t v _) = (v, parseIDLType t)
         field (IDL.Attr isReadOnly t v) = (v, parseIDLType t)
         field (IDL.Method ret v args) = 

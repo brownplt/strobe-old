@@ -22,7 +22,7 @@ function() :: (->) {
 
   // z <: y
   var z :: { field :: int, field2 :: int } = { field: 50, field2: 9000 } ;
-  var y :: { field :: int } = { field: 50 };
+  var y :: { field :: int, ... } = { field: 50 };
 
   var t :: int = y.field;
   y = z; // this assignment should succeed
@@ -35,7 +35,7 @@ function() :: (->) {
   // z <: y
   var z :: Array<{ field :: int, field2 :: int }>
     = [ { field: 50, field2: 9000 }  ];
-  var y :: Array<{ field :: int }> = [ { field: 50 } ];
+  var y :: Array<{ field :: int, ... }> = [ { field: 50 } ];
 
   var t :: int = y[0].field;
   y = z; // this assignment should succeed
@@ -92,7 +92,7 @@ function () :: (->) {
 } @@ fails;
 
 function () :: (->) {
-  function oomra(y) :: ({x :: {field :: int}} ->) {
+  function oomra(y) :: ({x :: {field :: int, ... }} ->) {
     y.x.field = 30;
   }
 
@@ -102,15 +102,15 @@ function () :: (->) {
 } @@ succeeds;
 
 function() :: (->) {
-  function writeToF2(bar) :: ({field2::int} -> ) {
+  function writeToF2(bar) :: ({ field2::int, ... } -> ) {
     bar.field2 = 50;
   };
 
   // z <: y
   var z :: {x :: { field :: int, field2 :: int }} =
     {x : {field: 50, field2: 9000 } };
-  var y :: {x :: { field :: int }} =
-    {x : {field: 50 }};
+  var y :: {x :: { field :: int, ... }} =
+           {x : {field: 50 }};
 
   var t :: int = y.x.field;
   y = z; // this assignment should succeed, cause of subtyping
@@ -163,15 +163,15 @@ function () :: (-> ) {
   y = z;
   inner(y);
 } @@ fails;
-//can't reproduce this bug without int/double subtyping (good sign)!
+
 function () :: (-> ) {
-  function inner(x) :: ({foo :: {broohah :: int}} ->) {
+  function inner(x) :: ({foo :: {broohah :: int, ... }} ->) {
     x.foo.broohah = 4;
   };
 
   var z :: {foo :: {broohah :: int, foohah :: int}} =
     {foo: {broohah: 1, foohah: 2}};
-  var y :: {foo :: {broohah :: int}} =
+  var y :: {foo :: {broohah :: int, ... }} =
     {foo: {broohah: 3}};
   y = z;
   inner(y);

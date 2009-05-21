@@ -81,17 +81,25 @@ function (x) :: (Array<int> -> int) {
 //arrays of objects:
 //TODO: make these use iterators once those work.
 //TODO: write a version with polymorphic map once that exists.
-function (ptarray) :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>) {
+function (ptarray) :: (Array< (rec self.{x :: int, y :: int, mag :: ([self] -> double)})> -> Array<double>) {
   var resarray :: Array<double> = [1.23];
   for (var i=0; i < ptarray.length; ++i)
     resarray[i] = ptarray[i].mag();
   return resarray;
-} :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>);
+} :: (Array<(rec self.{x :: int, y :: int, mag :: ([self] -> double)})> -> Array<double>);
 
-function (ptarray) :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>) {
-  function map(pt2dub, arry) :: (({x :: int, y :: int, mag :: (-> double)} -> double),
-                                 Array<{x :: int, y :: int, mag :: (-> double)}> ->
-                                 Array<double>) {
+function (ptarray) :: Array<(rec self. { x :: int, 
+                                         y :: int, 
+                                        mag :: ([self] -> double) })> 
+                   -> Array<double> {
+  function map(pt2dub, arry) :: ((rec self . { x :: int, 
+                                              y :: int, 
+                                              mag :: ([self] -> double)}) 
+                                                  -> double),
+                                 Array<(rec self. { x :: int, 
+                                                    y :: int, 
+                                                    mag :: ([self] -> double)})>
+                             -> Array<double> {
     var rezarray :: Array<double> = [1.0];
     for (var i=0; i < arry.length; ++i) {
       rezarray[i] = pt2dub(arry[i]);
@@ -99,10 +107,12 @@ function (ptarray) :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<
     return rezarray;
   }
 
-  //TODO: is really annoying to re-specify the pt type everywhere.
-  return map(function (pt) :: ({x :: int, y :: int, mag :: (-> double)} -> double) { return pt.mag(); },
+  return map(function (pt) :: 
+                (rec self. {x :: int, y :: int, mag :: ([self] -> double)}) 
+                  -> double { return pt.mag(); },
              ptarray);
-} :: (Array<{x :: int, y :: int, mag :: (-> double)}> -> Array<double>);
+} :: (Array<(rec self. {x :: int, y :: int, mag :: ([self] -> double)})> 
+         -> Array<double>);
 
 //array literals
 function () :: (->) {
@@ -145,7 +155,7 @@ function () :: (-> int) {
 } @@ fails;
 //supertype even when something isnt a subtype of the other:
 function () :: (-> int) {
-  var z :: Array<{x::int}> = [{x: 5, z: "hiroxlmen"}, {x: 46, y: "dont matter"}, {x: 12}, {x: 93}];
+  var z :: Array<{x::int, ... }> = [{x: 5, z: "hiroxlmen"}, {x: 46, y: "dont matter"}, {x: 12}, {x: 93}];
   return z[0].x + z[1].x;
 } :: (-> int);
 

@@ -32,7 +32,7 @@ function (o) :: {x :: int} -> int {
 
 function() :: (->) {
 
-  var sel = function(o) :: { x :: int } -> int {
+  var sel = function(o) :: { x :: int, ... } -> int {
     return o.x + 1;
   };
 
@@ -48,10 +48,10 @@ function(obj) :: forall a : a <: { x :: int } . a -> int {
 } :: forall a : a <: { x :: int } . a -> int;
 
 function() :: (->) {
-  var sel = function(o) :: forall a : a <: { x :: int } . a -> int {
+  var sel = function(o) :: forall a : a <: { x :: int, ... } . a -> int {
     return o.x; };
 
-  sel@[({x :: int})]({ x: 700, y: 900 });
+  sel@[({x :: int, ... })]({ x: 700, y: 900 });
 
 } @@ succeeds;
 

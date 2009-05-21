@@ -11,7 +11,7 @@ type Object :: rec Object . {
   propertyIsEnumerable :: ([Object] string -> bool),
   toLocaleString :: ([Object] -> string),
   toString :: ([Object] -> string),
-  valueOf :: ([Object] -> any),
+  valueOf :: ([Object] -> any)
 };
 
 type Number :: rec Number . {
@@ -32,18 +32,18 @@ external Number_ :: {
   MIN_VALUE :: double,
   NaN :: double,
   NEGATIVE_INFINITY :: double,
-  POSITIVE_INFINITY :: double,
+  POSITIVE_INFINITY :: double
 };
 
 type String :: rec String . {
   length :: int,
   match :: ([String] string -> Array<string>?),
-  toString :: ([String] -> string),
+  toString :: ([String] -> string)
 };
 
 type Boolean :: rec Boolean . {
   valueOf :: ([Boolean] -> bool),
-  toString :: ([Boolean] -> string),
+  toString :: ([Boolean] -> string)
 };
 
 type RegExp :: rec RegExp . {global :: bool,
@@ -86,7 +86,7 @@ type Date :: rec self . {getDay :: ([self] -> int),
                          getHours :: ([self] -> int),
                          getMinutes :: ([self] -> int),
                          getDate :: ([self] -> int),
-                         setTime :: ([self] int -> int),
+                         setTime :: ([self] int -> int)
                         };
 //temporary date-maker, until we have 'new':
 external _MakeDate :: (-> Date);

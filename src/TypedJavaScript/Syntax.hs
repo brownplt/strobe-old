@@ -31,7 +31,7 @@ data TypeConstraint
   deriving (Show, Eq,Ord, Data, Typeable)
 
 data Type
-  = TObject [(String, Type)]
+  = TObject Bool [(String, Type)]
   | TAny
   | TRec String Type
   | TSequence [Type] (Maybe Type) -- sequence of types (e.g. arguments array)
