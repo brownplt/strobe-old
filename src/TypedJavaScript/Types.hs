@@ -158,48 +158,14 @@ unaliasType kinds types type_ = case type_ of
     where types' = M.fromList (map (\v -> (v, TId v)) vs)
           t' = unaliasType kinds (M.union types' types) t
 
-unaliasType' :: KindEnv -> Map String Type
-            -> Type
-            -> Type
-unaliasType' kinds types type_ = case type_ of
-  TEnvId{} -> error "unaliasType' TEnvId NYI"
-  TId v -> case M.lookup v kinds of
-    Just KindStar -> type_
-    Just k -> error $ printf "unaliasType': %s has kind %s" v 
-                             (show k)
-    Nothing -> case M.lookup v types of
-      -- BrownPLT.TypedJS.IntialEnvironment.bindingFromIDL maps interfaces 
-      -- named v to the type (TRec v ...).
-      Just  t -> TEnvId v
-      Nothing -> error $ printf "unaliasType' kindsTypeEnv: unbound type %s" v
-  -- Stops infinite recursion
-  TRec v t -> TRec v (unaliasType' (M.insert v KindStar kinds) types t)
-  TAny -> TAny
-  TObject hasSlack props -> TObject hasSlack (map unaliasProp props)
-    where unaliasProp (v, t) = (v, unaliasType' kinds types t)
-  TSequence args vararg -> TSequence args' vararg' 
-    where args' = map (unaliasType' kinds types) args
-          vararg' = case vararg of
-            Nothing -> Nothing
-            Just t -> Just (unaliasType' kinds types t)
-  TFunc args ret lp -> TFunc args' ret' lp
-    where args' = map (unaliasType' kinds types) args
-          ret' = unaliasType' kinds types ret
-  TApp s ts -> TApp s (map (unaliasType' kinds types) ts)
-  TUnion ts -> TUnion (map (unaliasType' kinds types) ts)
-  TForall vs cs t -> TForall vs cs t' -- TODO: recur into cs?
-    where types' = M.fromList (map (\v -> (v, TId v)) vs)
-          t' = unaliasType' kinds (M.union types' types) t
 
 unaliasTypeEnv :: KindEnv
                -> Map String Type
                -> Map String Type
 unaliasTypeEnv kinds aliasedTypes = types
-  where explicitRec v t = unaliasType' kinds aliasedTypes t
+  where explicitRec v t = unaliasType kinds aliasedTypes t
           
         types = M.mapWithKey explicitRec aliasedTypes
-
-
 
 
 --maps names to (declared type, actual type, vp)
