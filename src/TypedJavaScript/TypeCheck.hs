@@ -1,5 +1,6 @@
 module TypedJavaScript.TypeCheck where
 
+import Prelude hiding (catch)
 import TypedJavaScript.PrettyPrint
 import TypedJavaScript.Prelude
 import qualified Data.Map as M
@@ -23,7 +24,7 @@ import BrownPLT.TypedJS.InitialEnvironment
 import BrownPLT.TypedJS.TypeFunctions
 import BrownPLT.JavaScript.Analysis.DefineBeforeUse
 import BrownPLT.TypedJS.ReachableStatements
-
+import Control.Exception (Exception (..), SomeException (..), throw, catch)
 import Paths_TypedJavaScript
 import Text.ParserCombinators.Parsec (parseFromFile)
 import TypedJavaScript.Parser (parseToplevels)
@@ -37,7 +38,14 @@ data TypeCheckState = TypeCheckState {
   stateEnvs :: Map Int Env,
   stateTypeEnv :: Map String Type,
   stateErrors :: [(SourcePos, String)]
-}
+} deriving (Typeable)
+
+instance Show TypeCheckState where
+  show _ = "#TypeCheckState#"
+
+instance Exception TypeCheckState where
+  toException s = SomeException s
+  fromException (SomeException e) = cast e
 
 
 emptyTypeCheckState :: TypeCheckState
@@ -63,6 +71,12 @@ typeError :: SourcePos
 typeError loc msg = do
   s <- get
   put $ s { stateErrors = (loc, msg):(stateErrors s) }
+
+fatalTypeError :: String
+               -> TypeCheck a
+fatalTypeError msg = do
+  s <- get
+  throw s
 
 
 -- |Returns the successors of the node, paired with the labels on the
@@ -489,17 +503,18 @@ stmt env ee cs rettype node s = do
       case t of
         TObject _ fields ->        
           case M.lookup id env of 
-            Nothing -> typeError p
-              (printf "id %s for forin loop is unbound" id) >> fail "fatal"
+            Nothing -> do 
+              typeError p $ printf "id %s for forin loop is unbound" id
+              fatalTypeError ""
             Just (Just (tDec, tAct', isLocal, vp)) -> typeError p 
-              (printf "id %s already has a type in a forin, but it shouldnt") >> fail "fatal"
+              (printf "id %s already has a type in a forin, but it shouldnt") >> fatalTypeError "fatal"
             Just Nothing -> do
               let env' = M.insert id
                            (Just (TIterator oid, TIterator oid, 
                                   True, VPNone)) env
               return (zip (map fst succs) (repeat env'))
         _ -> typeError p (printf "trying to forin through %s, not obj" 
-                            (renderType t)) >> fail "fatal"
+                            (renderType t)) >> fatalTypeError "fatal"
 
 -- Lit (StringLit (_,a) s) -> 
 
@@ -602,7 +617,7 @@ expr env ee cs e = do
        Nothing -> do
          typeError loc $ printf
            "expected object with field %s, received %s" p (renderType t)
-         fail "fatal error"
+         fatalTypeError "fatal error"
    BracketRef (_, loc) e ie -> do
      (t'', _) <- expr env ee cs e
      t' <- dotrefContext (unRec t'')
@@ -625,10 +640,10 @@ expr env ee cs e = do
                  else do typeError loc $ 
                            printf "fail to obj[prop]: obj's name \
                                   \doesn't match name iterator is for"
-                         fail "fatal type error"
+                         fatalTypeError "fatal type error"
              _ -> do 
                     typeError loc (printf "can only bracketref obj with iterator")
-                    fail "fatal type error"
+                    fatalTypeError "fatal type error"
        _ -> fail $ printf "at %s: expected array, got %s" (show loc) (show t)
    OpExpr (_,p) f args_e -> do
      args <- mapM (expr env ee cs) args_e
@@ -652,7 +667,7 @@ expr env ee cs e = do
      let ts = map fst r
      
      case ts of
-       [] -> typeError p "empty array needs a type" >> fail "fatal type error"
+       [] -> typeError p "empty array needs a type" >> fatalTypeError "fatal type error"
        (t:ts) -> do 
          let tRes = TApp "Array" [foldr unionType t ts]
          return $ (tRes, VPNone)
@@ -891,8 +906,8 @@ checkDeclaredKinds :: KindEnv -> ErasedEnv -> TypeCheck ()
 checkDeclaredKinds kinds ee = do
   let check loc type_ = case checkKinds kinds type_ of
         Right KindStar -> return ()
-        Right _ -> typeError loc "kind error" >> fail "fatal error"
-        Left s -> typeError loc ("kind error: " ++ show s) >> fail "fatal error"
+        Right _ -> typeError loc "kind error" >> fatalTypeError "fatal error"
+        Left s -> typeError loc ("kind error: " ++ show s) >> fatalTypeError "fatal error"
   let checkAt (loc, types) = mapM_ (check loc) types
   mapM_ checkAt (M.toList ee)
   
@@ -938,10 +953,21 @@ typeCheck prog = do
   typeCheckWithGlobals venv (M.union domTypeEnv tenv) prog
 
 
+formatError (p, s) = show p ++ ": " ++ s
+
+handleFatalTypeError :: TypeCheckState -> IO a
+handleFatalTypeError s = 
+  fail (concat $ intersperse "\n" $ map formatError (stateErrors s))
+  
+
+catchFatalTypeError :: IO Env -> IO Env
+catchFatalTypeError m = catch m handleFatalTypeError
+
+
 -- convenience function to make testing faster
 typeCheckWithGlobals :: Env -> Map String Type -> 
                         [TJS.Statement SourcePos] -> IO Env
-typeCheckWithGlobals venv tenv prog = do
+typeCheckWithGlobals venv tenv prog = catchFatalTypeError $ do
   let assertDefUse env anf = 
         case defineBeforeUse (S.fromList (M.keys env)) anf of
           Right () -> return ()
@@ -986,4 +1012,3 @@ typeCheckWithGlobals venv tenv prog = do
   case stateErrors state of
     [] -> return env
     errs -> fail (concat $ intersperse "\n" $ map formatError errs)
-              where formatError (p, s) = show p ++ ": " ++ s
