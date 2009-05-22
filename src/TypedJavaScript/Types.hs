@@ -79,7 +79,7 @@ checkKinds kinds t = case t of
       | otherwise -> fail "kind error (arg mismatch)"
     Just KindStar -> fail "kind error (expected * ... -> *)"
     Nothing -> fail $ printf "undefined type constructor %s" s
-  TFunc args result _ -> do
+  TFunc _ args result _ -> do
     mapM_ (assertKinds kinds) (zip args (repeat KindStar))
     assertKinds kinds (result, KindStar)
     return KindStar
@@ -148,8 +148,8 @@ unaliasType kinds types type_ = case type_ of
           vararg' = case vararg of
             Nothing -> Nothing
             Just t -> Just (unaliasType kinds types t)
-  TFunc args ret lp -> 
-   TFunc args' ret' lp
+  TFunc isConstr args ret lp -> 
+   TFunc isConstr args' ret' lp
     where args' = map (unaliasType kinds types) args
           ret' = unaliasType kinds types ret
   TApp s ts -> TApp s (map (unaliasType kinds types) ts)
@@ -191,13 +191,13 @@ boolType = TId "bool"
 -- type-checker to handle more of a function type, include them here.
 deconstrFnType :: Type 
                -> Maybe ([String], [TypeConstraint], [Type], Maybe Type, 
-                         Type, LatentPred)
+                         Type, LatentPred, Maybe Type)
 deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
   deconstrFnType (substType id t t')
-deconstrFnType (TFunc args@(_:(TSequence _ vararg):_) result latentP) = 
-  Just ([],[],args,vararg,result,latentP)
-deconstrFnType (TForall ids cs (TFunc args@(_:(TSequence _ vararg):_) r lp)) =
-  Just (ids, cs, args, vararg, r, lp)
+deconstrFnType (TFunc pt args@(_:(TSequence _ vararg):_) result latentP) = 
+  Just ([],[],args,vararg,result,latentP, pt)
+deconstrFnType (TForall ids cs (TFunc pt args@(_:(TSequence _ vararg):_) r lp))=
+  Just (ids, cs, args, vararg, r, lp, pt)
 deconstrFnType _ = Nothing
 
 unRec :: Type -> Type
@@ -225,8 +225,9 @@ substType var sub (TId var')
 substType var sub (TSequence args vararg) = 
   TSequence (map (substType var sub) args)
             (liftM (substType var sub) vararg)
-substType var sub (TFunc args ret latentP) =
-  TFunc (map (substType var sub) args)
+substType var sub (TFunc isC args ret latentP) =
+  TFunc isC
+        (map (substType var sub) args)
         (substType var sub ret)
         latentP
 substType var sub (TObject hasSlack fields) =
@@ -355,10 +356,18 @@ st env rel (t1, t2)
       --now check the varargs
       st env rel' (vararg1, vararg2)
 
-    (TFunc args2 ret2 lp2, TFunc args1 ret1 lp1) -> do
+    (TFunc pt2 args2 ret2 lp2, TFunc pt1 args1 ret1 lp1) -> do
+      
+      --when (isJust pt2 || isJust pt1) (fail "constr subtype NYI")
       assert (lp1 == lp2 || lp1 == LPNone)
       rel <- st env (S.insert (t1, t2) rel) (ret2, ret1)
-      foldM (st env) rel (zip args1 args2)
+      rez <- foldM (st env) rel (zip args1 args2)
+      case (isJust pt2, isJust pt1) of
+        (True, True) -> st env rez (fromJust pt2, fromJust pt1)
+        (False, True) -> fail "func is not subtype of constructor"
+        (True, False) -> fail "constructor is not subtype of funtcion"
+        (False, False) -> Just rez
+      
     (TForall ids1 tcs1 t1, TForall ids2 tcs2 t2) -> do
       assert (ids1 == ids2)
       assert (tcs1 == tcs2)
@@ -530,7 +539,7 @@ equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId "string")) = case s of
   "string"    -> VPType (TId "string") x
   --this should be: the function that all funcs are subtypes of
   "function"  -> 
-    VPType (TFunc [TUnion [], TSequence [] Nothing] (TId "any") LPNone) x
+   VPType (TFunc Nothing [TUnion [], TSequence [] Nothing] (TId "any") LPNone) x
   --this should be: the object that all objects are subtypes of
   -- but without any specific attributes... dnno!
   "object"    -> error "equalityvp for object nyi" --VPType (TObject []) x

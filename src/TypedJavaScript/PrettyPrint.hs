@@ -9,6 +9,7 @@ import Prelude hiding (id)
 import Text.PrettyPrint.HughesPJ
 import TypedJavaScript.Syntax
 import BrownPLT.JavaScript.Analysis.ANFPrettyPrint (prettyLit)
+import BrownPLT.TypedJS.Prelude
 
 
 -- Displays the statement in { ... }, unless it already is in a block.
@@ -46,9 +47,10 @@ renderStatements ss = render $ vcat (map (\s -> stmt s <> semi) ss)
 
 type_ :: Type -> Doc
 type_ t = case t of
-  TFunc (this:arguments:args) ret _ -> 
+  TFunc ptype (this:arguments:args) ret _ -> 
     brackets (type_ this) <+> commas (map arg args) <> varargDoc <+> 
-    text "->" <+> type_ ret
+    
+    (if (isJust ptype) then text "~~>" else text "->") <+> type_ ret
       where arg t' = case t' of
               TFunc{} -> parens (type_ t')
               otherwise -> type_ t'

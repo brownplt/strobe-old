@@ -35,8 +35,9 @@ data Type
   | TAny
   | TRec String Type
   | TSequence [Type] (Maybe Type) -- sequence of types (e.g. arguments array)
-  | TFunc [Type]
-          Type {- ret type -}
+  | TFunc (Maybe Type) --Nothing if function, Just prototype_type if constr
+          [Type]
+          Type {- ret type for func, final 'this' type for constr -}
           LatentPred {- latent predicate -} 
   | TId String -- identifier bound by a TForall or a TRec
   | TApp String [Type]
@@ -128,7 +129,7 @@ data Expression a
   | ListExpr a [Expression a] -- expressions separated by ',' 
   | CallExpr a (Expression a) [Type] [Expression a]
   | FuncExpr a [Id a] {- arg names -} 
-               Type
+               Type --if TFunc, then function. if TConstr, then a constructor.
                (Statement a)    {- body -}
   deriving (Show, Eq,Ord)
 

@@ -155,16 +155,23 @@ type_ = do
               p' <- getPosition
               r <- type_ <|> (return Types.undefType)
               let arguments = TSequence (init ts) (Just (last ts))
-              return (TFunc (thisType:arguments:ts) r (LPNone))
+              return (TFunc Nothing (thisType:arguments:ts) r (LPNone))
+        let constr = do
+              reservedOp "~~>"
+              p' <- getPosition
+              r <- type_ <?> "type that 'this' will become"
+              let arguments = TSequence ts Nothing
+              return (TFunc (Just (TObject False []))
+                            (thisType:arguments:ts) r LPNone)
         let func = do
               reservedOp "->"
               r <- type_ <|> (return Types.undefType)
               let arguments = TSequence ts Nothing
-              return (TFunc (thisType:arguments:ts) r LPNone)
+              return (TFunc Nothing (thisType:arguments:ts) r LPNone)
         case ts of
           []  -> func -- function of zero arguments
-          [t] -> vararity <|> func <|> (return t)
-          ts  -> vararity <|> func
+          [t] -> vararity <|> constr <|> func <|> (return t)
+          ts  -> vararity <|> constr <|> func
   forall <|> rec <|> explicitThis <|> type_fn
 
 type_fn :: CharParser st (Type)
@@ -178,19 +185,26 @@ type_fn = do
         reservedOp "->"
         let arguments = TSequence (init ts) (Just (last ts))
         r <- type_ <|> (return Types.undefType)
-        return (TFunc (thisType:arguments:ts) r LPNone)
+        return (TFunc Nothing (thisType:arguments:ts) r LPNone)
+  let constr = do
+        reservedOp "~~>"
+        p' <- getPosition
+        r <- type_ <?> "type that 'this' will become"
+        let arguments = TSequence ts Nothing
+        return (TFunc (Just (TObject False [])) 
+                      (thisType:arguments:ts) r LPNone)
   let func = do
         reservedOp "->"
         let arguments = TSequence ts Nothing
         r <- type_ <|> (return Types.undefType)
-        return (TFunc (thisType:arguments:ts) r LPNone)
+        return (TFunc Nothing (thisType:arguments:ts) r LPNone)
         --Note: latent predicates really aren't part of the syntax,
         --but the parser has to deal with them. type checker should fill
         --them in properly.
   case ts of
     []  -> func -- function of zero arguments
-    [t] -> vararity <|> func <|> (return t)
-    ts  -> vararity <|> func
+    [t] -> vararity <|> constr <|> func <|> (return t)
+    ts  -> vararity <|> constr <|> func
 
 type_' :: CharParser st (Type)
 type_' = do
@@ -461,18 +475,19 @@ parseFunctionStmt = do
   functype <- parseType <?> "function type annotation"
   body <- parseBlockStmt
   --transform a function statement into an assignment and a funcexpr
-  return (VarDeclStmt pos [VarDeclExpr pos name (Just functype) (FuncExpr pos args functype body)])
+  return (VarDeclStmt pos [VarDeclExpr pos name (Just functype) 
+                                       (FuncExpr pos args functype body)])
 
 parseConstructorStmt :: StatementParser st
 parseConstructorStmt = do
-  fail "Consructors not yet implemented" {-
   pos <- getPosition
-  name <- try (reserved "constructor" >> identifier) -- TODO: remove this 'try'?
-  args <- parens ((do id <- identifier 
-                      thetype <- parseType
-                      return (id, thetype)) `sepBy` comma)
-  body <- parseBlockStmt <?> "function body in { ... }"
-  return (ConstructorStmt pos name args [] Nothing body) -}
+  reserved "constructor"
+  name <- identifier
+  args <- parens (identifier `sepBy` comma)
+  constrtype <- parseType <?> "constructor type annotation"
+  body <- parseBlockStmt <?> "constructor body in { ... }"
+  return (VarDeclStmt pos [VarDeclExpr pos name (Just constrtype) 
+                                       (FuncExpr pos args constrtype body)])
 
 {-
 parseTypeStmt :: StatementParser st

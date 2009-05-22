@@ -28,7 +28,7 @@ freeTypeVariables :: Type -> Map String Kind
 freeTypeVariables t = fv t where
   -- type variables in the constructor are applied
   fv (TApp _ ts) = M.unions (map fv ts)
-  fv (TFunc args r _) = M.unions (map fv (r:args))
+  fv (TFunc _ args r _) = M.unions (map fv (r:args))
   fv (TSequence args Nothing) = M.unions (map fv args)
   fv (TSequence args (Just opt)) = M.unions (map fv (opt:args))
   fv (TId _) = M.empty

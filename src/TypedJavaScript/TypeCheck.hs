@@ -343,7 +343,8 @@ stmt env ee cs rettype node s = do
         let actuals = this:arguments:actuals'
         case deconstrFnType f of
           Nothing -> typeError p ("expected function; received " ++ show f)
-          Just (vs, cs', formals', vararg, r, latentPred) -> do
+          Just (vs, cs', formals', vararg, r, latentPred, ptype) -> do
+            when (isJust ptype) (typeError p "cannot call a constructor")
             unless (length vs == length insts) $ do
               typeError p (printf "expected %d type argument(s), received %d"
                                   (length vs) (length insts))
@@ -608,7 +609,7 @@ expr env ee cs e = do
      Nothing -> catastrophe p "function lit is not in the erased environment"
      Just [t] -> do
       case deconstrFnType t of
-       Just (_, _, argTypes, _, _, _) 
+       Just (_, _, argTypes, _, _, _, _) 
          --argtypes is ("thistype", argarraytype, real args)
          --args should be is ("this", "arguments", real args)
          | length argTypes == length args -> 
@@ -729,7 +730,7 @@ uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
           fail $ printf "uneraseEnv: multiple types for the function at %s, \
                          \types were %s" (show pos) (show ts)
 
-  let Just (tVars, cs, types, vararg, rettype, lp) = deconstrFnType functype
+  let Just (tVars, cs, types, vararg, rettype, lp, pt) = deconstrFnType functype
   
   let localKindEnv = M.union (freeTypeVariables functype) kindEnv  
 

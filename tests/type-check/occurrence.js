@@ -432,3 +432,13 @@ function (x) :: U(int, bool) -> int {
   }
 } :: U(int, bool) -> int;
 
+//this should work!!! =(
+/*
+function (x) :: (U(int->bool, bool->int) -> bool) {
+  function int2bool(a) :: (int->bool) {
+    return true;
+  }
+  if (x == int2bool)
+    return x(100);
+  return false;
+} :: (U(int->bool, bool->int) -> bool);*/

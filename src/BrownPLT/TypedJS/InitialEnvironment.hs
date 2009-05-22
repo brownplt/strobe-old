@@ -57,7 +57,7 @@ objectFromIDL self members = TObject True (map field members)
   where field (IDL.Const t v _) = (v, parseIDLType t)
         field (IDL.Attr isReadOnly t v) = (v, parseIDLType t)
         field (IDL.Method ret v args) = 
-          (v, TFunc (this:arguments:formals) rt LPNone)
+          (v, TFunc Nothing (this:arguments:formals) rt LPNone)
             where formals = map parseIDLType (map fst args)
                   arguments = TSequence formals Nothing
                   rt = parseIDLType ret
