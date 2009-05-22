@@ -321,7 +321,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
       let checkArg (actual,formal) = do
             unless (actual <: formal) $ do
               typeError p $ printf 
-                "expected argument of type %s, received"
+                "expected argument of type %s, received %s"
                 (renderType formal) (renderType actual)
       let (athis:aargs:areals) = actuals
       let (sthis:sargs:sreals) = supplied
@@ -885,8 +885,8 @@ typeCheckProgram env enclosingKindEnv constraints
                                             enclosingKindEnv ee lit
 
   let kindEnv = M.union (freeTypeVariables fnType) enclosingKindEnv
-      
-  checkDeclaredKinds kindEnv ee
+     
+  checkDeclaredKinds (M.union (M.map (const KindStar) tenv) kindEnv) ee
   let cs' = cs ++ constraints
   finalEnv <- body env' ee cs' rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descend into nested functions, we ensure that functions satisfy
@@ -907,7 +907,9 @@ checkDeclaredKinds kinds ee = do
   let check loc type_ = case checkKinds kinds type_ of
         Right KindStar -> return ()
         Right _ -> typeError loc "kind error" >> fatalTypeError "fatal error"
-        Left s -> typeError loc ("kind error: " ++ show s) >> fatalTypeError "fatal error"
+        Left s -> do
+          typeError loc s
+          fatalTypeError "fatal error"
   let checkAt (loc, types) = mapM_ (check loc) types
   mapM_ checkAt (M.toList ee)
   

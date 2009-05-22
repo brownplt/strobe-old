@@ -81,5 +81,10 @@ lookupAlias kindEnv tenv pos t = case t of
     Nothing -> case M.lookup v tenv of
       Just t -> t
       Nothing -> (TId v) --real unbound ids will be checked later
+  TEnvId v -> case M.lookup v tenv of
+    Just t -> t
+    Nothing -> TEnvId v
   otherwise -> t
+
+
 replaceAliases kindEnv tenv p t = everywhere (mkT(lookupAlias kindEnv tenv p)) t
