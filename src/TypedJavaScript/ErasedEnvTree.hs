@@ -62,7 +62,6 @@ expr e = case e of
   VarRef{} -> empty
   DotRef _ e _ -> expr e
   BracketRef _ ec ek -> unions [expr ec, expr ek]
-  NewExpr _ ec args -> unions [expr ec, unions $ map expr args]
   PostfixExpr _ _ e -> expr e
   PrefixExpr _ _ e -> expr e
   InfixExpr _ _ e1 e2 -> unions [expr e1, expr e2]
@@ -71,6 +70,7 @@ expr e = case e of
   ParenExpr _ e -> expr e
   ListExpr _ es -> unions $ map expr es
   CallExpr pos e ts es -> multi pos ts +++ expr e +++ unions (map expr es)
+  NewExpr _ ec args -> unions [expr ec, unions $ map expr args]
   FuncExpr pos _ t s -> single pos t +++ nest (stmt s)
 
 vardecl :: VarDecl SourcePos -> ErasedEnvTree

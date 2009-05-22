@@ -480,9 +480,9 @@ parseFunctionStmt = do
 
 parseConstructorStmt :: StatementParser st
 parseConstructorStmt = do
-  pos <- getPosition
   reserved "constructor"
   name <- identifier
+  pos <- getPosition
   args <- parens (identifier `sepBy` comma)
   constrtype <- parseType <?> "constructor type annotation"
   body <- parseBlockStmt <?> "constructor body in { ... }"

@@ -235,6 +235,107 @@ doAssignment (<:) p env v te e_vp = case M.lookup v env of
                 v (renderType tDec) (renderType te)
        return env
 
+doFuncConstr :: (Type -> Type -> Bool) -- ^local subtype relation
+             -> SourcePos -- ^for type errors
+             -> Env -- ^current environment
+             -> ErasedEnv -- ^erased environment
+             -> [TypeConstraint] -- ^constraints
+             -> Id -- ^Result id
+             -> Id -- ^function/constructor id
+             -> [Id] -- ^arguments
+             -> Bool -- ^True if NewStmt, False if CallStmt
+             -> TypeCheck Env -- ^resulting environment
+doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt = 
+  let noop = return env 
+   in do
+  when isNewStmt $ typeError p "new stmt NYI"
+  state <- get
+  (_, f, f_isLocal, f_vp) <- forceEnvLookup p env f_v
+  -- explicitly instantiated type-variables when calling polymorphic
+  -- functions
+  insts <- if isNewStmt then return [] else forceLookupMultiErasedEnv ee p
+  actualsWithVP' <- liftM (map (\(_, t, _, vp) -> (t, vp)))
+                          (mapM (forceEnvLookup p env) args_v)
+  let (this':arguments:actuals', actuals_vps) = unzip actualsWithVP'
+  this <- dotrefContext this' --motivation: if 'this' is a
+                              --string, int, etc, it is automatically
+                              --converted to an object.
+   
+  --actuals_vps contains VP, including VPId for the var name itself.
+  let actuals = this:arguments:actuals'
+  case deconstrFnType f of
+    Nothing -> do
+      typeError p ("expected function; received " ++ show f)
+      noop
+    Just (vs, cs', formals', vararg, r, latentPred, ptype) -> do
+      when (isJust ptype) (typeError p "cannot call a constructor")
+      unless (length vs == length insts) $ do
+        typeError p (printf "expected %d type argument(s), received %d"
+                            (length vs) (length insts))
+
+      let checkInst (t, v, TCSubtype _ t')
+            | t <: t' = return (TCSubtype v t)
+            | otherwise = do
+                typeError p $ printf
+                  "supplied type %s for %s does not satisfy the %s <: %s"
+                  (renderType t) v v (renderType t')
+                return (TCSubtype v t)
+
+      instConstraints <- mapM checkInst (zip3 insts vs cs')
+
+      let t1 <: t2 = isSubType (stateTypeEnv state) 
+                               (instConstraints ++ cs' ++ cs) 
+                                t1 t2
+      
+      let substVar (v, t) t' = substType v t t'
+      let apply t = foldr substVar t (zip vs insts)
+      r <- return (apply r)
+      formals' <- return (map apply formals')
+
+      --if we have a vararg, repeat the vararg until we have as
+      --many formals as actuals:
+      let formals = case vararg of
+                      Nothing -> formals'
+                      Just vt -> formals' ++ 
+                        (take (length actuals - length formals') 
+                              (repeat (apply vt)))
+      let (supplied, missing) = splitAt (length actuals) formals
+      when (length actuals > length formals) $ do
+        typeError p (printf "function expects %d arguments, but %d \
+                            \were supplied" (length formals)
+                            (length actuals))
+      let checkArg (actual,formal) = do
+            unless (actual <: formal) $ do
+              typeError p $ printf 
+                "expected argument of type %s, received"
+                (renderType formal) (renderType actual)
+      let (athis:aargs:areals) = actuals
+      let (sthis:sargs:sreals) = supplied
+      mapM_ checkArg (zip (athis:areals) (sthis:sreals))
+      let checkMissingArg actual = do
+            unless (undefType <: actual) $
+              typeError p (printf "non-null argument %s not supplied"
+                                  (show actual))
+      mapM_ checkMissingArg missing
+  
+      --if we have a 1-arg func that has a latent pred, applied to a
+      --visible pred of VID, then this is a T-AppPred        
+      let isvpid (VPId _) = True
+          isvpid _        = False
+          arg1_vp         = actuals_vps !! 0
+          r_vp = if length formals == 1 
+                    && latentPred /= LPNone && isvpid arg1_vp
+                   then let (VPId id) = arg1_vp
+                            (LPType ltype) = latentPred
+                         in (VPType ltype id)
+                   else VPNone
+          
+      -- For call statements, we must ensure that the result type is
+      -- a subtype of the named result.
+      env' <- doAssignment (<:) p env r_v r r_vp
+      return env'
+
+
 stmt :: Env -- ^the environment in which to type-check this statement
      -> ErasedEnv
      -> [TypeConstraint]
@@ -361,92 +462,12 @@ stmt env ee cs rettype node s = do
           typeError p "error assigning to an array element"
           noop
     DeleteStmt _ r del -> fail "delete NYI"
-    NewStmt{} -> fail "NewStmt will be removed from ANF"
+    NewStmt (_,p) r_v f_v args_v -> do
+      env' <- doFuncConstr (<:) p env ee cs r_v f_v args_v True
+      return $ zip (map fst succs) (repeat env')
     CallStmt (_,p) r_v f_v args_v -> do
-        (_, f, f_isLocal, f_vp) <- forceEnvLookup p env f_v
-        -- explicitly instantiated type-variables when calling polymorphic
-        -- functions
-        insts <- forceLookupMultiErasedEnv ee p
-        actualsWithVP' <- liftM (map (\(_, t, _, vp) -> (t, vp)))
-                                (mapM (forceEnvLookup p env) args_v)
-        let (this':arguments:actuals', actuals_vps) = unzip actualsWithVP'
-        this <- dotrefContext this' --motivation: if 'this' is a
-                                    --string, int, etc, it is automatically
-                                    --converted to an object.
-         
-        --actuals_vps contains VP, including VPId for the var name itself.
-        let actuals = this:arguments:actuals'
-        case deconstrFnType f of
-          Nothing -> do
-            typeError p ("expected function; received " ++ show f)
-            noop
-          Just (vs, cs', formals', vararg, r, latentPred, ptype) -> do
-            when (isJust ptype) (typeError p "cannot call a constructor")
-            unless (length vs == length insts) $ do
-              typeError p (printf "expected %d type argument(s), received %d"
-                                  (length vs) (length insts))
-
-            let checkInst (t, v, TCSubtype _ t')
-                  | t <: t' = return (TCSubtype v t)
-                  | otherwise = do
-                      typeError p $ printf
-                        "supplied type %s for %s does not satisfy the %s <: %s"
-                        (renderType t) v v (renderType t')
-                      return (TCSubtype v t)
-
-            instConstraints <- mapM checkInst (zip3 insts vs cs')
-
-            let t1 <: t2 = isSubType (stateTypeEnv state) 
-                                     (instConstraints ++ cs' ++ cs) 
-                                      t1 t2
-            
-            let substVar (v, t) t' = substType v t t'
-            let apply t = foldr substVar t (zip vs insts)
-            r <- return (apply r)
-            formals' <- return (map apply formals')
-
-            --if we have a vararg, repeat the vararg until we have as
-            --many formals as actuals:
-            let formals = case vararg of
-                            Nothing -> formals'
-                            Just vt -> formals' ++ 
-                              (take (length actuals - length formals') 
-                                    (repeat (apply vt)))
-            let (supplied, missing) = splitAt (length actuals) formals
-            when (length actuals > length formals) $ do
-              typeError p (printf "function expects %d arguments, but %d \
-                                  \were supplied" (length formals)
-                                  (length actuals))
-            let checkArg (actual,formal) = do
-                  unless (actual <: formal) $ do
-                    typeError p $ printf 
-                      "expected argument of type %s, received"
-                      (renderType formal) (renderType actual)
-            let (athis:aargs:areals) = actuals
-            let (sthis:sargs:sreals) = supplied
-            mapM_ checkArg (zip (athis:areals) (sthis:sreals))
-            let checkMissingArg actual = do
-                  unless (undefType <: actual) $
-                    typeError p (printf "non-null argument %s not supplied"
-                                        (show actual))
-            mapM_ checkMissingArg missing
-    
-            --if we have a 1-arg func that has a latent pred, applied to a
-            --visible pred of VID, then this is a T-AppPred        
-            let isvpid (VPId _) = True
-                isvpid _        = False
-                arg1_vp         = actuals_vps !! 0
-                r_vp = if length formals == 1 
-                          && latentPred /= LPNone && isvpid arg1_vp
-                         then let (VPId id) = arg1_vp
-                                  (LPType ltype) = latentPred
-                               in (VPType ltype id)
-                         else VPNone
-                
-            -- For call statements, we must ensure that the result type is
-            -- a subtype of the named result.
-            env' <- doAssignment (<:) p env r_v r r_vp
-            return $ zip (map fst succs) (repeat env')
+      env' <- doFuncConstr (<:) p env ee cs r_v f_v args_v False
+      return $ zip (map fst succs) (repeat env')
 
     IfStmt (_, p) e s1 s2 -> do
       (t, vp) <- expr env ee cs e -- this permits non-boolean tests

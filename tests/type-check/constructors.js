@@ -11,7 +11,7 @@ function () :: (->) {
 
 //no-prototype constructors:
 function () :: (-> int) {
-  constructor MyObj(xVal) :: int ~~> {x::int,y::int} {
+  function MyObj(xVal) :: int ~~> {x::int,y::int} {
     this.x = xVal;
     this.y = 0;
   }
@@ -21,7 +21,7 @@ function () :: (-> int) {
 
 //no-prototype constructors:
 function () :: (-> int) {
-  constructor MyObj(xVal) :: int ~~> {x::int,y::int} {
+  function MyObj(xVal) :: int ~~> {x::int,y::int} {
     this.x = xVal;
     //should fail, since 'y' has not been assigned
   }
