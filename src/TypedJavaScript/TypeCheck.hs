@@ -175,13 +175,14 @@ forceLookupMultiErasedEnv ee p = case M.lookup p ee of
   Just ts -> return ts
 
 
-forceEnvLookup :: Monad m
-               => SourcePos -> Env -> Id -> m (Type, Type, Bool, VP)
+forceEnvLookup :: SourcePos -> Env -> Id -> TypeCheck (Type, Type, Bool, VP)
 forceEnvLookup loc env name = case M.lookup name env of
-  Nothing -> 
-    fail $ printf "at %s: identifier %s is unbound" (show loc) name
-  Just Nothing -> 
-    fail $ printf "at %s: identifier %s is uninitialized" (show loc) name
+  Nothing -> do
+    typeError loc $ printf "identifier %s is unbound" name
+    return (TAny, TAny, False, VPNone)
+  Just Nothing -> do
+    typeError loc $ printf "identifier %s is uninitialized" name
+    return (TAny, TAny, False, VPNone)
   Just (Just t) -> return t
 
 assert :: Monad m => Bool -> String -> m ()
