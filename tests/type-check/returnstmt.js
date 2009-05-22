@@ -113,16 +113,17 @@ function (ignore) :: (int -> string) {
   }
 } @@ fails; //not all paths return
 
-//Questionable cases: should tJS fail these, because it has code that is impossible to be executed? (like java does)
 function (x) :: (double -> ) {
   return;
   return;
-} :: (double -> );
+} @@fails;
+
 function (x) :: (double -> ) {
   return;
   return;
   ("hithere"=="" ? 'how' : 'areyou?');
-} :: (double -> );
+} @@ fails;
+
 function (x) :: (double -> double) {
   if (x==3)
     return 4;

@@ -342,7 +342,7 @@ function (x) :: (U(int, string, bool) -> int) {
   };
   //we only get here if something is whacked out
   return 13;
-} :: U(int, string, bool) -> int;
+} @@ fails;
 
 function (x) :: (U(int, string, bool) -> int) {
   var z :: int = 1;

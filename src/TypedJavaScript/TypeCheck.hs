@@ -22,6 +22,7 @@ import TypedJavaScript.TypeErasure
 import BrownPLT.TypedJS.InitialEnvironment
 import BrownPLT.TypedJS.TypeFunctions
 import BrownPLT.JavaScript.Analysis.DefineBeforeUse
+import BrownPLT.TypedJS.ReachableStatements
 
 import Paths_TypedJavaScript
 import Text.ParserCombinators.Parsec (parseFromFile)
@@ -869,6 +870,9 @@ typeCheckWithGlobals venv tenv prog = do
             fail $ concat (intersperse "\n" (map f errs))
               where f (v, p) = printf "%s: %s may be used before it is defined"
                                       (show p) v
+  let assertReachable procTree = case allReachable procTree of
+        Right () -> return ()
+        Left p -> fail $ printf "%s: unreachable statements" (show p)
 
   -- Build intraprocedural graphs for all functions and the top-level.
   -- These graphs are returned in a tree that mirrors the nesting structure
@@ -894,6 +898,7 @@ typeCheckWithGlobals venv tenv prog = do
         M.insert "this" 
                  (Just (TEnvId "Window", TEnvId "Window", False, VPNone)) venv
   
+  assertReachable intraprocs
   assertDefUse venv' (topDecls, anfProg)
 
   (env, state) <- runStateT (typeCheckProgram venv' basicKinds [] 
