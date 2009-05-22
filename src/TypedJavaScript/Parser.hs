@@ -221,13 +221,6 @@ type_'' =
     in (parens type_) <|> any <|> (try union) <|> object <|> constrOrId
 
 
-toANFLit :: Expression SourcePos -> ANF.Lit SourcePos
-toANFLit (StringLit p s) = ANF.StringLit p s
-toANFLit (NumLit p x) = ANF.NumLit p x
-toANFLit (IntLit p n) = ANF.IntLit p n
-toANFLit (BoolLit p b) = ANF.BoolLit p b
-toANFLit e = error $ "toANFLit: cannot use " ++ show e ++ " as a literal type"
-
 constrOrId :: CharParser st (Type)
 constrOrId = do
   id <- (identifier >>= \(Id _ id) -> return id)
