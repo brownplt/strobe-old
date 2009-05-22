@@ -30,6 +30,7 @@ import TypedJavaScript.Test
 import TypedJavaScript.PrettyPrint
 import BrownPLT.TypedJS.InitialEnvironment
 import BrownPLT.TypedJS.TypeFunctions
+import BrownPLT.Testing
 
 import Text.ParserCombinators.Parsec.Pos (initialPos, SourcePos)
 
@@ -128,4 +129,4 @@ main = do
   let isSubTypeOf = isSubType tenv []
   testCases <- mapM (readTestFile venv (M.union domTypeEnv tenv) isSubTypeOf) 
                     testPaths
-  runTestTT (TestList testCases)
+  runTest (TestList testCases)
