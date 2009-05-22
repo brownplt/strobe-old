@@ -67,7 +67,7 @@ data VP = VPId String
         | VPNot VP
         | VPLit (Lit SourcePos) Type
         | VPMulti [VP]
-    deriving (Ord, Eq)
+    deriving (Show, Ord, Eq)
 
 -- VPId "x" == VPLit 3 (TId "int")
 --  becomes:

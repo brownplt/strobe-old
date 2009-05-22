@@ -16,7 +16,7 @@ reportError :: ReportProblem us
 reportError msg s us = do
   hSetSGR stderr [SetUnderlining SingleUnderline]
   hPutStr stderr "Error:"
-  hSetSGR stderr [Reset]
+  hSetSGR stderr [SetUnderlining NoUnderline]
   hPutStrLn stderr (' ':msg)
   return us
 
@@ -25,7 +25,7 @@ reportFailure :: ReportProblem us
 reportFailure msg s us = do
   hSetSGR stderr [SetUnderlining SingleUnderline]
   hPutStr stderr "Failed:"
-  hSetSGR stderr [Reset]
+  hSetSGR stderr [SetUnderlining NoUnderline]
   hPutStrLn stderr (' ':msg)
   return us
 

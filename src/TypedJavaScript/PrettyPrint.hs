@@ -312,13 +312,3 @@ expr e = case e of
   FuncExpr _ args t body ->
     text "function" <+> parens (commas $ map id args) <+> text "::" 
                     <+> type_ t $$ inBlock body
-
-
-instance Show VP where
-  show (VPId s)     = "VPId " ++ show s
-  show (VPType t s) = "VPType " ++ show t ++ " " ++ show s
-  show VPNone       = "VPNone"
-  show (VPTypeof s) = "VPTypeof " ++ s
-  show (VPNot v)    = "VPNot " ++ show v
-  show (VPLit l t)  = "VPLit '" ++ show l ++ " " ++ show t
-  show (VPMulti vs) = "VPMulti " ++ show vs

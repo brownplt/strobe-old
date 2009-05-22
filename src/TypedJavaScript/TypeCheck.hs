@@ -87,6 +87,8 @@ lookupLocalEnv node = do
 updateLocalEnv :: (G.Node, Env) -> TypeCheck ()
 updateLocalEnv (node, incomingEnv)= do
   state <- get
+  let e1 = incomingEnv
+  let e2 = M.findWithDefault M.empty node (stateEnvs state)
   let result = M.insertWith unionEnv node incomingEnv (stateEnvs state)
   put $ state { stateEnvs = result } 
 
@@ -163,7 +165,7 @@ assert :: Monad m => Bool -> String -> m ()
 assert True _ = return ()
 assert False msg = fail ("CATASPROPHIC FAILURE: " ++  msg)
 
-doAssignment :: (Monad m) 
+doAssignment :: (Monad m, MonadIO m) 
              => (Type -> Type -> Bool) -- ^local subtype relation
              -> SourcePos -- ^for type errors
              -> Env -- ^current environment
@@ -189,7 +191,7 @@ doAssignment (<:) p env v te e_vp = case M.lookup v env of
   Just (Just (tDec, tAct, True, v_vp)) --local variable
     | te <: tDec ->  do
         -- TODO: remove, from environment, any VP referring to this var!
-        let env' = M.insert v (Just (tDec, te, True, VPMulti [VPId v, v_vp])) 
+        let env' = M.insert v (Just (tDec, te, True, VPMulti [VPId v, e_vp])) 
                             env
         return env'
    | otherwise -> typeError p $
@@ -246,7 +248,6 @@ stmt env ee cs rettype node s = do
                                     "expected return after this statement"
       mapM_ assertReturn returns
       when (null returns && not (undefType <: rettype)) $ do
-        liftIO $ putStrLn (show returns)
         typeError p $ printf "no return value, return type is %s" 
                              (renderType rettype)
       noop
@@ -323,7 +324,6 @@ stmt env ee cs rettype node s = do
         (Just (Just (_, TApp "Array" [t_elem], _, _)), Just Nothing) ->
           typeError p (printf "index variable %s is undefined" method)
         z -> do
-          liftIO $ putStrLn (show z)
           typeError p "error assigning to an array element"
     DeleteStmt _ r del -> fail "delete NYI"
     NewStmt{} -> fail "NewStmt will be removed from ANF"
@@ -464,9 +464,9 @@ stmt env ee cs rettype node s = do
       (te, vp) <- expr env ee cs e
       if (te <: rettype)
         then noop
-        else typeError p (printf "function is declared to return %s, but this \
-                                 \statement returns %s" (show rettype) 
-                                 (show te))
+        else typeError p $ printf 
+               "function is declared to return %s, but this statement returns \
+               \%s" (renderType rettype) (renderType te)
     LabelledStmt _ _ _ -> noop
     BreakStmt _ _ -> noop
     ContinueStmt _ _ -> noop
@@ -580,16 +580,13 @@ expr env ee cs e = do
        [] -> typeError p "empty array needs a type"
        (t:ts) -> do 
          let tRes = TApp "Array" [foldr unionType t ts]
-         return $ (tRes, VPLit (ArrayLit p (error "VP of ArrayLit NYI"))
-                               tRes)
+         return $ (tRes, VPNone)
      
    Lit (ArgsLit (_,p) es) -> do
      r <- mapM (expr env ee cs) es
      let ts = map fst r
      let resT = (TSequence ts Nothing)
-     let vp = VPLit (ArgsLit p (error "dont look inside VP argslit"))
-                    resT
-     return (resT, vp)
+     return (resT, VPNone)
 
    Lit (ObjectLit (_, loc) props) -> do
      let prop (Left s, (_, propLoc), e) = do
@@ -615,10 +612,7 @@ expr env ee cs e = do
          --argtypes is ("thistype", argarraytype, real args)
          --args should be is ("this", "arguments", real args)
          | length argTypes == length args -> 
-             return (t, VPLit (FuncLit p (error "dont look in VP Funclit args")
-                                         (error "dont look in VP Funclit lcls")
-                                         (error "dont look in VP Funclit body"))
-                              t)
+             return (t, VPNone)
          | otherwise -> typeError p $ 
              printf "argument number mismatch in funclit: %s args named, but \
                     \%s in the type:%s\n%s\n"
@@ -675,7 +669,8 @@ operator cs loc op argsvp = do
     OpIn -> fail "OpIn NYI"
     OpInstanceof -> fail "OpInstanceof NYI"
 
-    OpEq        -> return (boolType, equalityvp lvp rvp)
+    OpEq        -> do
+      return (boolType, equalityvp lvp rvp)
     OpStrictEq  -> return (boolType, equalityvp lvp rvp)
     OpNEq       -> return (boolType, 
                            VPNot (equalityvp lvp rvp))
@@ -705,11 +700,11 @@ operator cs loc op argsvp = do
                 | otherwise -> typeError loc "prefix - expects int/double"
     PrefixVoid -> do
       catastrophe loc (printf "void has been removed")
-    PrefixTypeof ->
+    PrefixTypeof -> do
       let tproc (VPId i) = VPTypeof i
           tproc (VPMulti vs) = VPMulti (nub (map tproc vs))
           tproc _ = VPNone
-       in return (stringType, tproc lvp)
+      return (stringType, tproc lvp)
 
 -- |When a node has multiple parents, this function combines their environments.
 unionEnv :: Env -> Env -> Env

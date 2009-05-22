@@ -66,7 +66,7 @@ assertTypeError pos expr venv tenv = do
   case result of
     Left (err::(E.SomeException)) -> return () -- error expected
     Right (exprType) -> assertFailure (
-      (showSp pos) ++ ": expected fail, got: " ++ (show exprType))
+      (showSp pos) ++ ": expected fail, got: " ++ (renderType exprType))
 
 
 assertTypeSuccess pos expr venv tenv = do

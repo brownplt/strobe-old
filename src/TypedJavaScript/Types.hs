@@ -35,7 +35,7 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 
 -- we don't want TJS expressions here
-import TypedJavaScript.Syntax (Type (..), VP (..), Id(..),
+import TypedJavaScript.Syntax (Type (..), VP (..), 
   TypeConstraint(..), LatentPred(..))
 -- but we do need the lits
 import qualified TypedJavaScript.Syntax as TJS
@@ -417,16 +417,20 @@ unionType t1 t2
   | t2 <: t1 = t1
   | otherwise = TUnion [t1, t2]
 
--- keep the VPs that are the same
--- TODO: something like VPLit 3 "int", VPLit 4 "int" might be salvageable.
--- TODO: rename this function
-takeEquals :: VP -> VP -> VP
-takeEquals (VPMulti v1s) (VPMulti v2s) = VPMulti (zipWith takeEquals v1s v2s)
-takeEquals (VPMulti v1s) v2 = VPMulti (map (takeEquals v2) v1s)
-takeEquals v1 (VPMulti v2s) = VPMulti (map (takeEquals v1) v2s)
-takeEquals (VPType t1 id1) (VPType t2 id2) = 
-  if id1 == id2 then (VPType (TUnion [t1, t2]) id1) else VPNone
-takeEquals v1 v2 = if v1 == v2 then v1 else VPNone
+
+vpToEnv :: VP -> Map Id Type
+vpToEnv (VPType t id) = M.singleton id t
+vpToEnv (VPMulti vps) = M.unionsWith (\t1 t2 -> flattenUnion $ TUnion [t1, t2])
+                                     (map vpToEnv vps)
+vpToEnv _ = M.empty
+
+envToVP :: Map Id Type -> VP
+envToVP env = VPMulti  $ map toVP (M.toList env)
+  where toVP :: (Id, Type) -> VP
+        toVP (id, t) = VPType t id
+
+combineVPs :: VP -> VP -> VP
+combineVPs vp1 vp2 = envToVP (vpToEnv (VPMulti [vp1, vp2]))
 
 unionTypeVP :: Maybe (Type, Type, Bool, VP)
             -> Maybe (Type, Type, Bool, VP)
@@ -439,7 +443,7 @@ unionTypeVP (Just (t, tact, b, v)) Nothing =
 unionTypeVP (Just (t1, t1act, b1, vp1)) (Just (t2, t2act, b2, vp2)) = 
   if b1 /= b2 
     then error "OMG"
-    else Just (unionType t1 t2, unionType t1act t2act, b1, takeEquals vp1 vp2)
+    else Just (unionType t1 t2, unionType t1act t2act, b1, combineVPs vp1 vp2)
 
 flattenUnion :: (Type) -> (Type)
 flattenUnion (TUnion ts) = 
