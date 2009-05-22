@@ -285,12 +285,12 @@ function (x) :: U(int, bool) -> int {
 } :: U(int, bool) -> int;
 
 function (x) :: U(int, bool) -> double {
-  var y = typeof x;
-  x = false;
-  if (y == "number") {
-    return x;
+  var y = typeof x; // testing y refines the type of x
+  x = false; // testing y no longer refines the type of x
+  if (y == "number") { // testing y should not refine the type of x
+    return x; // x is still U(int, bool)
   }
-  return 10;
+  return 10; // this is fine
 } @@ fails;
 
 //more soundness tyvm

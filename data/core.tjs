@@ -14,7 +14,7 @@ type Object :: rec Object . {
   valueOf :: ([Object] -> any)
 };
 
-type Number :: rec Number . {
+sealed type Number :: rec Number . {
   toExponential :: ([Number] int? -> string),
   toFixed :: ([Number] int? -> string),
   toPrecision :: ([Number] int? -> string),

@@ -897,9 +897,17 @@ externalStmt = do
   return (ExternalStmt pos id t)
 typeStmt = do
   pos <- getPosition
+  isSealed <- option False (reserved "sealed" >> return True)
   reserved "type"
   id <- identifier
-  t <- parseType
+  t' <- parseType
+  t <- case (isSealed, t') of
+    (False, _) -> return t'
+    (True, TRec v (TObject p ps)) -> 
+      return $ TRec v (TObject p (("@sealed", TObject True []):ps))
+    (True, TObject p ps) -> 
+      return $ TObject p (("@sealed", TObject True []):ps)
+    (True, t) -> fail "can only seal object types"
   semi
   return (TypeStmt pos id t)
 
