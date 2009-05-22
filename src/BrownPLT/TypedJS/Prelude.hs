@@ -19,7 +19,6 @@ module BrownPLT.TypedJS.Prelude
   -- common functions
   , noPos
   , everythingBut
-  , typeError
   , catastrophe
   ) where
 
@@ -64,11 +63,6 @@ everythingBut combine canDescend query term = case canDescend term of
                   (gmapQ (everythingBut combine canDescend query) term)
 
 
-typeError :: Monad m
-          => SourcePos
-          -> String
-          -> m a
-typeError loc msg = fail $ printf "at %s: %s" (show loc) msg
 
 
 catastrophe :: Monad m
