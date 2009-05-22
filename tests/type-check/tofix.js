@@ -72,4 +72,7 @@ function() :: (-> int) {
 4. Can a type (TId "a") can leak to a sibling function that accepts
 (TId "a") values, creating problems?" */
 
-function () :: (->) { function () :: (->) { a = 4; }; } @@ succeeds;
+function () :: (->) { function () :: (->) { var a = 4; }; } @@ succeeds;
+
+
+function () :: (->) { function () :: (->) { var a = 4; }(); } @@ succeeds;
