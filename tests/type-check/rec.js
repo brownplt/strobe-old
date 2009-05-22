@@ -13,3 +13,18 @@ function () :: (->) {
   f(10)(11);
   f(10)(11)(12);
 } @@ succeeds;
+
+function() :: (->) {
+  var fac = function(n) :: int -> int {
+     if (n == 0) { return 1; }
+    else { return n * fac(n-1); }
+  } 
+} @@ succeeds;
+
+function() :: (->) {
+  var fac = function(n) :: int -> int {
+     if (n == 0) { return 1; }
+    else { return n * fac("hello"); }
+  } 
+} @@ fails;
+
