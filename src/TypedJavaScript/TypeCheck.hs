@@ -35,8 +35,13 @@ import System.FilePath
 data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,
   stateEnvs :: Map Int Env,
-  stateTypeEnv :: Map String Type
+  stateTypeEnv :: Map String Type,
+  stateErrors :: [(SourcePos, String)]
 }
+
+
+emptyTypeCheckState :: TypeCheckState
+emptyTypeCheckState = TypeCheckState G.empty M.empty M.empty []
 
 
 basicKinds :: KindEnv
@@ -51,6 +56,14 @@ basicKinds = M.fromList
 
 
 type TypeCheck a = StateT TypeCheckState IO a
+
+typeError :: SourcePos
+          -> String
+          -> TypeCheck ()
+typeError loc msg = do
+  s <- get
+  put $ s { stateErrors = (loc, msg):(stateErrors s) }
+
 
 -- |Returns the successors of the node, paired with the labels on the
 -- |edges to the successors.
@@ -71,10 +84,6 @@ nodeToStmt node = do
   case G.lab (stateGraph state) node of
     Just stmt -> return stmt
     Nothing -> fail $ "nodeToStmt: not a node " ++ show node
-
-subtypeError loc msg  s t = 
-  fail $ printf "at %s: %s, expected subtype of %s, got %s" (show loc) msg
-                (renderType s) (renderType t)
 
 
 lookupLocalEnv :: G.Node -> TypeCheck Env
@@ -165,16 +174,15 @@ assert :: Monad m => Bool -> String -> m ()
 assert True _ = return ()
 assert False msg = fail ("CATASPROPHIC FAILURE: " ++  msg)
 
-doAssignment :: (Monad m, MonadIO m) 
-             => (Type -> Type -> Bool) -- ^local subtype relation
+doAssignment :: (Type -> Type -> Bool) -- ^local subtype relation
              -> SourcePos -- ^for type errors
              -> Env -- ^current environment
              -> Id -- ^LHS of assignment
              -> Type -- ^type of the RHS of assignment
              -> VP  -- ^visible predicate on the RHS
-             -> m Env -- ^resulting environment
+             -> TypeCheck Env -- ^resulting environment
 doAssignment (<:) p env v te e_vp = case M.lookup v env of        
-  Nothing -> typeError p (v ++ " is unbound")
+  Nothing -> typeError p (v ++ " is unbound") >> return env
   -- ANF variable, or locally inferred variable.  ANF variables may be
   -- assigned to multiple times in parallel branches, 
   -- possibly creating a union in unionEnv.
@@ -194,9 +202,11 @@ doAssignment (<:) p env v te e_vp = case M.lookup v env of
         let env' = M.insert v (Just (tDec, te, True, VPMulti [VPId v, e_vp])) 
                             env
         return env'
-   | otherwise -> typeError p $
-       printf "assigning to %s :: %s; given an expression of type %s"
-              v (renderType tDec) (renderType te)
+   | otherwise -> do
+       typeError p $
+         printf "assigning to %s :: %s; given an expression of type %s"
+                v (renderType tDec) (renderType te)
+       return env
   -- Variable in an enclosing scope.  If its type is a union, it is possible
   -- that a function in the dynamic calling context has locally refined tDec to
   -- a more precise type.  Due to such cases, we cannot permit any assignment
@@ -205,19 +215,25 @@ doAssignment (<:) p env v te e_vp = case M.lookup v env of
   -- precludes visible-predicates from refining types to specific /values/.
   -- For example, we cannot refine to false.
   Just (Just (tDec, tAct, False, v_vp))
-    | isUnion tDec -> typeError p $ 
-        printf "cannot assign to global union %s :: %s"
-               v (renderType tDec)
-    | isAny tDec -> typeError p "cannot assign to global anys"
+    | isUnion tDec -> do
+        typeError p $ 
+          printf "cannot assign to global union %s :: %s"
+                 v (renderType tDec)
+        return env
+    | isAny tDec -> do
+        typeError p "cannot assign to global anys" 
+        return env
     | te <: tDec ->  do
         -- TODO: remove, from environment, any VP referring to this var!
         let env' = M.insert v (Just (tDec, te, False,
                                      VPMulti [VPId v, v_vp])) 
                             env
         return env'
-   | otherwise -> typeError p $
-       printf "assigning to %s :: %s; given an expression of type %s"
-              v (renderType tDec) (renderType te)
+   | otherwise -> do
+       typeError p $
+         printf "assigning to %s :: %s; given an expression of type %s"
+                v (renderType tDec) (renderType te)
+       return env
 
 stmt :: Env -- ^the environment in which to type-check this statement
      -> ErasedEnv
@@ -264,11 +280,12 @@ stmt env ee cs rettype node s = do
                      (Just (TSequence [] Nothing, TSequence [] Nothing, 
                             True, VPNone)) env
         return (zip (map fst succs) (repeat env'))
-      Nothing ->
-        fail $ printf "%s is unbound at %s" v (show p)
-      Just (Just (_, t, _, _)) -> 
+      Nothing -> do
+        typeError p $ printf "%s is unbound" v
+        noop
+      Just (Just (_, t, _, _)) ->  do
         typeError p (printf "[] is an array; given type: %s" (renderType t))
-    
+        noop    
     AssignStmt (_,p) v e -> do
       (te,e_vp) <- expr env ee cs e
       env' <- doAssignment (<:) p env v te e_vp
@@ -289,42 +306,60 @@ stmt env ee cs rettype node s = do
          tAct <- dotrefContext tAct'
          case unRec tAct of
           TObject _ props -> case lookup prop props of
-            Nothing -> 
-              typeError p (printf "object does not have the property %s" prop)
+            Nothing -> do
+              typeError p $ printf "object does not have the property %s" prop
+              noop
             -- TODO: detect if a field was discovered and, if so,
             -- disallow mutation to it.
-            Just t' | isUnion t' -> typeError p $ 
-                        printf "cannot mutate to a union field"
-                    | isSlackObject t' -> typeError p $
-                        printf "cannot mutate the field %s :: %s"
-                               prop (renderType t')
+            Just t' | isUnion t' -> do
+                        typeError p $ 
+                          printf "cannot mutate to a union field"
+                        noop
+                    | isSlackObject t' -> do
+                        typeError p $
+                          printf "cannot mutate the field %s :: %s"
+                                 prop (renderType t')
+                        noop
                     | t_rhs <: t' -> noop -- TODO: affect VP?
-                    | otherwise -> 
-                        subtypeError p "assignment to property" t_rhs t'
-          t' -> typeError p $ printf "expected object, received %s" 
-                  (renderType t')
+                    | otherwise -> do
+                        typeError p $ printf
+                          "property %s has type %s, received %s" prop
+                          (renderType t') (renderType t_rhs)
+                        noop
+          t' -> do
+            typeError p $ printf "expected object, received %s" 
+              (renderType t')
+            noop
           
     IndirectPropAssignStmt (_,p) obj method e -> do 
       (t_rhs, _) <- expr env ee cs e
       case (M.lookup obj env, M.lookup method env) of
         (Just (Just (_, TApp "Array" [t_elem], isLocal, _)), 
          Just (Just (_, t_prop, _, _)))
-          | isUnion t_elem -> typeError p $
-              printf "cannot mutate to a union element of an array"
-          | isObject t_elem -> typeError p $
-              printf "cannot mutate to an object element of an array"
+          | isUnion t_elem -> do
+              typeError p $
+                printf "cannot mutate to a union element of an array"
+              noop
+          | isObject t_elem -> do
+              typeError p $
+                printf "cannot mutate to an object element of an array"
+              noop
           | t_prop <: intType && t_rhs <: t_elem -> 
               noop
-          | t_prop <: stringType ->
-              subtypeError p "array insertion" t_rhs t_elem
+          | t_prop <: stringType -> do
+              typeError p "array insertion"
+              noop
           | otherwise -> do
               if (not $ t_prop <: intType)
-                then subtypeError p "array index not an integer" intType t_prop
-                else subtypeError p "array rhs wrong" t_elem t_rhs
-        (Just (Just (_, TApp "Array" [t_elem], _, _)), Just Nothing) ->
+                then typeError p "array index not an integer"
+                else typeError p "array rhs wrong"
+              noop
+        (Just (Just (_, TApp "Array" [t_elem], _, _)), Just Nothing) -> do
           typeError p (printf "index variable %s is undefined" method)
+          noop
         z -> do
           typeError p "error assigning to an array element"
+          noop
     DeleteStmt _ r del -> fail "delete NYI"
     NewStmt{} -> fail "NewStmt will be removed from ANF"
     CallStmt (_,p) r_v f_v args_v -> do
@@ -342,7 +377,9 @@ stmt env ee cs rettype node s = do
         --actuals_vps contains VP, including VPId for the var name itself.
         let actuals = this:arguments:actuals'
         case deconstrFnType f of
-          Nothing -> typeError p ("expected function; received " ++ show f)
+          Nothing -> do
+            typeError p ("expected function; received " ++ show f)
+            noop
           Just (vs, cs', formals', vararg, r, latentPred, ptype) -> do
             when (isJust ptype) (typeError p "cannot call a constructor")
             unless (length vs == length insts) $ do
@@ -351,9 +388,11 @@ stmt env ee cs rettype node s = do
 
             let checkInst (t, v, TCSubtype _ t')
                   | t <: t' = return (TCSubtype v t)
-                  | otherwise = typeError p $ printf
-                      "supplied type %s for %s does not satisfy the %s <: %s"
+                  | otherwise = do
+                      typeError p $ printf
+                        "supplied type %s for %s does not satisfy the %s <: %s"
                         (renderType t) v v (renderType t')
+                      return (TCSubtype v t)
 
             instConstraints <- mapM checkInst (zip3 insts vs cs')
 
@@ -380,7 +419,9 @@ stmt env ee cs rettype node s = do
                                   (length actuals))
             let checkArg (actual,formal) = do
                   unless (actual <: formal) $ do
-                    subtypeError p "function call arguments" formal actual
+                    typeError p $ printf 
+                      "expected argument of type %s, received"
+                      (renderType formal) (renderType actual)
             let (athis:aargs:areals) = actuals
             let (sthis:sargs:sreals) = supplied
             mapM_ checkArg (zip (athis:areals) (sthis:sreals))
@@ -428,16 +469,16 @@ stmt env ee cs rettype node s = do
         TObject _ fields ->        
           case M.lookup id env of 
             Nothing -> typeError p
-              (printf "id %s for forin loop is unbound" id)
+              (printf "id %s for forin loop is unbound" id) >> fail "fatal"
             Just (Just (tDec, tAct', isLocal, vp)) -> typeError p 
-              (printf "id %s already has a type in a forin, but it shouldnt")
+              (printf "id %s already has a type in a forin, but it shouldnt") >> fail "fatal"
             Just Nothing -> do
               let env' = M.insert id
                            (Just (TIterator oid, TIterator oid, 
                                   True, VPNone)) env
               return (zip (map fst succs) (repeat env'))
         _ -> typeError p (printf "trying to forin through %s, not obj" 
-                            (renderType t))
+                            (renderType t)) >> fail "fatal"
 
 -- Lit (StringLit (_,a) s) -> 
 
@@ -460,14 +501,17 @@ stmt env ee cs rettype node s = do
       noop
     ReturnStmt (_,p) Nothing 
       | undefType <: rettype -> noop
-      | otherwise -> subtypeError p "return;" undefType rettype
+      | otherwise -> do
+          typeError p $ printf "empty return, expected: %s"
+            (renderType rettype)
+          noop
     ReturnStmt (_,p) (Just e) -> do
       (te, vp) <- expr env ee cs e
-      if (te <: rettype)
-        then noop
-        else typeError p $ printf 
+      unless (te <: rettype) $ 
+        typeError p $ printf 
                "function is declared to return %s, but this statement returns \
                \%s" (renderType rettype) (renderType te)
+      noop
     LabelledStmt _ _ _ -> noop
     BreakStmt _ _ -> noop
     ContinueStmt _ _ -> noop
@@ -534,8 +578,10 @@ expr env ee cs e = do
      let t = unConstraint (unRec t')
      case fieldType p t of
        Just t' -> return (t', VPNone)
-       Nothing -> typeError loc $ printf
-         "expected object with field %s, received %s" p (renderType t)
+       Nothing -> do
+         typeError loc $ printf
+           "expected object with field %s, received %s" p (renderType t)
+         fail "fatal error"
    BracketRef (_, loc) e ie -> do
      (t'', _) <- expr env ee cs e
      t' <- dotrefContext (unRec t'')
@@ -544,7 +590,10 @@ expr env ee cs e = do
      let it = unRec it'
      case t of
        TApp "Array" [btype]
-         | not (it <: intType) -> subtypeError loc "obj[prop]" intType it
+         | not (it <: intType) -> do
+             typeError loc $ printf 
+               "array index must be an integer, received %s" (renderType it)
+             return (btype, VPNone)
          | otherwise -> return (btype, VPNone)
        TObject _ props
          | isVarRef e -> case it of
@@ -552,9 +601,13 @@ expr env ee cs e = do
                let (VarRef _ ename) = e
                if ename == z
                  then return (TProperty ename, VPNone)
-                 else typeError loc $ printf "fail to obj[prop]: obj's name \
-                                           \doesn't match name iterator is for"
-             _ -> typeError loc (printf "can only bracketref obj with iterator")
+                 else do typeError loc $ 
+                           printf "fail to obj[prop]: obj's name \
+                                  \doesn't match name iterator is for"
+                         fail "fatal type error"
+             _ -> do 
+                    typeError loc (printf "can only bracketref obj with iterator")
+                    fail "fatal type error"
        _ -> fail $ printf "at %s: expected array, got %s" (show loc) (show t)
    OpExpr (_,p) f args_e -> do
      args <- mapM (expr env ee cs) args_e
@@ -578,7 +631,7 @@ expr env ee cs e = do
      let ts = map fst r
      
      case ts of
-       [] -> typeError p "empty array needs a type"
+       [] -> typeError p "empty array needs a type" >> fail "fatal type error"
        (t:ts) -> do 
          let tRes = TApp "Array" [foldr unionType t ts]
          return $ (tRes, VPNone)
@@ -594,8 +647,13 @@ expr env ee cs e = do
            -- the VP is simply dropped, but it is always safe to drop a VP
            (t, vp) <- expr env ee cs e
            case M.lookup propLoc ee of
-             Just [t'] | t <: t' -> return (s, t')
-                       | otherwise -> subtypeError propLoc "{ ... }" t t'
+             Just [t'] 
+               | t <: t' -> return (s, t')
+               | otherwise -> do
+                   typeError propLoc $ printf
+                     "field %s is annotated with type %s, expression has \
+                     \type %s" s (renderType t') (renderType t) 
+                   return (s, t')
              Nothing -> return (s, t)
              Just ts ->
                catastrophe propLoc (printf "erased-env for property is %s" 
@@ -614,12 +672,16 @@ expr env ee cs e = do
          --args should be is ("this", "arguments", real args)
          | length argTypes == length args -> 
              return (t, VPNone)
-         | otherwise -> typeError p $ 
-             printf "argument number mismatch in funclit: %s args named, but \
-                    \%s in the type:%s\n%s\n"
-               (show (length args - 2)) (show (length argTypes - 2))
-               (renderType t) (show $ map renderType argTypes)
-       Nothing -> typeError p $ printf "not a function type: %s" (renderType t)
+         | otherwise -> do
+             typeError p $ 
+               printf "argument number mismatch in funclit: %s args named, but \
+                      \%s in the type:%s\n%s\n"
+                 (show (length args - 2)) (show (length argTypes - 2))
+                 (renderType t) (show $ map renderType argTypes)
+             return (t, VPNone)
+       Nothing -> do
+         typeError p $ printf "not a function type: %s" (renderType t)
+         return (t, VPNone)
      Just _ -> catastrophe p "many types for function in the erased environment"
   
 operator :: [TypeConstraint]
@@ -695,10 +757,16 @@ operator cs loc op argsvp = do
         VPNot v -> return (boolType, v)
         v -> return (boolType, VPNot v)
     PrefixBNot | lhs <: intType -> return (novp intType)
-               | otherwise -> subtypeError loc "!expr" lhs intType
+               | otherwise -> do
+                   typeError loc $ printf
+                     "bitwise not expects an integer, received %s" 
+                     (renderType lhs)
+                   return (intType, VPNone)
     PrefixMinus | lhs <: doubleType -> return (novp lhs)
 	              | lhs <: intType -> return (novp lhs)
-                | otherwise -> typeError loc "prefix - expects int/double"
+                | otherwise -> do
+                    typeError loc "prefix - expects int/double"
+                    return (doubleType, VPNone)
     PrefixVoid -> do
       catastrophe loc (printf "void has been removed")
     PrefixTypeof -> do
@@ -798,12 +866,12 @@ typeCheckProgram env enclosingKindEnv constraints
 -- |Checks user-specified type annotations for kind-errors.  We assume that
 -- types derived by our type-checker are well-kinded.  Therefore, this is
 -- the only kind-check necessary.
-checkDeclaredKinds :: Monad m => KindEnv -> ErasedEnv -> m ()
+checkDeclaredKinds :: KindEnv -> ErasedEnv -> TypeCheck ()
 checkDeclaredKinds kinds ee = do
   let check loc type_ = case checkKinds kinds type_ of
         Right KindStar -> return ()
-        Right _ -> typeError loc "kind error"
-        Left s -> typeError loc ("kind error: " ++ show s)
+        Right _ -> typeError loc "kind error" >> fail "fatal error"
+        Left s -> typeError loc ("kind error: " ++ show s) >> fail "fatal error"
   let checkAt (loc, types) = mapM_ (check loc) types
   mapM_ checkAt (M.toList ee)
   
@@ -893,5 +961,8 @@ typeCheckWithGlobals venv tenv prog = do
 
   (env, state) <- runStateT (typeCheckProgram venv' basicKinds [] 
                                               (envs, intraprocs)) 
-                            (TypeCheckState G.empty M.empty tenv)
-  return env
+                            (emptyTypeCheckState { stateTypeEnv = tenv })
+  case stateErrors state of
+    [] -> return env
+    errs -> fail (concat $ intersperse "\n" $ map formatError errs)
+              where formatError (p, s) = show p ++ ": " ++ s
