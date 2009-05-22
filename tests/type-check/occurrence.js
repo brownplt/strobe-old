@@ -432,6 +432,13 @@ function (x) :: U(int, bool) -> int {
   }
 } :: U(int, bool) -> int;
 
+function(x) :: U(int, undefined) -> int {
+  if (typeof(x) == "undefined") {
+    x = 0;
+  }
+  return x;
+} @@ succeeds;
+
 //this should work!!! =(
 /*
 function (x) :: (U(int->bool, bool->int) -> bool) {

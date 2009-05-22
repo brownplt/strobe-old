@@ -175,13 +175,14 @@ forceLookupMultiErasedEnv ee p = case M.lookup p ee of
   Just ts -> return ts
 
 
-forceEnvLookup :: Monad m
-               => SourcePos -> Env -> Id -> m (Type, Type, Bool, VP)
+forceEnvLookup :: SourcePos -> Env -> Id -> TypeCheck (Type, Type, Bool, VP)
 forceEnvLookup loc env name = case M.lookup name env of
-  Nothing -> 
-    fail $ printf "at %s: identifier %s is unbound" (show loc) name
-  Just Nothing -> 
-    fail $ printf "at %s: identifier %s is uninitialized" (show loc) name
+  Nothing -> do
+    typeError loc $ printf "identifier %s is unbound" name
+    return (TAny, TAny, False, VPNone)
+  Just Nothing -> do
+    typeError loc $ printf "identifier %s is uninitialized" name
+    return (TAny, TAny, False, VPNone)
   Just (Just t) -> return t
 
 assert :: Monad m => Bool -> String -> m ()
@@ -913,8 +914,8 @@ typeCheckProgram env enclosingKindEnv constraints
                                             enclosingKindEnv ee lit
 
   let kindEnv = M.union (freeTypeVariables fnType) enclosingKindEnv
-      
-  checkDeclaredKinds kindEnv ee
+     
+  checkDeclaredKinds (M.union (M.map (const KindStar) tenv) kindEnv) ee
   let cs' = cs ++ constraints
   finalEnv <- body env' ee cs' rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descend into nested functions, we ensure that functions satisfy
@@ -935,7 +936,9 @@ checkDeclaredKinds kinds ee = do
   let check loc type_ = case checkKinds kinds type_ of
         Right KindStar -> return ()
         Right _ -> typeError loc "kind error" >> fatalTypeError "fatal error"
-        Left s -> typeError loc ("kind error: " ++ show s) >> fatalTypeError "fatal error"
+        Left s -> do
+          typeError loc s
+          fatalTypeError "fatal error"
   let checkAt (loc, types) = mapM_ (check loc) types
   mapM_ checkAt (M.toList ee)
   
