@@ -293,6 +293,10 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
         --actuals_vps contains VP, including VPId for the var name itself.
         return $ this:rest
       
+      -- ANF doesn't supply arguments array to constructor yet, so
+      -- hack around that:
+      formals' <- if isNewStmt then return (tail formals') else return formals'
+      
       -- explicitly instantiated type-variables when calling polymorphic
       -- functions. constructors don't have this, yet.      
       insts <- if isNewStmt then return [] else forceLookupMultiErasedEnv ee p
@@ -326,7 +330,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
                       Just vt -> formals' ++ 
                         (take (length actuals - length formals') 
                               (repeat (apply vt)))
-      let (supplied, missing) = splitAt (length actuals) formals
+      let (suppliedFormals, missingFormals) = splitAt (length actuals) formals
       when (length actuals > length formals) $ do
         typeError p (printf "function expects %d arguments, but %d \
                             \were supplied" (length formals)
@@ -336,14 +340,22 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
               typeError p $ printf 
                 "expected argument of type %s, received %s"
                 (renderType formal) (renderType actual)
-      let (athis:aargs:areals) = actuals
-      let (sthis:sargs:sreals) = supplied
-      mapM_ checkArg (zip (athis:areals) (sthis:sreals))
+      --check everything except the arguments:
+      rez <- case isNewStmt of
+               True -> do
+                 let areals = actuals
+                 let sreals = suppliedFormals 
+                 mapM_ checkArg (zip areals sreals)
+               False -> do 
+                 let (athis:aargs:areals) = actuals
+                 let (sthis:sargs:sreals) = suppliedFormals
+                 mapM_ checkArg (zip (athis:areals) (sthis:sreals))
+               
       let checkMissingArg actual = do
             unless (undefType <: actual) $
               typeError p (printf "non-null argument %s not supplied"
                                   (show actual))
-      mapM_ checkMissingArg missing
+      mapM_ checkMissingArg missingFormals
   
       --if we have a 1-arg func that has a latent pred, applied to a
       --visible pred of VID, then this is a T-AppPred        
@@ -359,6 +371,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
           
       -- For call statements, we must ensure that the result type is
       -- a subtype of the named result.
+      -- this works for constructors, too.
       env' <- doAssignment (<:) p env r_v r r_vp
       return env'
 
@@ -445,9 +458,19 @@ stmt env ee cs rettype node s = do
                                     isLocal, vp))env
                 return $ zip (map fst succs) (repeat env')
               (True, True) -> do
-                typeError p $ printf "error assigning to %s: object is open but\
-                                     \has slack. dnno what to do yet." prop
-                noop
+                -- you should only be able to assign to a non-slack
+                -- object in general (which is like .prototype), and
+                -- you can assign to a slack object if it is the
+                -- "this" object, but only to the fields that are
+                -- expected in the return type.
+                liftIO $ putStrLn $ printf "%s: assigning to %s.%s. the obj\
+                  \ has slack, so this should later be disallowed."
+                    (show p) (renderType tAct) prop
+                let env' = M.insert obj
+                             (Just (tDec, TObject hasSlack isOpen 
+                                                  ((prop,t_rhs):props),
+                                    isLocal, vp))env
+                return $ zip (map fst succs) (repeat env')
               (False,_) -> do
                 typeError p $ printf "cannot assign to property %s: object \
                                      \is not open and does not have the prop" 
@@ -732,7 +755,7 @@ expr env ee cs e = do
      Nothing -> catastrophe p "function lit is not in the erased environment"
      Just [t] -> do
       case deconstrFnType t of
-       Just (_, _, argTypes, _, _, _, _) 
+       Just (_, _, argTypes, _, _, _, Nothing)  --functions
          --argtypes is ("thistype", argarraytype, real args)
          --args should be is ("this", "arguments", real args)
          | length argTypes == length args -> 
@@ -742,6 +765,18 @@ expr env ee cs e = do
                printf "argument number mismatch in funclit: %s args named, but \
                       \%s in the type:%s\n%s\n"
                  (show (length args - 2)) (show (length argTypes - 2))
+                 (renderType t) (show $ map renderType argTypes)
+             return (t, VPNone)
+       Just (_, _, argTypes, _, _, _, (Just _))  --constructors. is hacked atm.
+         --argtypes is                                  (args, real args)
+         --args should be (real args), but is currently (this, args, real args)
+         | length argTypes == length args - 1 -> 
+             return (t, VPNone)
+         | otherwise -> do
+             typeError p $ 
+               printf "argument number mismatch in funclit: %s args named, but \
+                      \%s in the type:%s\n%s\n"
+                 (show (length args - 2)) (show (length argTypes - 1))
                  (renderType t) (show $ map renderType argTypes)
              return (t, VPNone)
        Nothing -> do
@@ -871,11 +906,16 @@ uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
         Nothing -> return Nothing
         Just t | head name == '@' -> return Nothing
                | otherwise -> return (Just t)
-               
-  let (this:argsarray:types') = types ++ (case vararg of
+  --stick on the vararg:
+  let types' = types ++ (case vararg of
         Nothing -> []
         Just vt -> [TApp "Array" [vt]])
-  argtypes <- return $ zip (map fst args) (map Just (this:argsarray:types'))
+  --remove the 'this' argument from constructors, since it's not really there:
+  let args' = if isNothing pt then args else tail args
+  --and account for it here: it's really the open version of the prototype
+  argtypes <- return $ (zip (map fst args') (map Just types')) ++ (
+                         if isNothing pt then [] else 
+                              [("this", Just $ openObject $ fromJust pt)])
   localtypes <- mapM (\(name,(_, pos)) -> do
                         t' <- lookupEE pos name
                         case t' of

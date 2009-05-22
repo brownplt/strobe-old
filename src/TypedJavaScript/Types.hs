@@ -194,10 +194,18 @@ deconstrFnType :: Type
                          Type, LatentPred, Maybe Type)
 deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
   deconstrFnType (substType id t t')
-deconstrFnType (TFunc pt args@(_:(TSequence _ vararg):_) result latentP) = 
-  Just ([],[],args,vararg,result,latentP, pt)
-deconstrFnType (TForall ids cs (TFunc pt args@(_:(TSequence _ vararg):_) r lp))=
-  Just (ids, cs, args, vararg, r, lp, pt)
+--function:
+deconstrFnType (TFunc Nothing args@(_:(TSequence _ vararg):_) result latentP) = 
+  Just ([],[],args,vararg,result,latentP, Nothing)
+deconstrFnType (TForall ids cs 
+                        (TFunc Nothing args@(_:(TSequence _ vararg):_) r lp))=
+  Just (ids, cs, args, vararg, r, lp, Nothing)
+--constructor:
+deconstrFnType (TFunc (Just pt) args@((TSequence _ vararg):_) result latentP) = 
+  Just ([],[],args,vararg,result,latentP, (Just pt))
+deconstrFnType (TForall ids cs 
+                        (TFunc (Just pt) args@((TSequence _ vararg):_) r lp))=
+  Just (ids, cs, args, vararg, r, lp, (Just pt))
 deconstrFnType _ = Nothing
 
 unRec :: Type -> Type
