@@ -31,7 +31,9 @@ data TypeConstraint
   deriving (Show, Eq,Ord, Data, Typeable)
 
 data Type
-  = TObject Bool [(String, Type)]
+  = TObject Bool --hasSlack
+            Bool --isOpenObject ('this' inside a constructor, and f.prototype)
+            [(String, Type)]
   | TAny
   | TRec String Type
   | TSequence [Type] (Maybe Type) -- sequence of types (e.g. arguments array)

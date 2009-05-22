@@ -66,8 +66,10 @@ type_ t = case t of
   TApp s ts -> text s <> text "<" <> commas (map type_ ts) <> text ">"
   TAny -> text "any"
   TRec id t -> hang (text "rec" <+> text id <+> text ".") 2 (type_ t)
-  TObject hasSlack fields -> braces $ nest 2 (commas (map field fields) <> s)
+  TObject hasSlack isOpen fields -> 
+   braces $ open <> nest 2 (commas (map field fields) <> s)
     where field (id, t') = text id <+> text "::" <+> type_ t'
+          open = text $ if isOpen then "(open)" else ""                  
           s = case hasSlack of
                 True -> text ", ..."
                 False -> empty

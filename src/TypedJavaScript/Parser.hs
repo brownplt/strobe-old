@@ -32,6 +32,7 @@ import Numeric(readDec,readOct,readHex)
 import Data.Char(chr)
 import Data.Char
 import Data.List
+import BrownPLT.TypedJS.TypeFunctions (openObject)
  
 -- We parameterize the parse tree over source-locations.
 type ParsedStatement = Statement SourcePos
@@ -161,8 +162,12 @@ type_ = do
               p' <- getPosition
               r <- type_ <?> "type that 'this' will become"
               let arguments = TSequence ts Nothing
-              return (TFunc (Just (TObject False []))
-                            (thisType:arguments:ts) r LPNone)
+              -- the 'this type' of the constructor is really what the
+              -- prototype is expected to be. it doesn't take 'this'
+              -- explicitly, since it's never placed into a variable
+              -- (it shouldn't be, even in the ANF).
+              return (TFunc (Just thisType)
+                            (arguments:ts) r LPNone)
         let func = do
               reservedOp "->"
               r <- type_ <|> (return Types.undefType)
@@ -177,9 +182,11 @@ type_ = do
 type_fn :: CharParser st (Type)
 type_fn = do
   p <- getPosition
-  let globalThis = TObject True [] -- TODO: make this the global this
+  let globalThis = TObject True False [] -- TODO: make this the global
+                                         -- this. also - should it be
+                                         -- open?
   ts <- type_' `sepBy` comma
-  let thisType = TObject True []
+  let thisType = TObject True False []
   let vararity = do
         reservedOp "..."
         reservedOp "->"
@@ -191,8 +198,9 @@ type_fn = do
         p' <- getPosition
         r <- type_ <?> "type that 'this' will become"
         let arguments = TSequence ts Nothing
-        return (TFunc (Just (TObject False [])) 
-                      (thisType:arguments:ts) r LPNone)
+        --default: empty prototype with slack
+        return (TFunc (Just (TObject True False [])) 
+                      (arguments:ts) r LPNone)
   let func = do
         reservedOp "->"
         let arguments = TSequence ts Nothing
@@ -225,7 +233,7 @@ type_'' =
           hasSlack <- (reservedOp "..." >> return True) <|> (return False)
           return (fs, hasSlack)
         fields' <- noDupFields fields
-        return (TObject hasSlack fields')
+        return (TObject hasSlack False fields')
       noDupFields fields
         | length (nub $ map fst fields) == length fields = return fields
         | otherwise = fail "duplicate fields in an object type specification"
@@ -918,10 +926,10 @@ typeStmt = do
   t' <- parseType
   t <- case (isSealed, t') of
     (False, _) -> return t'
-    (True, TRec v (TObject p ps)) -> 
-      return $ TRec v (TObject p (("@sealed", TObject True []):ps))
-    (True, TObject p ps) -> 
-      return $ TObject p (("@sealed", TObject True []):ps)
+    (True, TRec v (TObject p opn ps)) -> 
+      return $ TRec v (TObject p opn (("@sealed", TObject True False []):ps))
+    (True, TObject p opn ps) -> 
+      return $ TObject p opn (("@sealed", TObject True False []):ps)
     (True, t) -> fail "can only seal object types"
   semi
   return (TypeStmt pos id t)

@@ -19,7 +19,7 @@ Data-Files:
 Description:
 
  
-Executable tjs
+{- Executable tjs
   Main-Is: Tjs.hs
   Hs-Source-Dirs:
     src
@@ -32,7 +32,7 @@ Executable tjs
     -fwarn-incomplete-patterns
   Extensions:     
     Generics Rank2Types MultiParamTypeClasses ViewPatterns
-    DeriveDataTypeable FlexibleInstances
+    DeriveDataTypeable FlexibleInstances -}
 
 Executable typedjs-tests
   Main-Is: TestSuite.hs

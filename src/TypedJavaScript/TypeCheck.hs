@@ -218,7 +218,7 @@ doAssignment (<:) p env v te e_vp = case M.lookup v env of
         return env'
    | otherwise -> do
        typeError p $
-         printf "assigning to %s :: %s; given an expression of type %s"
+         printf "error assigning to %s :: %s; given an expression of type %s"
                 v (renderType tDec) (renderType te)
        return env
   -- Variable in an enclosing scope.  If its type is a union, it is possible
@@ -262,27 +262,39 @@ doFuncConstr :: (Type -> Type -> Bool) -- ^local subtype relation
 doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt = 
   let noop = return env 
    in do
-  when isNewStmt $ typeError p "new stmt NYI"
   state <- get
   (_, f, f_isLocal, f_vp) <- forceEnvLookup p env f_v
-  -- explicitly instantiated type-variables when calling polymorphic
-  -- functions
-  insts <- if isNewStmt then return [] else forceLookupMultiErasedEnv ee p
-  actualsWithVP' <- liftM (map (\(_, t, _, vp) -> (t, vp)))
-                          (mapM (forceEnvLookup p env) args_v)
-  let (this':arguments:actuals', actuals_vps) = unzip actualsWithVP'
-  this <- dotrefContext this' --motivation: if 'this' is a
-                              --string, int, etc, it is automatically
-                              --converted to an object.
-   
-  --actuals_vps contains VP, including VPId for the var name itself.
-  let actuals = this:arguments:actuals'
   case deconstrFnType f of
     Nothing -> do
       typeError p ("expected function; received " ++ show f)
       noop
     Just (vs, cs', formals', vararg, r, latentPred, ptype) -> do
-      when (isJust ptype) (typeError p "cannot call a constructor")
+      when (isNewStmt && isNothing ptype) $
+        typeError p "cannot call a function with 'new'"
+      when (not isNewStmt && isJust ptype) $
+        typeError p "must call constructors with 'new'"
+      --if we are in a constructor and have Nothing for ptype, we
+      --already have a type error, but do the following so that the
+      --whole typechecker doesn't crash:
+      ptype <- if isNewStmt && isNothing ptype 
+                 then return $ Just $ TObject True False []
+                 else return ptype
+      
+      actualsWithVP' <- liftM (map (\(_, t, _, vp) -> (t, vp)))
+                              (mapM (forceEnvLookup p env) args_v)
+      let (actuals', actuals_vps) = unzip actualsWithVP'
+      --in functions, have to dotref the 'this'
+      actuals <- if isNewStmt then return actuals' else do
+        let this':rest = actuals'
+        this <- dotrefContext this' --motivation: if 'this' is a
+                                    --string, int, etc, it is automatically
+                                    --converted to an object.   
+        --actuals_vps contains VP, including VPId for the var name itself.
+        return $ this:rest
+      
+      -- explicitly instantiated type-variables when calling polymorphic
+      -- functions. constructors don't have this, yet.      
+      insts <- if isNewStmt then return [] else forceLookupMultiErasedEnv ee p
       unless (length vs == length insts) $ do
         typeError p (printf "expected %d type argument(s), received %d"
                             (length vs) (length insts))
@@ -321,7 +333,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
       let checkArg (actual,formal) = do
             unless (actual <: formal) $ do
               typeError p $ printf 
-                "expected argument of type %s, received"
+                "expected argument of type %s, received %s"
                 (renderType formal) (renderType actual)
       let (athis:aargs:areals) = actuals
       let (sthis:sargs:sreals) = supplied
@@ -370,6 +382,8 @@ stmt env ee cs rettype node s = do
       -- All predecessors of Exit must be ReturnStmt
       let gr = stateGraph state
       let returns = map (G.lab gr) (G.pre gr exitNode)
+      -- TODO: in constructors, make sure that at all return points,
+      -- 'this' has been properly refined.
       let assertReturn maybeStmt = case maybeStmt of
             Nothing -> catastrophe p "predecessor of an Exit node is \
                                        \unlabelled in the CFG"
@@ -420,10 +434,24 @@ stmt env ee cs rettype node s = do
         Just (Just (tDec, tAct', isLocal, vp)) -> do
          tAct <- dotrefContext tAct'
          case unRec tAct of
-          TObject _ props -> case lookup prop props of
-            Nothing -> do
-              typeError p $ printf "object does not have the property %s" prop
-              noop
+          TObject hasSlack isOpen props -> do
+           case lookup prop props of
+            Nothing -> case (isOpen, hasSlack) of
+              (True, False) -> do
+                let env' = M.insert obj
+                             (Just (tDec, TObject hasSlack isOpen 
+                                                  ((prop,t_rhs):props),
+                                    isLocal, vp))env
+                return $ zip (map fst succs) (repeat env')
+              (True, True) -> do
+                typeError p $ printf "error assigning to %s: object is open but\
+                                     \has slack. dnno what to do yet." prop
+                noop
+              (False,_) -> do
+                typeError p $ printf "cannot assign to property %s: object \
+                                     \is not open and does not have the prop" 
+                                     prop
+                noop
             -- TODO: detect if a field was discovered and, if so,
             -- disallow mutation to it.
             Just t' | isUnion t' -> do
@@ -501,7 +529,7 @@ stmt env ee cs rettype node s = do
       let VarRef _ oid = e
       (t, vp) <- expr env ee cs e
       case t of
-        TObject _ fields ->        
+        TObject _ _ fields ->        
           case M.lookup id env of 
             Nothing -> do 
               typeError p $ printf "id %s for forin loop is unbound" id
@@ -631,7 +659,7 @@ expr env ee cs e = do
                "array index must be an integer, received %s" (renderType it)
              return (btype, VPNone)
          | otherwise -> return (btype, VPNone)
-       TObject _ props
+       TObject _ _ props
          | isVarRef e -> case it of
              TIterator z -> do
                let (VarRef _ ename) = e
@@ -698,7 +726,7 @@ expr env ee cs e = do
          prop (Right n, (_, propLoc), e) = do
            catastrophe propLoc "object literals with numeric keys NYI"
      propTypes <- mapM prop props
-     return (TObject False propTypes, VPNone)
+     return (TObject False False propTypes, VPNone)
    Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
      Nothing -> catastrophe p "function lit is not in the erased environment"
      Just [t] -> do
@@ -834,8 +862,8 @@ uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
           fail $ printf "uneraseEnv: multiple types for the function at %s, \
                          \types were %s" (show pos) (show ts)
 
-  let Just (tVars, cs, types, vararg, rettype, lp, pt) = deconstrFnType functype
-  
+  let Just (tVars, cs, types, vararg, rettype', lp, pt)= deconstrFnType functype
+  let rettype = if isNothing pt then rettype' else undefType
   let localKindEnv = M.union (freeTypeVariables functype) kindEnv  
 
   let lookupEE p name = case M.lookup p ee of

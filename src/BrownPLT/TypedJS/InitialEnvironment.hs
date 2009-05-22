@@ -32,7 +32,7 @@ idlFiles =
 extras :: [(String, Type)]
 extras = 
   [ ("DOMString", stringType)
-  , ("DOMObject", TObject True [])
+  , ("DOMObject", TObject True False [])
   , ("DOMUserData", TAny)
   , ("DOMTimeStamp", intType)
   ]
@@ -53,7 +53,7 @@ parseIDLType t = case t of
 objectFromIDL :: String -- ^self id
               -> [IDL.Definition] -- ^methods, attributes, etc.
               -> Type -- ^a TObject with slack
-objectFromIDL self members = TObject True (map field members)
+objectFromIDL self members = TObject True False (map field members)
   where field (IDL.Const t v _) = (v, parseIDLType t)
         field (IDL.Attr isReadOnly t v) = (v, parseIDLType t)
         field (IDL.Method ret v args) = 

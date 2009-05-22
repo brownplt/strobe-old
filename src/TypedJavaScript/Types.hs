@@ -92,7 +92,7 @@ checkKinds kinds t = case t of
   TId v -> case M.lookup v kinds of
     Just k -> return k
     Nothing -> fail $ printf "undeclared type %s" v
-  TObject _ props -> do
+  TObject _ _ props -> do
     mapM_ (assertKinds kinds) (zip (map snd props) (repeat KindStar))
     return KindStar
   TAny -> return KindStar
@@ -141,7 +141,7 @@ unaliasType kinds types type_ = case type_ of
   -- Stops infinite recursion
   TRec v t -> TRec v (unaliasType kinds (M.insert v (TId v) types) t)
   TAny -> TAny
-  TObject hasSlack props -> TObject hasSlack (map unaliasProp props)
+  TObject hasSlack isOp props -> TObject hasSlack isOp (map unaliasProp props)
     where unaliasProp (v, t) = (v, unaliasType kinds types t)
   TSequence args vararg -> TSequence args' vararg' 
     where args' = map (unaliasType kinds types) args
@@ -230,8 +230,8 @@ substType var sub (TFunc isC args ret latentP) =
         (map (substType var sub) args)
         (substType var sub ret)
         latentP
-substType var sub (TObject hasSlack fields) =
-  TObject hasSlack (map (\(v,t) -> (v,substType var sub t)) fields)
+substType var sub (TObject hasSlack isOpen fields) =
+  TObject hasSlack isOpen (map (\(v,t) -> (v,substType var sub t)) fields)
 substType var sub (TEnvId x) = TEnvId x -- this is most certainly wrong.
 
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
@@ -277,7 +277,7 @@ st env rel (t1, t2)
     --titerator is actually a string!
     (TIterator _, TId "string") -> return rel
     (TId "string", TIterator _) -> return rel
-    (TApp "Array" _, TObject True [("length", TId "int")]) -> return rel
+    (TApp "Array" _, TObject True _ [("length", TId "int")]) -> return rel
     -- If x == y, then (env ! x) == (env ! y), so t1 <: t2
     (TEnvId x, TEnvId y) | x == y -> return rel
     -- However, if x != y, they may still be structurally equivalent.
@@ -373,14 +373,16 @@ st env rel (t1, t2)
       assert (tcs1 == tcs2)
       st env (S.insert (t1, t2) rel) (t1, t2)
 
-    (TObject True props1, TObject _ props2) -> do
+    --open objects are subtypes of closed or open objects, but thats
+    --it for sub-typing open objects.    
+    (TObject True False props1, TObject _ _ props2) -> do
       -- All of props2 must be in props1
       let prop rel (id2, t2) = do
             t1 <- lookup id2 props1
             st env rel (t1, t2)
       foldM prop (S.insert (t1, t2) rel) props2
 
-    (TObject False props1, TObject False props2) -> do
+    (TObject False False props1, TObject False _ props2) -> do
       let fields1 = S.fromList (map fst props1)
       let fields2 = S.fromList (map fst props2)
       let prop rel (id2, t2) = do
@@ -390,7 +392,7 @@ st env rel (t1, t2)
         True -> foldM prop (S.insert (t1, t2) rel) props2
         False -> fail "subtyping: invariant objects"
     
-    (TObject False props1, TObject True props2) -> do
+    (TObject False False props1, TObject True _ props2) -> do
       let prop rel (id2, t2) = case lookup id2 props1 of
             Nothing -> return rel
             Just t1 -> st env rel (t1, t2)
