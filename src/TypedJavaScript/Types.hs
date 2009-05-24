@@ -102,7 +102,7 @@ checkKinds kinds t = case t of
   TUnion ts -> do
     mapM_ (assertKinds kinds) (zip ts (repeat KindStar))
     return KindStar
-  TForall ids cs t -> do -- TODO: check constraints
+  TForall ids cs t -> do
     let kinds' = M.union (M.fromList (zip ids (repeat KindStar))) kinds
     assertKinds kinds' (t, KindStar)
     return KindStar
@@ -306,31 +306,6 @@ st env rel (t1, t2)
       assert (length args1 == length args2)
       assert (c1 == c2)
       foldM (st env) rel (zip args1 args2) 
-    --TSequence sub-typing was figured out based on what might make
-    --sense with some kind of assignment, combined with some function
-    --calling logic, maybe. not sure if that makes full sense, yet.
-
-{-    
-            let formals = case vararg of
-                            Nothing -> formals'
-                            Just vt -> formals' ++ 
-                              take (length actuals - length formals') 
-                                   (repeat (apply vt))
-
-            let (supplied, missing) = splitAt (length actuals) formals
-            when (length actuals > length formals) $ do
-              typeError p (printf "function expects %d arguments, but %d \
-                                  \were supplied" (length formals)
-                                  (length actuals))
-            let checkArg (actual,formal) = do
-                  unless (actual <: formal) $ do
-                    subtypeError p "function call arguments" formal actual
-            mapM_ checkArg (zip actuals supplied)
-            let checkMissingArg actual = do
-                  unless (undefType <: actual) $
-                    typeError p (printf "non-null argument %s not supplied"
-                                        (show actual))
-            mapM_ checkMissingArg missing -}
     
     (TSequence args1 vararg, TSequence args2 Nothing) -> do
       --assuming "t2 = t1":
