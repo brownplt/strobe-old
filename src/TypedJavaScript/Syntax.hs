@@ -60,7 +60,7 @@ data ToplevelStatement a
   | ExternalStmt a (Id a) Type
   deriving (Show)
 
--- hack-ish to avoid parametrizing VP. 
+
 data VP = VPId String
         | VPType Type String
         | VPNone

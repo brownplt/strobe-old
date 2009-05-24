@@ -25,6 +25,7 @@ module TypedJavaScript.Types
   , TypeConstraint (..)
   , LatentPred (..)
   , flattenUnion
+  , LocalControl
   ) where
 
 import Debug.Trace
@@ -167,9 +168,10 @@ unaliasTypeEnv kinds aliasedTypes = types
           
         types = M.mapWithKey explicitRec aliasedTypes
 
+type LocalControl = (VP, Map String Type)
 
 --maps names to (declared type, actual type, vp)
-type Env = Map String (Maybe (Type, Type, Bool, VP))
+type Env = Map String (Maybe (Type, Type, Bool, LocalControl))
 
 emptyEnv :: Env
 emptyEnv = M.empty
@@ -426,18 +428,19 @@ envToVP env = VPMulti  $ map toVP (M.toList env)
 combineVPs :: VP -> VP -> VP
 combineVPs vp1 vp2 = envToVP (vpToEnv (VPMulti [vp1, vp2]))
 
-unionTypeVP :: Maybe (Type, Type, Bool, VP)
-            -> Maybe (Type, Type, Bool, VP)
-            -> Maybe (Type, Type, Bool, VP)
+unionTypeVP :: Maybe (Type, Type, Bool, LocalControl)
+            -> Maybe (Type, Type, Bool, LocalControl)
+            -> Maybe (Type, Type, Bool, LocalControl)
 unionTypeVP Nothing Nothing = Nothing
 unionTypeVP Nothing (Just (t, tact, b, v)) = 
-  Just (TUnion [undefType, t], TUnion [undefType, tact], b, VPNone)
+  Just (TUnion [undefType, t], TUnion [undefType, tact], b, (VPNone, M.empty))
 unionTypeVP (Just (t, tact, b, v)) Nothing = 
-  Just (TUnion [undefType, t], TUnion [undefType, tact], b, VPNone)
-unionTypeVP (Just (t1, t1act, b1, vp1)) (Just (t2, t2act, b2, vp2)) = 
+  Just (TUnion [undefType, t], TUnion [undefType, tact], b, (VPNone, M.empty))
+unionTypeVP (Just (t1, t1act, b1, (vp1, e1))) (Just (t2, t2act, b2, (vp2, e2))) = 
   if b1 /= b2 
     then error "OMG"
-    else Just (unionType t1 t2, unionType t1act t2act, b1, combineVPs vp1 vp2)
+    else Just (unionType t1 t2, unionType t1act t2act, b1, 
+               (combineVPs vp1 vp2, error "unionTypeVP"))
 
 flattenUnion :: (Type) -> (Type)
 flattenUnion (TUnion ts) = 
@@ -513,11 +516,14 @@ gammaMinus g (VPMulti vs) = foldl gammaMinus g vs
 gammaMinus g _ = g
 
 
+equalityvp :: LocalControl -> LocalControl -> LocalControl
+equalityvp (vp1, ef1) (vp2, ef2) = (equalityvp' vp1 vp2, error "equalityvp")
+
 -- combine two VPs into a third, happens with == sign.
-equalityvp :: VP -> VP -> VP
+equalityvp' :: VP -> VP -> VP
 -- x == 4
 -- typeof x == "number"
-equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId "string")) = case s of
+equalityvp' (VPTypeof x) (VPLit (StringLit l s) (TId "string")) = case s of
   "number"    -> VPType (TId "double") x
   "undefined" -> VPType undefType x
   "boolean"   -> VPType (TId "bool") x
@@ -527,24 +533,24 @@ equalityvp (VPTypeof x) (VPLit (StringLit l s) (TId "string")) = case s of
    VPType (TFunc Nothing [TUnion [], TSequence [] Nothing] (TId "any") LPNone) x
   --this should be: the object that all objects are subtypes of
   -- but without any specific attributes... dnno!
-  "object"    -> error "equalityvp for object nyi" --VPType (TObject []) x
+  "object"    -> error "equalityvp' for object nyi" --VPType (TObject []) x
   _           -> VPNone
-equalityvp a@(VPLit (StringLit l s) (TId "string")) b@(VPTypeof x) = 
-  equalityvp b a
+equalityvp' a@(VPLit (StringLit l s) (TId "string")) b@(VPTypeof x) = 
+  equalityvp' b a
 
 -- "x == 3" restricts x to be an integer!
 -- but it doesn't restrict x to _not_ be an integer, so we can't use VPType.
-equalityvp (VPId x) (VPLit _ t) = VPWeakType t x
-equalityvp (VPLit _ t) (VPId x) = VPWeakType t x
+equalityvp' (VPId x) (VPLit _ t) = VPWeakType t x
+equalityvp' (VPLit _ t) (VPId x) = VPWeakType t x
 
 -- yay for cartesian product.
--- this could be done implicitly from the other equalityvp definition, but
+-- this could be done implicitly from the other equalityvp' definition, but
 -- then we'd have nested VPMultis. doesn't really matter.
-equalityvp (VPMulti v1) (VPMulti v2) = 
-  VPMulti (nub [equalityvp a b | a <- v1, b <- v2])               
-equalityvp a (VPMulti vs) = 
-  VPMulti (map (equalityvp a) vs)
-equalityvp a@(VPMulti{}) b = equalityvp b a
+equalityvp' (VPMulti v1) (VPMulti v2) = 
+  VPMulti (nub [equalityvp' a b | a <- v1, b <- v2])               
+equalityvp' a (VPMulti vs) = 
+  VPMulti (map (equalityvp' a) vs)
+equalityvp' a@(VPMulti{}) b = equalityvp' b a
 
-equalityvp _ _ = VPNone
+equalityvp' _ _ = VPNone
 
