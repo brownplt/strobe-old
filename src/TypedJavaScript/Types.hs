@@ -15,8 +15,11 @@ module TypedJavaScript.Types
   , substType 
   , unRec
   , isSubType
-  , unionType, unionTypeVP, equalityvp
-  , gammaPlus, gammaMinus
+  , unionType
+  , unionTypeVP
+  , equalityVP
+  , gammaPlus
+  , gammaMinus
   , checkTypeEnv
   , unaliasTypeEnv
   , unaliasType
@@ -26,6 +29,7 @@ module TypedJavaScript.Types
   , LatentPred (..)
   , flattenUnion
   , LocalControl
+  , TypeControl (..)
   ) where
 
 import Debug.Trace
@@ -168,7 +172,12 @@ unaliasTypeEnv kinds aliasedTypes = types
           
         types = M.mapWithKey explicitRec aliasedTypes
 
-type LocalControl = (VP, Map String Type)
+-- A VP specifies the type of an expression.
+type LocalControl = (VP, Map String TypeControl)
+
+data TypeControl = Restrict Type
+                 | Remove Type
+  deriving (Show)
 
 --maps names to (declared type, actual type, vp)
 type Env = Map String (Maybe (Type, Type, Bool, LocalControl))
@@ -414,19 +423,15 @@ unionType t1 t2
   | otherwise = TUnion [t1, t2]
 
 
-vpToEnv :: VP -> Map Id Type
-vpToEnv (VPType t id) = M.singleton id t
-vpToEnv (VPMulti vps) = M.unionsWith (\t1 t2 -> flattenUnion $ TUnion [t1, t2])
-                                     (map vpToEnv vps)
-vpToEnv _ = M.empty
+combineLC :: LocalControl
+          -> LocalControl
+          -> LocalControl
+combineLC (vp1, ef1) (vp2, ef2) = (VPNone, M.unionWith f ef1 ef2)
+  where f (Restrict t1) (Restrict t2) = Restrict (unionType t1 t2)
+        f (Remove t1) (Remove t2) = Remove (unionType t1 t2)
+        f (Restrict t1) (Remove t2) = Restrict (remove t1 t2)
+        f (Remove t2) (Restrict t1) = Restrict (remove t1 t2)
 
-envToVP :: Map Id Type -> VP
-envToVP env = VPMulti  $ map toVP (M.toList env)
-  where toVP :: (Id, Type) -> VP
-        toVP (id, t) = VPType t id
-
-combineVPs :: VP -> VP -> VP
-combineVPs vp1 vp2 = envToVP (vpToEnv (VPMulti [vp1, vp2]))
 
 unionTypeVP :: Maybe (Type, Type, Bool, LocalControl)
             -> Maybe (Type, Type, Bool, LocalControl)
@@ -436,11 +441,10 @@ unionTypeVP Nothing (Just (t, tact, b, v)) =
   Just (TUnion [undefType, t], TUnion [undefType, tact], b, (VPNone, M.empty))
 unionTypeVP (Just (t, tact, b, v)) Nothing = 
   Just (TUnion [undefType, t], TUnion [undefType, tact], b, (VPNone, M.empty))
-unionTypeVP (Just (t1, t1act, b1, (vp1, e1))) (Just (t2, t2act, b2, (vp2, e2))) = 
+unionTypeVP (Just (t1, t1act, b1, lc1)) (Just (t2, t2act, b2, lc2)) = 
   if b1 /= b2 
     then error "OMG"
-    else Just (unionType t1 t2, unionType t1act t2act, b1, 
-               (combineVPs vp1 vp2, error "unionTypeVP"))
+    else Just (unionType t1 t2, unionType t1act t2act, b1, combineLC lc1 lc2)
 
 flattenUnion :: (Type) -> (Type)
 flattenUnion (TUnion ts) = 
@@ -489,68 +493,56 @@ remove s t
                            (case s of
                              TUnion ts -> ts
                              _ -> [s]))
-     
-gammaPlus :: Env -> VP -> Env
-gammaPlus env (VPType t v) =  case M.lookup v env of
-  Nothing -> env
-  Just Nothing -> env
-  Just (Just (tDec, t', b, vp_t)) -> 
-    M.insert v (Just (tDec, restrict t' t, b, vp_t)) env
--- if (x), when true, removes all things from x that are like "undefined"
---gammaPlus g (VPId x) = gammaMinus g (VPType (TId noPos "undefined") x)
-gammaPlus g (VPNot vp) = gammaMinus g vp
-gammaPlus g (VPMulti vs) = foldl gammaPlus g vs
-gammaPlus env (VPWeakType t v) = gammaPlus env (VPType t v)
-gammaPlus g _ = g
 
-gammaMinus :: Env -> VP -> Env
-gammaMinus env (VPType t v) = case M.lookup v env of
-  Nothing -> env
-  Just Nothing -> env
-  Just (Just (tDec, t', b, vp_t)) -> 
-    M.insert v (Just (tDec, remove t' t, b, vp_t)) env
--- if (x), when false, leaves only things in x that are like "undefined"
---gammaMinus g (VPId x) = gammaPlus g (VPType (TId noPos "undefined") x)
-gammaMinus g (VPNot vp) = gammaPlus g vp
-gammaMinus g (VPMulti vs) = foldl gammaMinus g vs
-gammaMinus g _ = g
+gammaPlus :: LocalControl -> Env -> Env
+gammaPlus (_, ef) env =  M.mapWithKey f env
+  where f id (Just (tDec,tAct, isLocal, lc)) = case M.lookup id ef of
+          Nothing -> Just (tDec, tAct, isLocal, lc)
+          Just (Restrict tRestrict) -> 
+            Just (tDec, restrict tAct tRestrict, isLocal, lc)
+          Just (Remove tRemove) -> 
+            Just (tDec, remove tAct tRemove, isLocal, lc)
+        f _ Nothing = Nothing
 
 
-equalityvp :: LocalControl -> LocalControl -> LocalControl
-equalityvp (vp1, ef1) (vp2, ef2) = (equalityvp' vp1 vp2, error "equalityvp")
+gammaMinus :: LocalControl -> Env -> Env
+gammaMinus (_, ef) env = M.mapWithKey f env
+  where f id (Just (tDec,tAct, isLocal, lc)) = case M.lookup id ef of
+          Nothing -> Just (tDec, tAct, isLocal, lc)
+          Just (Remove tRestrict) -> 
+            Just (tDec, restrict tAct tRestrict, isLocal, lc)
+          Just (Restrict tRemove) -> 
+            Just (tDec, remove tAct tRemove, isLocal, lc)
+        f _ Nothing = Nothing
 
--- combine two VPs into a third, happens with == sign.
-equalityvp' :: VP -> VP -> VP
--- x == 4
--- typeof x == "number"
-equalityvp' (VPTypeof x) (VPLit (StringLit l s) (TId "string")) = case s of
-  "number"    -> VPType (TId "double") x
-  "undefined" -> VPType undefType x
-  "boolean"   -> VPType (TId "bool") x
-  "string"    -> VPType (TId "string") x
-  --this should be: the function that all funcs are subtypes of
-  "function"  -> 
-   VPType (TFunc Nothing [TUnion [], TSequence [] Nothing] (TId "any") LPNone) x
-  --this should be: the object that all objects are subtypes of
-  -- but without any specific attributes... dnno!
-  "object"    -> error "equalityvp' for object nyi" --VPType (TObject []) x
-  _           -> VPNone
-equalityvp' a@(VPLit (StringLit l s) (TId "string")) b@(VPTypeof x) = 
-  equalityvp' b a
+anyFuncType = 
+  TFunc Nothing [TUnion [], TSequence [] Nothing] (TId "any") LPNone
 
--- "x == 3" restricts x to be an integer!
--- but it doesn't restrict x to _not_ be an integer, so we can't use VPType.
-equalityvp' (VPId x) (VPLit _ t) = VPWeakType t x
-equalityvp' (VPLit _ t) (VPId x) = VPWeakType t x
+affectVP :: Id
+         -> TypeControl
+         -> Map Id TypeControl
+         -> Map Id TypeControl
+affectVP id t env = M.insert id t env
 
--- yay for cartesian product.
--- this could be done implicitly from the other equalityvp' definition, but
--- then we'd have nested VPMultis. doesn't really matter.
-equalityvp' (VPMulti v1) (VPMulti v2) = 
-  VPMulti (nub [equalityvp' a b | a <- v1, b <- v2])               
-equalityvp' a (VPMulti vs) = 
-  VPMulti (map (equalityvp' a) vs)
-equalityvp' a@(VPMulti{}) b = equalityvp' b a
+equalityVP :: Bool
+           -> LocalControl 
+           -> LocalControl
+           -> LocalControl
+equalityVP isRestrict (vp1, ef1) (vp2, ef2) = case (vp1, vp2) of
+  (VPLit _ _, VPTypeof _) -> equalityVP isRestrict (vp2, ef2) (vp1, ef1)
+  (VPTypeof id, VPLit (StringLit _ "string") (TId "string")) ->
+    (VPNone, affectVP id (f stringType) $ M.union ef1 ef2)
+  (VPTypeof id, VPLit (StringLit _ "number") (TId "string")) ->
+    (VPNone, affectVP id (f doubleType) $ M.union ef1 ef2)
+  (VPTypeof id, VPLit (StringLit _ "undefined") (TId "string")) ->
+    (VPNone, affectVP id (f undefType) $ M.union ef1 ef2)
+  (VPTypeof id, VPLit (StringLit _ "boolean") (TId "string")) ->
+    (VPNone, affectVP id (f boolType) $ M.union ef1 ef2)
+  (VPTypeof id, VPLit (StringLit _ "function") (TId "string")) ->
+    (VPNone, affectVP id (f anyFuncType) $ M.union ef1 ef2)
+  otherwise -> (VPNone, M.union ef1 ef2)
+  where f t = case isRestrict of
+          True -> Restrict t
+          False -> Remove t
 
-equalityvp' _ _ = VPNone
 

@@ -1,3 +1,4 @@
+/*
 function (x) :: (U(int, bool) -> bool) {
   //the typed scheme paper example
   return (typeof x == "number" ? (x<<3)==8 : !x);
@@ -38,6 +39,19 @@ function (x) :: (U(int, bool) -> bool) {
     if (x) { return false; }
   }
   return true;
+} :: (U(int, bool) -> bool);
+
+
+function (x) :: (U(int, bool) -> bool) {
+  if (typeof x != "boolean") {
+    var f :: int = 0;
+    f = x >> 3;
+    return true;
+  }
+  else
+  {
+    return false;
+  }
 } :: (U(int, bool) -> bool);
 
 function (x) :: (U(int, bool) -> bool) {
@@ -165,6 +179,7 @@ function (x) :: (U(int, bool) -> bool) {
   if (x) { return false; }
   return true;
 } :: (U(int, bool) -> bool);
+*/
 
 function (x) :: (U(int, bool) -> bool) {
   if (!((typeof x) == "boolean")) {

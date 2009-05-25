@@ -62,13 +62,11 @@ data ToplevelStatement a
 
 
 data VP = VPId String
-        | VPType Type String
         | VPNone
         | VPWeakType Type String --result of "x == 3"
         | VPTypeof String
         | VPNot VP
         | VPLit (Lit SourcePos) Type
-        | VPMulti [VP]
     deriving (Show, Ord, Eq)
 
 -- VPId "x" == VPLit 3 (TId "int")
