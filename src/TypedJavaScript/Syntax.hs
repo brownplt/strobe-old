@@ -50,6 +50,7 @@ data Type
   | TEnvId String -- ^a reference to an identifier in the environment
   | TIterator String -- ^iterator for the object referred to by the string
   | TProperty String -- ^property of object given by string, accessed by iter
+  | TPrototype String -- ^prototype of the constructor given by string.
   deriving (Show, Eq, Ord, Data, Typeable)
 
 -- the following are constructs which just assign types to IDs, either
@@ -195,4 +196,5 @@ data Statement a
   deriving (Show, Eq,Ord)  
   
 showSp :: SourcePos -> String
-showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos)
+showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos) ++ 
+  ":" ++ (show $ sourceColumn pos)

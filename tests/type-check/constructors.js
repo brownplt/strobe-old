@@ -111,6 +111,90 @@ function () :: (-> int) {
   return o.y;
 } :: (-> int);
 
+//prototypes!!!!!!!11
+function () :: (-> int) {
+  function Point(x,y) :: int, int ~~> {x::int, y::int,...} {
+    this.x = x;
+    this.y = y;
+  }
+  Point.prototype.summed = function () :: [{x::int, y::int}] -> int {
+    return this.x + this.y;
+  };
+  var p = new Point(10, 12);
+  return p.summed();
+} :: (-> int);
 
+function () :: (-> int) {
+  function Point(x,y) :: int, int ~~> {x::int, y::int,...} {
+    this.x = x;
+    this.y = y;
+  }
+  var p = new Point(10, 12);
+  var res = p.summed();
+  Point.prototype.summed = function () :: [{x::int, y::int}] -> int {
+    return this.x + this.y;
+  };
+  return res;
+} @@ fails;
 
+function () :: (-> int) {
+  function Point(x,y) :: [{summed :: ([{x::int, y::int}] -> int), ...}] int, int
+                      ~~> {x::int, y::int,mag::int,...} {
+    this.x = x;
+    this.y = y;
+    this.mag = this.summed();
+  }
+  Point.prototype.summed = function () :: [{x::int, y::int}] -> int {
+    return this.x + this.y;
+  };
+  var p = new Point(10, 12);
+  return p.mag;
+} :: (-> int);
+
+//we can't create an object until we assign summed, though:
+function () :: (-> int) {
+  function Point(x,y) :: [{summed :: ([{x::int, y::int}] -> int), ...}] int, int
+                      ~~> {x::int, y::int,mag::int,...} {
+    this.x = x;
+    this.y = y;
+    this.mag = this.summed();
+  }
+  var p = new Point(10, 12);
+  return p.mag;
+} @@ fails;
+
+//soundness:
+//the next case is uber hacked around atm by disallowing assigning a
+// TPrototype to a non-ANF var.
+function () :: (-> int) {
+  function Point(x,y) :: int, int ~~> {x::int, y::int,...} {
+    this.x = x;
+    this.y = y;
+  }
+  var pp = Point.prototype;
+  var Point = function (x,y) :: int, int ~~> {x::int, y::int,...} {
+    this.x = x;
+    this.y = y;
+  }
+  pp.summed = function () :: [{x::int, y::int}] -> int {
+    return this.x + this.y;
+  };
+  var p = new Point(10, 12);
+  return p.summed();
+} @@ fails;
+
+function () :: (-> {x::int,y::int,summed::(->string)}) {
+  function Point(x,y) :: int, int ~~> {x::int, y::int,summed::(->string)...} {
+    this.x = x;
+    this.y = y;
+    this.summed = function () :: (->string) { return "HAHAHA"; };
+  }
+  //the next line should fail because it conflicts with the constructed this
+  //type
+  Point.prototype.summed = function () :: [{x::int, y::int}] -> int {
+    return this.x + this.y;
+  };
+  var p = new Point(10, 12);
+  return p;
+} @@ fails;
 

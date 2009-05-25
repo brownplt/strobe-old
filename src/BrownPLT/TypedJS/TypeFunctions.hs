@@ -6,7 +6,8 @@ module BrownPLT.TypedJS.TypeFunctions
   , isObject
   , isSlackObject
   , isAny
-  , isVarRef
+  , isConstr
+  , isVarRef, isPrototype
   , openObject, closeObject
   , replaceAliases
   ) where
@@ -41,30 +42,34 @@ freeTypeVariables t = fv t where
                                  (fv t)
 
 
-fieldType :: Id -> Type -> Maybe Type
-fieldType id (TObject _ _ ts) = lookup id ts
-fieldType id (TUnion ts) = do
-  types <- mapM (fieldType id) ts
+fieldType :: Env -> Id -> Type -> Maybe Type
+fieldType env id (TObject _ _ ts) = lookup id ts
+fieldType env id (TUnion ts) = do
+  types <- mapM (fieldType env id) ts
   return (flattenUnion (TUnion types))
-fieldType "length" (TApp "Array" [_]) = return intType
-fieldType _ _ = Nothing
+fieldType env "length" (TApp "Array" [_]) = return intType
+fieldType env f (TPrototype c) = case M.lookup c env of
+  Just (Just (_, TFunc (Just (TObject _ _ protprops)) _ _ _, _, _)) ->
+    lookup f protprops 
+  _ -> Nothing
+fieldType _ _ _ = Nothing
 
 
 isUnion :: Type -> Bool
 isUnion (TUnion _) = True
 isUnion _ = False
 
-
 isObject :: Type -> Bool
 isObject (TObject _ _ _) = True
 isObject _ = False
 
+isConstr :: Type -> Bool
+isConstr (TFunc (Just _) _ _ _) = True
+isConstr _ = False
 
 isSlackObject :: Type -> Bool
 isSlackObject (TObject True _ _) = True
 isSlackObject _ = False
-
-
 
 isAny :: Type -> Bool
 isAny TAny = True
@@ -74,6 +79,9 @@ isAny _ = False
 
 isVarRef (VarRef{}) = True
 isVarRef _ = False
+
+isPrototype (TPrototype _) = True
+isPrototype _ = False
 
 openObject :: Type -> Type
 openObject (TObject hasSlack _ fields) = TObject hasSlack True fields

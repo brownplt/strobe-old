@@ -162,12 +162,14 @@ type_ = do
               p' <- getPosition
               r <- type_ <?> "type that 'this' will become"
               let arguments = TSequence ts Nothing
-              -- the 'this type' of the constructor is really what the
-              -- prototype is expected to be. it doesn't take 'this'
-              -- explicitly, since it's never placed into a variable
-              -- (it shouldn't be, even in the ANF).
-              return (TFunc (Just thisType)
-                            (arguments:ts) r LPNone)
+              -- the 'this type' of the constructor is what 'this' is
+              -- expected to be upon entering the constructor. the
+              -- 'return type' is what 'this' is expected to have upon
+              -- leaving the constructor. the prototype starts off as
+              -- the empty object, and can be augmented later to match
+              -- what 'this' is expected to start as.
+              return (TFunc (Just (TObject True False []))
+                            (thisType:arguments:ts) r LPNone)
         let func = do
               reservedOp "->"
               r <- type_ <|> (return Types.undefType)
@@ -198,9 +200,9 @@ type_fn = do
         p' <- getPosition
         r <- type_ <?> "type that 'this' will become"
         let arguments = TSequence ts Nothing
-        --default: empty prototype with slack
+        --default: this is an empty object with slack.
         return (TFunc (Just (TObject True False [])) 
-                      (arguments:ts) r LPNone)
+                      ((TObject True False []):arguments:ts) r LPNone)
   let func = do
         reservedOp "->"
         let arguments = TSequence ts Nothing
@@ -486,7 +488,8 @@ parseFunctionStmt = do
   return (VarDeclStmt pos [VarDeclExpr pos name (Just functype) 
                                        (FuncExpr pos args functype body)])
 
-parseConstructorStmt :: StatementParser st
+--same as function stmt
+{-parseConstructorStmt :: StatementParser st
 parseConstructorStmt = do
   reserved "constructor"
   name <- identifier
@@ -496,6 +499,7 @@ parseConstructorStmt = do
   body <- parseBlockStmt <?> "constructor body in { ... }"
   return (VarDeclStmt pos [VarDeclExpr pos name (Just constrtype) 
                                        (FuncExpr pos args constrtype body)])
+-}
 
 {-
 parseTypeStmt :: StatementParser st
@@ -514,7 +518,7 @@ parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt
   <|> parseTryStmt <|> parseThrowStmt <|> parseReturnStmt
   <|> parseVarDeclStmt  <|> parseFunctionStmt
   -- added for tJS
-  <|> parseConstructorStmt 
+  -- <|> parseConstructorStmt 
   
   -- labelled, expression and the error message always go last, in this order
   <|> parseLabelledStmt <|> parseExpressionStmt <?> "statement"

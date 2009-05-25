@@ -203,10 +203,10 @@ deconstrFnType (TForall ids cs
                         (TFunc Nothing args@(_:(TSequence _ vararg):_) r lp))=
   Just (ids, cs, args, vararg, Left r, lp, Nothing)
 --constructor:
-deconstrFnType (TFunc (Just pt) args@((TSequence _ vararg):_) result latentP) = 
+deconstrFnType (TFunc (Just pt) args@(_:(TSequence _ vararg):_) result latentP)=
   Just ([],[],args,vararg,Right result,latentP, (Just pt))
 deconstrFnType (TForall ids cs 
-                        (TFunc (Just pt) args@((TSequence _ vararg):_) r lp))=
+                        (TFunc (Just pt) args@(_:(TSequence _ vararg):_) r lp))=
   Just (ids, cs, args, vararg, Right r, lp, (Just pt))
 deconstrFnType _ = Nothing
 

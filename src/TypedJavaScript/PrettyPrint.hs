@@ -47,6 +47,8 @@ renderStatements ss = render $ vcat (map (\s -> stmt s <> semi) ss)
 
 type_ :: Type -> Doc
 type_ t = case t of
+  TPrototype str ->
+    text ("TPrototype " ++ str)
   TFunc ptype (this:arguments:args) ret _ -> 
     brackets (type_ this) <+> commas (map arg args) <> varargDoc <+> 
     

@@ -193,9 +193,11 @@ doAssignment :: (Type -> Type -> Bool) -- ^local subtype relation
              -> Type -- ^type of the RHS of assignment
              -> LocalControl  -- ^visible predicate on the RHS
              -> TypeCheck Env -- ^resulting environment
-doAssignment (<:) p env v te (e_vp, ef) = if v == "this"
- then typeError p "Cannot assign to 'this'!" >> return env
- else case M.lookup v env of        
+doAssignment (<:) p env v te (e_vp, ef) 
+ | v == "this" = typeError p "Cannot assign to 'this'!" >> return env
+ | head v /= '@' && isPrototype te = typeError p "Cannot assign .prototype to\
+     \ anything" >> return env
+ | otherwise = case M.lookup v env of        
   Nothing -> typeError p (v ++ " is unbound") >> return env
   -- ANF variable, or locally inferred variable.  ANF variables may be
   -- assigned to multiple times in parallel branches, 
@@ -269,7 +271,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
     Nothing -> do
       typeError p ("expected function; received " ++ show f)
       noop
-    Just (vs, cs', formals', vararg, er, latentPred, ptype) -> do
+    Just (vs, cs', formals'', vararg, er, latentPred, ptype) -> do
       when (isNewStmt && isNothing ptype) $
         typeError p "cannot call a function with 'new'"
       when (not isNewStmt && isJust ptype) $
@@ -293,9 +295,10 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
         --actuals_vps contains VP, including VPId for the var name itself.
         return $ this:rest
       
-      -- ANF doesn't supply arguments array to constructor yet, so
+      -- ANF doesn't supply arguments array or this to constructor yet, so
       -- hack around that:
-      formals' <- if isNewStmt then return (tail formals') else return formals'
+      formals' <- if isNewStmt then return (tail $ tail formals'') 
+                               else return formals''
       
       -- explicitly instantiated type-variables when calling polymorphic
       -- functions. constructors don't have this, yet.      
@@ -342,12 +345,19 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
               typeError p $ printf 
                 "expected argument of type %s, received %s"
                 (renderType formal) (renderType actual)
-      --check everything except the arguments:
+      --check everything except the arguments array
       rez <- case isNewStmt of
                True -> do
                  let areals = actuals
                  let sreals = suppliedFormals 
                  mapM_ checkArg (zip areals sreals)
+                 --also check that the prototype is a subtype of the
+                 --expected this type
+                 unless (fromJust ptype <: head formals'') $ do
+                   typeError p $ printf
+                     "expected prototype to be subtype of the expected this\
+                     \ type, %s; received %s." (renderType $ head formals'')
+                     (renderType $ fromJust ptype)
                False -> do 
                  let (athis:aargs:areals) = actuals
                  let (sthis:sargs:sreals) = suppliedFormals
@@ -461,12 +471,39 @@ stmt env ee cs erettype node s = do
           catastrophe p (printf "id %s for an object is unbound" obj)
         Just Nothing -> do
           -- Variable is in scope but is yet to be defined.
-          fail $ printf "at %s: can't assign to obj %s; has no type yet"
-                   (show p) obj
+          typeError p $ printf "can't assign to obj %s; has no type yet" obj
+          noop
         Just (Just (tDec, tAct', isLocal, vp)) -> do
          tAct <- dotrefContext tAct'
          
          case unRec tAct of
+          TPrototype constrid -> do
+           let (Just (Just (tDec,(TFunc (Just (TObject hs io protprops)) 
+                                        cargs ctt@(TObject _ _ cttprops) lp),
+                            loc,vp))) = M.lookup constrid env
+           case lookup prop protprops of
+             Nothing -> do
+               let env' = M.insert constrid 
+                            (Just (tDec, 
+                                   (TFunc (Just (TObject 
+                                                  hs io 
+                                                  ((prop,t_rhs):protprops)))
+                                          cargs ctt lp),
+                                   loc,vp)) env
+               --make sure adding this to the prototype won't violate
+               --what we expect the constructed thistype to be.
+               case lookup prop cttprops of
+                 Nothing -> return $ zip (map fst succs) (repeat env')
+                 Just cttp
+                   | t_rhs <: cttp -> return $ zip (map fst succs) (repeat env')
+                   | otherwise  -> (typeError p $ printf "cannot assign type \
+                      \ %s to %s.prototype.%s; constructed this type's %s field\
+                      \ has type %s" (renderType t_rhs) constrid prop prop
+                      (renderType cttp)) >> noop
+             Just _ -> do
+               typeError p $ printf "cannot re-assign %s to prototype for %s"
+                 prop constrid
+               noop
           TObject hasSlack isOpen props -> do
            case lookup prop props of
             Nothing -> case isThis of
@@ -679,15 +716,18 @@ expr env ee cs e = do
        (vp, ef) -> return (tAct, (VPMulti [VPId id, vp], ef))
    DotRef (_, loc) e p -> do
      (t'', _) <- expr env ee cs e
-     t' <- dotrefContext (unRec t'')
-     let t = unConstraint (unRec t')
-     case fieldType p t of
-       Just t' -> return (t', (VPNone, M.empty))
-       Nothing -> do
-         typeError loc $ printf
-           "expected object with field %s, received %s" p (renderType t)
-         --fatalTypeError "fatal error"
-         return (TAny, (VPNone, M.empty))
+     if isConstr t'' && p == "prototype" && isVarRef e then do
+       let (VarRef _ cid) = e
+       return (TPrototype cid, (VPNone, M.empty))
+      else do
+       t' <- dotrefContext (unRec t'')
+       let t = unConstraint (unRec t')
+       case fieldType env p t of
+         Just t' -> return (t', (VPNone, M.empty))
+         Nothing -> do
+           typeError loc $ printf
+             "expected object with field %s, received %s" p (renderType t)
+           return (TAny, (VPNone, M.empty))
    BracketRef (_, loc) e ie -> do
      (t'', _) <- expr env ee cs e
      t' <- dotrefContext (unRec t'')
@@ -785,15 +825,15 @@ expr env ee cs e = do
                  (renderType t) (show $ map renderType argTypes)
              return (t, (VPNone, M.empty))
        Just (_, _, argTypes, _, _, _, (Just _))  --constructors. is hacked atm.
-         --argtypes is                                  (args, real args)
+         --argtypes is (this, args, real args)
          --args should be (real args), but is currently (this, args, real args)
-         | length argTypes == length args - 1 -> 
+         | length argTypes == length args -> 
              return (t, (VPNone, M.empty))
          | otherwise -> do
              typeError p $ 
                printf "argument number mismatch in funclit: %s args named, but \
                       \%s in the type:%s\n%s\n"
-                 (show (length args - 2)) (show (length argTypes - 1))
+                 (show (length args - 2)) (show (length argTypes - 2))
                  (renderType t) (show $ map renderType argTypes)
              return (t, (VPNone, M.empty))
        Nothing -> do
@@ -926,14 +966,7 @@ uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
   let types' = types ++ (case vararg of
         Nothing -> []
         Just vt -> [TApp "Array" [vt]])
-  --remove the 'this' argument from constructors, since it's not really there:
-  let args' = if isNothing pt then args else tail args
-  --and account for it here: it's really the open version of the
-  --prototype for now, don't make it open, though, since we check for
-  --assigning to 'this' explicitly, anyway...
-  argtypes <- return $ (zip (map fst args') (map Just types')) ++ (
-                         if isNothing pt then [] else 
-                              [("this", Just $ closeObject $ fromJust pt)])
+  argtypes <- return $ (zip (map fst args) (map Just types'))
   localtypes <- mapM (\(name,(_, pos)) -> do
                         t' <- lookupEE pos name
                         case t' of
@@ -1042,7 +1075,7 @@ typeCheck prog = do
   typeCheckWithGlobals venv (M.union domTypeEnv tenv) prog
 
 
-formatError (p, s) = show p ++ ": " ++ s
+formatError (p, s) = showSp p ++ ": " ++ s
 
 handleFatalTypeError :: TypeCheckState -> IO a
 handleFatalTypeError s = 
