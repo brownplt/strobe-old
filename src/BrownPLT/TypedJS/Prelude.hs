@@ -20,6 +20,7 @@ module BrownPLT.TypedJS.Prelude
   , noPos
   , everythingBut
   , catastrophe
+  , isLeft, isRight
   ) where
 
 import Data.Tree
@@ -71,3 +72,11 @@ catastrophe :: Monad m
             -> m a
 catastrophe loc msg =
   fail $ printf "CATASTROPHIC FAILURE: %s (at %s)" msg (show loc)
+
+isLeft :: Either a b -> Bool
+isLeft (Left _) = True
+isLeft _ = False
+
+isRight :: Either a b -> Bool
+isRight (Right _) = True
+isRight _ = False

@@ -124,7 +124,7 @@ exitNodeOf gr = snd (G.nodeRange gr)
 body :: Env
      -> ErasedEnv
      -> [TypeConstraint]
-     -> Type
+     -> Either Type Type
      -> G.Node
      -> G.Node
      -> TypeCheck Env
@@ -151,7 +151,7 @@ stmtForBody :: Env -- ^environment of the enclosing function for a nested
                    -- function
             -> ErasedEnv
             -> [TypeConstraint]
-            -> Type
+            -> Either Type Type
             -> G.Node
             -> TypeCheck ()
 stmtForBody enclosingEnv erasedEnv constraints rettype node = do
@@ -267,7 +267,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
     Nothing -> do
       typeError p ("expected function; received " ++ show f)
       noop
-    Just (vs, cs', formals', vararg, r, latentPred, ptype) -> do
+    Just (vs, cs', formals', vararg, er, latentPred, ptype) -> do
       when (isNewStmt && isNothing ptype) $
         typeError p "cannot call a function with 'new'"
       when (not isNewStmt && isJust ptype) $
@@ -318,7 +318,9 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
       
       let substVar (v, t) t' = substType v t t'
       let apply t = foldr substVar t (zip vs insts)
-      r <- return (apply r)
+      er <- case er of
+             Left t  -> return $ Left (apply t)
+             Right t -> return $ Right (apply t)
       formals' <- return (map apply formals')
 
       --if we have a vararg, repeat the vararg until we have as
@@ -358,32 +360,43 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
       -- For call statements, we must ensure that the result type is
       -- a subtype of the named result.
       -- this works for constructors, too.
-      env' <- doAssignment (<:) p env r_v r (VPNone, M.empty)
+      env' <- case er of
+                Left r   -> doAssignment (<:) p env r_v r (VPNone, M.empty)
+                Right tt -> do
+                  --TODO: the type of the assignment should be the
+                  --prototype augmented with the thistype
+                  typeError p "assign res of newcall NYI"
+                  --insert the variable anyway, for multiple error reporting
+                  return $ M.insert r_v (Just (TAny,TAny,True,(VPNone,M.empty)))
+                                    env
       return env'
 
 
 stmt :: Env -- ^the environment in which to type-check this statement
      -> ErasedEnv
      -> [TypeConstraint]
-     -> Type
+     -> Either Type Type --Left T = in a function, rettype is T
+                         --Right T = in constructor, final thistype is T
      -> G.Node -- ^the node representing this statement in the graph
      -> Stmt (Int, SourcePos)
      -> TypeCheck [(G.Node, Env)]
-stmt env ee cs rettype node s = do
+stmt env ee cs erettype node s = do
   state <- get
   let t1 <: t2 = isSubType (stateTypeEnv state) cs t1 t2
   let tenv = stateTypeEnv state
+  
   succs <- stmtSuccs s
   -- statements that do not affect the incoming environment are "no-ops"
   let noop = return (zip (map fst succs) (repeat env))
+  let rettype = case erettype of
+                   Left t -> t
+                   Right t -> undefType
   case s of
     EnterStmt _ -> noop
     ExitStmt (exitNode, p) -> do
       -- All predecessors of Exit must be ReturnStmt
       let gr = stateGraph state
       let returns = map (G.lab gr) (G.pre gr exitNode)
-      -- TODO: in constructors, make sure that at all return points,
-      -- 'this' has been properly refined.
       let assertReturn maybeStmt = case maybeStmt of
             Nothing -> catastrophe p "predecessor of an Exit node is \
                                        \unlabelled in the CFG"
@@ -395,6 +408,8 @@ stmt env ee cs rettype node s = do
       when (null returns && not (undefType <: rettype)) $ do
         typeError p $ printf "no return value, return type is %s" 
                              (renderType rettype)
+      when (isRight erettype) $ do
+        typeError p $ "checking that all returns have the proper thistype NYI"
       noop
     SeqStmt{} -> noop
     EmptyStmt _ -> noop
@@ -448,9 +463,6 @@ stmt env ee cs rettype node s = do
                 -- you can assign to a slack object if it is the
                 -- "this" object, but only to the fields that are
                 -- expected in the return type.
-                liftIO $ putStrLn $ printf "%s: assigning to %s.%s. the obj\
-                  \ has slack, so this should later be disallowed."
-                    (show p) (renderType tAct) prop
                 let env' = M.insert obj
                              (Just (tDec, TObject hasSlack isOpen 
                                                   ((prop,t_rhs):props),
@@ -649,7 +661,8 @@ expr env ee cs e = do
        Nothing -> do
          typeError loc $ printf
            "expected object with field %s, received %s" p (renderType t)
-         fatalTypeError "fatal error"
+         --fatalTypeError "fatal error"
+         return (TAny, (VPNone, M.empty))
    BracketRef (_, loc) e ie -> do
      (t'', _) <- expr env ee cs e
      t' <- dotrefContext (unRec t'')
@@ -860,7 +873,7 @@ unionEnv env1 env2 = M.unionWith unionTypeVP env1 env2
 uneraseEnv :: Env -> Map String Type
            -> Map String Kind
            -> ErasedEnv -> Lit (Int, SourcePos) 
-           -> TypeCheck (Env, [TypeConstraint], Type, Type)
+           -> TypeCheck (Env, [TypeConstraint], Either Type Type, Type)
 uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do          
   let newNames = map fst (args ++ locals)
   unless (newNames == nub newNames) $ do
@@ -872,8 +885,7 @@ uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
           fail $ printf "uneraseEnv: multiple types for the function at %s, \
                          \types were %s" (show pos) (show ts)
 
-  let Just (tVars, cs, types, vararg, rettype', lp, pt)= deconstrFnType functype
-  let rettype = if isNothing pt then rettype' else undefType
+  let Just (tVars, cs, types, vararg, rettype, lp, pt)= deconstrFnType functype
   let localKindEnv = M.union (freeTypeVariables functype) kindEnv  
 
   let lookupEE p name = case M.lookup p ee of

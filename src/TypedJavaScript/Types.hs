@@ -193,21 +193,21 @@ boolType = TId "bool"
 -- type-checker to handle more of a function type, include them here.
 deconstrFnType :: Type 
                -> Maybe ([String], [TypeConstraint], [Type], Maybe Type, 
-                         Type, LatentPred, Maybe Type)
+                         Either Type Type, LatentPred, Maybe Type)
 deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
   deconstrFnType (substType id t t')
 --function:
 deconstrFnType (TFunc Nothing args@(_:(TSequence _ vararg):_) result latentP) = 
-  Just ([],[],args,vararg,result,latentP, Nothing)
+  Just ([],[],args,vararg,Left result,latentP, Nothing)
 deconstrFnType (TForall ids cs 
                         (TFunc Nothing args@(_:(TSequence _ vararg):_) r lp))=
-  Just (ids, cs, args, vararg, r, lp, Nothing)
+  Just (ids, cs, args, vararg, Left r, lp, Nothing)
 --constructor:
 deconstrFnType (TFunc (Just pt) args@((TSequence _ vararg):_) result latentP) = 
-  Just ([],[],args,vararg,result,latentP, (Just pt))
+  Just ([],[],args,vararg,Right result,latentP, (Just pt))
 deconstrFnType (TForall ids cs 
                         (TFunc (Just pt) args@((TSequence _ vararg):_) r lp))=
-  Just (ids, cs, args, vararg, r, lp, (Just pt))
+  Just (ids, cs, args, vararg, Right r, lp, (Just pt))
 deconstrFnType _ = Nothing
 
 unRec :: Type -> Type
