@@ -18,7 +18,7 @@ function (b,a) :: (Array<int>, Array<double> ->) { a = b; } @@ succeeds;
 function (b,a) :: (Array<int>, Array<double> ->) {
   a = b;
   a[0] = 3.4;
-} @@ fails; 
+} @@ fails;
 
 function (b,a) :: (Array<double>, Array<double> ->) { a = b; } @@ succeeds;
 function (b,a) :: (Array<double>, Array<int> ->) { a = b; } @@ fails;
@@ -103,3 +103,50 @@ function() :: (->) {
 
   obj.x = 9000;
 } @@ succeeds;
+
+function (b) :: (bool ->) {
+  var foo :: {x :: U(int, string)} = {x : 5};
+  if (b)
+    foo = {x: "hi"};
+  else
+    foo = {x: 3};
+  foo.x = 3;
+} @@ fails;
+
+function (b) :: (bool ->) {
+  var foo :: {x :: U(int, string)} = {x : 5};
+  var baz :: {x :: string} = {x : "hi"};
+
+  if (b)
+    foo = baz;
+  else
+    foo = {x: 5};
+
+  foo.x = 3;
+} @@ fails;
+function (b) :: (bool ->) {
+  var foo :: {x :: U(int, string)} = {x : 5};
+  var baz :: {x :: string} = {x : "hi"};
+
+  foo = {x:"hi"};
+  foo.x = 3;
+} @@ fails; //shrug
+
+function (b) :: (bool ->) {
+  var foo :: {x :: U(int, string)} = {x : 5 || "g"};
+  //$printtype$(foo);
+  if (b)
+    foo.x = 3; //can't mutate to a union fieldzomg
+  else
+    foo.x = "NEIN";
+  //$printtype$(foo);
+} @@ fails;
+
+function (b) :: (bool -> int) {
+  var foo :: {x :: int, y :: int, ...} = {x:3, y:5};
+  if (b)
+    foo = {x:5, y:6, z:7};
+  else
+    foo = {x: 10, y:12};
+  return foo.z;
+} @@ fails;

@@ -174,7 +174,7 @@ type_ = do
               let arguments = TSequence ts Nothing
               return (TFunc Nothing (thisType:arguments:ts) r LPNone)
         case ts of
-          []  -> func -- function of zero arguments
+          []  -> constr <|> func -- function of zero arguments
           [t] -> vararity <|> constr <|> func <|> (return t)
           ts  -> vararity <|> constr <|> func
   forall <|> rec <|> explicitThis <|> type_fn
@@ -210,7 +210,7 @@ type_fn = do
         --but the parser has to deal with them. type checker should fill
         --them in properly.
   case ts of
-    []  -> func -- function of zero arguments
+    []  -> constr <|> func -- function of zero arguments
     [t] -> vararity <|> constr <|> func <|> (return t)
     ts  -> vararity <|> constr <|> func
 

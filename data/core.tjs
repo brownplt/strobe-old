@@ -35,11 +35,17 @@ external Number_ :: {
   POSITIVE_INFINITY :: double
 };
 
+external Math :: {
+  floor :: (double -> int),
+};
+
 type String :: rec String . {
   length :: int,
   match :: ([String] string -> Array<string>?),
   toString :: ([String] -> string)
 };
+
+external $printtype$ :: any ->;
 
 type Boolean :: rec Boolean . {
   valueOf :: ([Boolean] -> bool),

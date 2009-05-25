@@ -7,7 +7,7 @@ module BrownPLT.TypedJS.TypeFunctions
   , isSlackObject
   , isAny
   , isVarRef
-  , openObject
+  , openObject, closeObject
   , replaceAliases
   ) where
 
@@ -78,6 +78,10 @@ isVarRef _ = False
 openObject :: Type -> Type
 openObject (TObject hasSlack _ fields) = TObject hasSlack True fields
 openObject t = t
+
+closeObject :: Type -> Type
+closeObject (TObject hasSlack _ fields) = TObject hasSlack False fields
+closeObject t = t
 
 lookupAlias :: KindEnv -> Map String Type -> SourcePos -> Type -> Type
 lookupAlias kindEnv tenv pos t = case t of

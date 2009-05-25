@@ -15,7 +15,7 @@ module TypedJavaScript.Types
   , substType 
   , unRec
   , isSubType
-  , unionType, unionTypeVP, equalityvp
+  , unionType, unionTypeVP, unionThisTypeVP, equalityvp
   , gammaPlus, gammaMinus
   , checkTypeEnv
   , unaliasTypeEnv
@@ -413,6 +413,17 @@ unionType t1 t2
   | t2 <: t1 = t1
   | otherwise = TUnion [t1, t2]
 
+--treat 'this' as if t1 and t2 were environments
+unionThisType (TObject s o p1) (TObject _ _ p2) = TObject s o $ 
+  map (\(id,ma) -> case ma of
+         Nothing -> (id,undefType)
+         Just t  -> (id,t)) $
+    M.toList (M.unionWith (\ma mb -> do
+      a <- ma
+      b <- mb
+      return $ unionType a b) 
+      (M.fromList (map (\(a,b) -> (a, Just b)) p1))
+      (M.fromList (map (\(a,b) -> (a, Just b)) p2)))
 
 vpToEnv :: VP -> Map Id Type
 vpToEnv (VPType t id) = M.singleton id t
@@ -436,11 +447,19 @@ unionTypeVP Nothing (Just (t, tact, b, v)) =
   Just (TUnion [undefType, t], TUnion [undefType, tact], b, (VPNone, M.empty))
 unionTypeVP (Just (t, tact, b, v)) Nothing = 
   Just (TUnion [undefType, t], TUnion [undefType, tact], b, (VPNone, M.empty))
-unionTypeVP (Just (t1, t1act, b1, (vp1, e1))) (Just (t2, t2act, b2, (vp2, e2))) = 
+unionTypeVP (Just (t1, t1act, b1, (vp1, e1)))(Just (t2, t2act, b2, (vp2, e2)))=
   if b1 /= b2 
     then error "OMG"
     else Just (unionType t1 t2, unionType t1act t2act, b1, 
-               (combineVPs vp1 vp2, error "unionTypeVP"))
+               (combineVPs vp1 vp2, M.empty))
+
+unionThisTypeVP :: (Type, Type, Bool, LocalControl)
+              -> (Type, Type, Bool, LocalControl)
+              -> (Type, Type, Bool, LocalControl)
+unionThisTypeVP (td1, ta1, b1, (v1,e1)) (td2, ta2, b2, (v2,e2)) =
+  (unionThisType td1 td2, unionThisType ta1 ta2, b1, 
+   (combineVPs v1 v2, M.empty))
+
 
 flattenUnion :: (Type) -> (Type)
 flattenUnion (TUnion ts) = 

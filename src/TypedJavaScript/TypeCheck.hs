@@ -193,7 +193,9 @@ doAssignment :: (Type -> Type -> Bool) -- ^local subtype relation
              -> Type -- ^type of the RHS of assignment
              -> LocalControl  -- ^visible predicate on the RHS
              -> TypeCheck Env -- ^resulting environment
-doAssignment (<:) p env v te (e_vp, ef) = case M.lookup v env of        
+doAssignment (<:) p env v te (e_vp, ef) = if v == "this"
+ then typeError p "Cannot assign to 'this'!" >> return env
+ else case M.lookup v env of        
   Nothing -> typeError p (v ++ " is unbound") >> return env
   -- ANF variable, or locally inferred variable.  ANF variables may be
   -- assigned to multiple times in parallel branches, 
@@ -362,13 +364,17 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
       -- this works for constructors, too.
       env' <- case er of
                 Left r   -> doAssignment (<:) p env r_v r (VPNone, M.empty)
-                Right tt -> do
-                  --TODO: the type of the assignment should be the
-                  --prototype augmented with the thistype
-                  typeError p "assign res of newcall NYI"
-                  --insert the variable anyway, for multiple error reporting
-                  return $ M.insert r_v (Just (TAny,TAny,True,(VPNone,M.empty)))
-                                    env
+                Right tt@(TObject _ _ ttprops) -> do
+                  let (Just (TObject _ _ ptprops)) = ptype
+                  --the assumption is that there is no conflict
+                  --between prototype and thistype. this'll be
+                  --guaranteed whenever assignments are done to the
+                  --prototype.
+                  let ttype = TObject True False $ nub $ ttprops++ptprops
+                  doAssignment (<:) p env r_v ttype (VPNone, M.empty)
+                Right _ -> do
+                  typeError p "'this' is not an object in the constructor!"
+                  return env
       return env'
 
 
@@ -408,8 +414,19 @@ stmt env ee cs erettype node s = do
       when (null returns && not (undefType <: rettype)) $ do
         typeError p $ printf "no return value, return type is %s" 
                              (renderType rettype)
+      --in a constructor, the environment at the exitstmt must have
+      --'this' being a subtype of the given thistype.
       when (isRight erettype) $ do
-        typeError p $ "checking that all returns have the proper thistype NYI"
+        let (Right ttype) = erettype
+        case M.lookup "this" env of
+          Nothing -> catastrophe p "'this' not found in environment!"
+          Just Nothing -> catastrophe p "'this' has no type in environment!"
+          Just (Just (tDec, tAct, _, _))
+            | (closeObject tAct) <: ttype -> return ()
+            | otherwise  -> typeError p $ printf 
+                "'this' has type %s at constructor exit, expected %s" 
+                (renderType (closeObject tAct)) (renderType ttype)
+            
       noop
     SeqStmt{} -> noop
     EmptyStmt _ -> noop
@@ -438,6 +455,7 @@ stmt env ee cs erettype node s = do
 
     DirectPropAssignStmt (_,p) obj prop e -> do
       (t_rhs, e_vp) <- expr env ee cs e
+      let isThis = obj == "this"
       case M.lookup obj env of
         Nothing -> 
           catastrophe p (printf "id %s for an object is unbound" obj)
@@ -447,34 +465,35 @@ stmt env ee cs erettype node s = do
                    (show p) obj
         Just (Just (tDec, tAct', isLocal, vp)) -> do
          tAct <- dotrefContext tAct'
+         
          case unRec tAct of
           TObject hasSlack isOpen props -> do
            case lookup prop props of
-            Nothing -> case (isOpen, hasSlack) of
-              (True, False) -> do
-                let env' = M.insert obj
-                             (Just (tDec, TObject hasSlack isOpen 
-                                                  ((prop,t_rhs):props),
-                                    isLocal, vp))env
-                return $ zip (map fst succs) (repeat env')
-              (True, True) -> do
-                -- you should only be able to assign to a non-slack
-                -- object in general (which is like .prototype), and
-                -- you can assign to a slack object if it is the
-                -- "this" object, but only to the fields that are
-                -- expected in the return type.
-                let env' = M.insert obj
-                             (Just (tDec, TObject hasSlack isOpen 
-                                                  ((prop,t_rhs):props),
-                                    isLocal, vp))env
-                return $ zip (map fst succs) (repeat env')
-              (False,_) -> do
-                typeError p $ printf "cannot assign to property %s: object \
-                                     \is not open and does not have the prop" 
-                                     prop
-                noop
-            -- TODO: detect if a field was discovered and, if so,
-            -- disallow mutation to it.
+            Nothing -> case isThis of
+              False -> typeError p "extending non-this object NYI" >> noop
+              True  -> case erettype of
+                Left t -> typeError p "can't extend 'this' in non-constructor">>
+                            noop
+                Right t@(TObject _ _ tprops) -> case lookup prop tprops of
+                  Nothing -> (typeError p $ printf
+                               "can't add %s to this :: %s; field is not in the\
+                               \ final this type"
+                               prop (renderType t)) >> noop
+                  Just t'
+                    | t_rhs <: t' -> do
+                        let env' = M.insert obj
+                                     (Just (tDec, TObject hasSlack isOpen
+                                                    ((prop,t_rhs):props),
+                                           isLocal, vp))
+                                     env
+                        return $ zip (map fst succs) (repeat env')
+                    | otherwise -> do
+                        typeError p $ printf
+                          "property %s has type %s in final this, but got %s" 
+                          prop (renderType t') (renderType t_rhs)
+                        noop
+                Right _ -> catastrophe p "'this' is not an object!"
+                
             Just t' | isUnion t' -> do
                         typeError p $ 
                           printf "cannot mutate to a union field"
@@ -533,6 +552,12 @@ stmt env ee cs erettype node s = do
 
     CallStmt (_,p) r_v f_v args_v -> do
       env' <- doFuncConstr (<:) p env ee cs r_v f_v args_v False
+      when (f_v == "$printtype$") $ do
+        liftIO $ putStrLn $ printf "at %s: %s :: %s" (show p)
+          (args_v !! 2) 
+          (show (maybe "notinenv" 
+                  (maybe "notype" (\(tDec,tAct,_,_) -> renderType tAct)) 
+                  (M.lookup (args_v !! 2) env')))
       return $ zip (map fst succs) (repeat env')
 
     IfStmt (_, p) e s1 s2 -> do
@@ -689,7 +714,9 @@ expr env ee cs e = do
              _ -> do 
                     typeError loc (printf "can only bracketref obj with iterator")
                     fatalTypeError "fatal type error"
-       _ -> fail $ printf "at %s: expected array, got %s" (show loc) (show t)
+       _ -> do typeError loc $ 
+                 printf "expected array, got %s" (show t)
+               return (TAny, (VPNone, M.empty))
    OpExpr (_,p) f args_e -> do
      args <- mapM (expr env ee cs) args_e
      operator cs p f args
@@ -865,7 +892,10 @@ operator cs loc op argsvp = do
 
 -- |When a node has multiple parents, this function combines their environments.
 unionEnv :: Env -> Env -> Env
-unionEnv env1 env2 = M.unionWith unionTypeVP env1 env2
+unionEnv env1 env2 = M.unionWithKey
+  (\k v1 v2 -> if k == "this" 
+    then Just $ unionThisTypeVP (fromJust v1) (fromJust v2)
+    else unionTypeVP v1 v2) env1 env2
 
 
 -- |Returns the local environment for a function, type constraints in its
@@ -898,10 +928,12 @@ uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
         Just vt -> [TApp "Array" [vt]])
   --remove the 'this' argument from constructors, since it's not really there:
   let args' = if isNothing pt then args else tail args
-  --and account for it here: it's really the open version of the prototype
+  --and account for it here: it's really the open version of the
+  --prototype for now, don't make it open, though, since we check for
+  --assigning to 'this' explicitly, anyway...
   argtypes <- return $ (zip (map fst args') (map Just types')) ++ (
                          if isNothing pt then [] else 
-                              [("this", Just $ openObject $ fromJust pt)])
+                              [("this", Just $ closeObject $ fromJust pt)])
   localtypes <- mapM (\(name,(_, pos)) -> do
                         t' <- lookupEE pos name
                         case t' of

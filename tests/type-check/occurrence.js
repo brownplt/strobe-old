@@ -310,7 +310,7 @@ function () :: (-> int) {
 
 
 function() :: (->) {
-  var x :: U(int, string, bool) = "hello";
+  var x :: U(double, string, bool) = "hello";
   var y :: string =
     (typeof ((typeof x == "number") ? "x is a number" : x) == "boolean")
       ? "x is a boolean"
