@@ -76,7 +76,7 @@ fatalTypeError :: String
                -> TypeCheck a
 fatalTypeError msg = do
   s <- get
-  throw $ s { stateErrors = (noPos, msg) : (stateErrors s) }
+  throw s
 
 
 -- |Returns the successors of the node, paired with the labels on the
@@ -186,16 +186,6 @@ assert :: Monad m => Bool -> String -> m ()
 assert True _ = return ()
 assert False msg = fail ("CATASPROPHIC FAILURE: " ++  msg)
 
-removeAssumptions :: Id
-                  -> Env
-                  -> Env
-removeAssumptions id env = M.map f env
-  where f (Just (t1, t2, isLocal, (vp, ef))) = case vp of
-            VPId id' | id' == id -> Just (t1, t2, isLocal, (VPNone, M.empty))
-            otherwise -> Just (t1, t2, isLocal, (vp, ef))
-        f Nothing = Nothing
-
-
 doAssignment :: (Type -> Type -> Bool) -- ^local subtype relation
              -> SourcePos -- ^for type errors
              -> Env -- ^current environment
@@ -203,7 +193,7 @@ doAssignment :: (Type -> Type -> Bool) -- ^local subtype relation
              -> Type -- ^type of the RHS of assignment
              -> LocalControl  -- ^visible predicate on the RHS
              -> TypeCheck Env -- ^resulting environment
-doAssignment (<:) p env v te (e_vp, e_ef) = case M.lookup v env of        
+doAssignment (<:) p env v te (e_vp, ef) = case M.lookup v env of        
   Nothing -> typeError p (v ++ " is unbound") >> return env
   -- ANF variable, or locally inferred variable.  ANF variables may be
   -- assigned to multiple times in parallel branches, 
@@ -213,14 +203,18 @@ doAssignment (<:) p env v te (e_vp, e_ef) = case M.lookup v env of
   -- they will subsequently act as declared variables and won't be permitted
   -- to "change types."
   Just Nothing -> do 
-    return $ M.insert v (Just (te, te, True, (VPId v, e_ef))) env
+    return $ M.insert v (Just (te, te, True,
+                               (VPMulti [VPId v, e_vp], M.empty))) env
   -- Local variable (3rd element of the tuple is True).  Local variables
   -- may be assigned to so long as the subtype relation is preserved.  The
   -- assignment locally refines tDec to te.
-  Just (Just (tDec, tAct, True, _))
-    | te <: tDec -> do
-        let env' = removeAssumptions v env
-        return $ gammaPlus (VPNone, M.singleton v (Restrict te)) env'
+  Just (Just (tDec, tAct, True, (v_vp, ef))) --local variable
+    | te <: tDec ->  do
+        -- TODO: remove, from environment, any VP referring to this var!
+        let env' = M.insert v (Just (tDec, te, True, 
+                                     (VPMulti [VPId v, e_vp], M.empty))) 
+                            env
+        return env'
    | otherwise -> do
        typeError p $
          printf "error assigning to %s :: %s; given an expression of type %s"
@@ -233,7 +227,7 @@ doAssignment (<:) p env v te (e_vp, e_ef) = case M.lookup v env of
   -- If the variable is not a union, we may assign a new value.  However, this
   -- precludes visible-predicates from refining types to specific /values/.
   -- For example, we cannot refine to false.
-  Just (Just (tDec, tAct, False, _))
+  Just (Just (tDec, tAct, False, (v_vp, ef)))
     | isUnion tDec -> do
         typeError p $ 
           printf "cannot assign to global union %s :: %s"
@@ -243,7 +237,10 @@ doAssignment (<:) p env v te (e_vp, e_ef) = case M.lookup v env of
         typeError p "cannot assign to global anys" 
         return env
     | te <: tDec ->  do
-        let env' = M.insert v (Just (tDec, te, False, (e_vp, e_ef))) env
+        -- TODO: remove, from environment, any VP referring to this var!
+        let env' = M.insert v (Just (tDec, te, False,
+                                     (VPMulti [VPId v, v_vp], M.empty))) 
+                            env
         return env'
    | otherwise -> do
        typeError p $
@@ -540,12 +537,10 @@ stmt env ee cs erettype node s = do
 
     IfStmt (_, p) e s1 s2 -> do
       (t, (vp, ef)) <- expr env ee cs e -- this permits non-boolean tests
-      liftIO $ printf "ef is %s\n\n" (show ef)
       assert (length succs == 2) "IfStmt should have two successors"
       let occurit (node, Nothing) = error "ifstmt's branches should have lits!"
-          occurit (node, Just (BoolLit _ True)) = (node, gammaPlus (vp, ef) env)
-          occurit (node, Just (BoolLit _ False)) = 
-            (node, gammaMinus (vp, ef) env)
+          occurit (node, Just (BoolLit _ True)) = (node, gammaPlus env vp)
+          occurit (node, Just (BoolLit _ False)) = (node, gammaMinus env vp)
           occurit _ = error "Ifstmt's branches are wack"
       return $ map occurit succs
 
@@ -607,10 +602,10 @@ stmt env ee cs erettype node s = do
       (t, vp) <- expr env ee cs (VarRef (i,p) id)
       let occurit (node, Just lit) = do
             (tlit, vplit) <- expr env ee cs (Lit lit)
-            return (node, gammaPlus (equalityVP True vp vplit) env)
+            return (node, gammaPlus env (fst $ equalityvp vp vplit))
           occurit (node, Nothing) = do --default branch
             tsvps <- mapM (expr env ee cs . Lit) (map fst cases)
-            return (node,foldr gammaMinus env (map (equalityVP True vp . snd) tsvps))
+            return (node,foldl gammaMinus env (map (fst . equalityvp vp . snd) tsvps))
       mapM occurit succs
 
 -- in pJS, string, int, etc. can all be used as objects.
@@ -652,13 +647,11 @@ expr env ee cs e = do
   let unConstraint t = lookupConstraint t cs
   let tenv = stateTypeEnv state
   case e of 
-   VarRef (_,p) id -> case M.lookup id env of
-     Nothing -> do typeError p $ printf "unbound identifier %s" id
-                   return (TAny, (VPNone, M.empty))
-     Just Nothing -> fatalTypeError $ printf "uninitialized variable %s" id
-     Just (Just (tDec, tAct, isLocal, (vp, ef))) -> do
-       liftIO $ printf "%s has type %s\n" id (renderType tAct)
-       return (tAct, (VPId id, ef))
+   VarRef (_,p) id -> do
+     (tDec, tAct, b, lc) <- forceEnvLookup p env id
+     case lc of
+       (VPNone, ef) -> return (tAct, (VPId id, ef))
+       (vp, ef) -> return (tAct, (VPMulti [VPId id, vp], ef))
    DotRef (_, loc) e p -> do
      (t'', _) <- expr env ee cs e
      t' <- dotrefContext (unRec t'')
@@ -828,15 +821,14 @@ operator cs loc op argsvp = do
     OpGEq -> cmp 
     OpIn -> fail "OpIn NYI"
     OpInstanceof -> fail "OpInstanceof NYI"
-    OpEq -> do
-      liftIO $ printf "%s == %s\n is %s\n" (show lvp) (show rvp)
-                      (show $ equalityVP True lvp rvp)
-      return (boolType, equalityVP True lvp rvp)
-    OpStrictEq -> return (boolType, equalityVP True lvp rvp)
-    OpNEq -> return (boolType, (vp, ef))
-      where (vp, ef) = equalityVP False lvp rvp
+
+    OpEq        -> do
+      return (boolType, equalityvp lvp rvp)
+    OpStrictEq  -> return (boolType, equalityvp lvp rvp)
+    OpNEq -> return (boolType, (VPNot vp, ef))
+      where (vp, ef) = equalityvp lvp rvp
     OpStrictNEq -> return (boolType, (VPNot vp, ef))
-      where (vp, ef) = equalityVP False lvp rvp
+      where (vp, ef) = equalityvp lvp rvp
     OpMul -> numeric False False
     OpDiv -> numeric False True
     OpMod -> numeric False True
@@ -865,9 +857,11 @@ operator cs loc op argsvp = do
                     return (novp doubleType)
     PrefixVoid -> do
       catastrophe loc (printf "void has been removed")
-    PrefixTypeof -> case lvp of
-      (VPId id, ef) -> return (stringType, (VPTypeof id, ef))
-      (VPNone, ef) -> return (stringType, (VPNone, ef))
+    PrefixTypeof -> do
+      let tproc (VPId i) = VPTypeof i
+          tproc (VPMulti vs) = VPMulti (nub (map tproc vs))
+          tproc _ = VPNone
+      return (stringType, (tproc (fst lvp), M.empty))
 
 -- |When a node has multiple parents, this function combines their environments.
 unionEnv :: Env -> Env -> Env
