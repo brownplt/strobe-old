@@ -927,13 +927,14 @@ typeStmt = do
   isSealed <- option False (reserved "sealed" >> return True)
   reserved "type"
   id <- identifier
+  let (Id _ idn) = id
   t' <- parseType
   t <- case (isSealed, t') of
     (False, _) -> return t'
     (True, TRec v (TObject p opn ps)) -> 
-      return $ TRec v (TObject p opn (("@sealed", TObject True False []):ps))
+      return $ TRec v (TObject p opn (("@sealed_"++idn, TObject True False []):ps))
     (True, TObject p opn ps) -> 
-      return $ TObject p opn (("@sealed", TObject True False []):ps)
+      return $ TObject p opn (("@sealed_"++idn, TObject True False []):ps)
     (True, t) -> fail "can only seal object types"
   semi
   return (TypeStmt pos id t)

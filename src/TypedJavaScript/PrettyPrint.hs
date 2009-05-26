@@ -75,6 +75,8 @@ type_ t = case t of
           s = case hasSlack of
                 True -> text ", ..."
                 False -> empty
+  TUnion [TId "undefined", t] -> parens (type_ t) <> text "?"
+  TUnion [t, TId "undefined"] -> parens (type_ t) <> text "?"
   TUnion ts -> text "U" <+> parens (commas (map type_ ts))
   TId v -> text v
   TForall ids cs t' ->

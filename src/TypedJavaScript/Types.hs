@@ -19,7 +19,7 @@ module TypedJavaScript.Types
   , gammaPlus, gammaMinus
   , checkTypeEnv
   , unaliasTypeEnv
-  , unaliasType
+  , unaliasType, realiasType
   , Type (..)
   , VP (..)
   , TypeConstraint (..)
@@ -169,6 +169,12 @@ unaliasTypeEnv :: KindEnv
 unaliasTypeEnv kinds aliasedTypes = types
   where explicitRec v t = unaliasType kinds aliasedTypes t
         types = M.mapWithKey explicitRec aliasedTypes
+
+--TODO: fill this function in. 
+realiasType :: Map String Type -> Type
+            -> Type
+realiasType types type_ = case type_ of
+  _ -> type_
 
 type LocalControl = (VP, Map String Type)
 

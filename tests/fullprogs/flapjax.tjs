@@ -1,8 +1,8 @@
-sealed type PulseVal :: {};
+sealed type PulseVal :: {value :: int}; //###
 
-type Pulse :: {stamp :: int, value :: PulseVal};
+type Pulse :: {stamp :: int, value :: PulseVal}; //###
 
-type UpdaterT :: ((Pulse ->), Pulse ->);
+type UpdaterT :: ((Pulse ->), Pulse ->); //### (should be parametrized)
 
 //============
 
@@ -22,6 +22,16 @@ type EventStream :: rec EventStream . {
   constantE :: ([EventStream] PulseVal -> EventStream),
   mergeE :: ([EventStream] Array<EventStream> -> EventStream),
   sendEvent :: ( PulseVal -> )?,
+  bindE:: ([EventStream] (PulseVal -> EventStream) -> EventStream ),
+  mapE :: ([EventStream] (PulseVal -> PulseVal) -> EventStream),
+  notE :: ([EventStream] -> EventStream),
+  filterE :: ([EventStream] (PulseVal -> bool) -> EventStream),
+  onceE :: ([EventStream] -> EventStream),
+  skipFirstE :: ([EventStream] -> EventStream),
+  collectE :: ([EventStream] PulseVal, (PulseVal, PulseVal -> PulseVal)
+                 -> EventStream),
+  switchE :: ([EventStream] -> EventStream),
+  ifE :: ([EventStream] EventStream, EventStream -> EventStream),
   ...
 };
 
@@ -36,6 +46,7 @@ type Behavior :: {last :: PulseVal,
 type TSNodeT :: {q::Array<EventStream>,
                  v::EventStream};
 
+//hacks when i needs a typed var:
 external $nodes :: Array<EventStream>;
 external $updater :: ((Pulse ->), Pulse ->);
 external $es :: EventStream;
@@ -475,4 +486,115 @@ EventStream.prototype.bindE = function(k) ::
   //inE.name = "bind inE";
 
   return outE;
+};
+
+/* Could be written as:
+ *
+ * e.bindE(function(v) { return oneE(f(v)); })
+ */
+EventStream.prototype.mapE = function(f) ::
+  ([EventStream] (PulseVal -> PulseVal) -> EventStream) { //###
+  return createNode([this],function(send,pulse) :: UpdaterT {
+    pulse.value = f(pulse.value);
+    send(pulse);
+  });
+};
+
+//### pending parametrized pulses
+EventStream.prototype.notE = function() :: ([EventStream] -> EventStream) {
+  return this.mapE(function(v) :: (PulseVal -> PulseVal) {
+                     v.value = (!v.value ? 1 : 0);
+                     return v; });
+};
+
+var notE = function(e) :: (EventStream -> EventStream) {
+  return e.notE();
+};
+
+EventStream.prototype.filterE = function(pred) ::
+  ([EventStream] (PulseVal -> bool) -> EventStream) {
+  // Can be a bindE
+  return createNode([this],
+    function(send,pulse) :: UpdaterT {
+      if (pred(pulse.value)) { send(pulse); }
+  });
+};
+
+var filterE = function(e,p) :: EventStream, (PulseVal -> bool) -> EventStream {
+  return e.filterE(p);
+};
+
+EventStream.prototype.onceE = function () :: ([EventStream] -> EventStream) {
+  var done = false;
+  return createNode([this], function(send, pulse) :: UpdaterT {
+                      if (!done) { done = true; send(pulse); } });
+};
+var onceE = function (e) :: EventStream -> EventStream { return e.onceE(); };
+
+EventStream.prototype.skipFirstE = function ()::([EventStream] -> EventStream) {
+  var skipped = false;
+  return createNode([this], function(send, pulse) :: UpdaterT {
+    if (skipped)
+      send(pulse);
+    else
+      skipped = true;
+  });
+};
+
+var skipFirstE = function (e) :: EventStream -> EventStream {
+  return e.skipFirstE();
+};
+
+EventStream.prototype.collectE = function(init,fold) ::
+  ([EventStream] PulseVal, (PulseVal, PulseVal -> PulseVal) -> EventStream) {
+  var acc = init;
+  return this.mapE(
+    function (n) :: (PulseVal -> PulseVal) {
+      var next = fold(n, acc);
+      acc = next;
+      return next;
+    });
+};
+
+var collectE = function(e,i,f) ::
+  (EventStream, PulseVal, (PulseVal, PulseVal -> PulseVal)
+     -> EventStream) {
+    return e.collectE(i,f);
+};
+
+// a.k.a. join
+EventStream.prototype.switchE = function() :: ([EventStream] -> EventStream) {
+  //*** what? does bindE only take event streams of event streams? does
+  //this only take eventstreams containing eventstreams?
+  return this.bindE(function(v) :: PulseVal -> EventStream { return $es; //v;
+    });
+};
+
+var switchE = function(e) :: EventStream -> EventStream { return e.switchE(); };
+
+EventStream.prototype.ifE = function(thenE,elseE) ::
+  ([EventStream] EventStream, EventStream -> EventStream) {
+  var testStamp = -1;
+  var testValue :: bool = false;
+
+  //*** once again with the 'global union' crud. modify this slightly...
+  createNode([this],function(_,pulse) :: UpdaterT {
+               testStamp = pulse.stamp;
+               testValue = !!pulse.value; });
+
+  return mergeE([
+    createNode([thenE],function(send,pulse) :: UpdaterT {
+                 if (testValue && (testStamp == pulse.stamp)) {
+                   send(pulse); } }),
+    createNode([elseE],function(send,pulse) :: UpdaterT {
+                 if (!testValue && (testStamp == pulse.stamp)) {
+                   send(pulse); } })]);
+};
+
+var ifE = function(test,thenE,elseE) ::
+  U(bool, EventStream), EventStream, EventStream -> EventStream {
+  if (test instanceof EventStream)
+    { return test.switchE(); }//test.ifE(thenE,elseE); }
+  else
+    { return test ? thenE : elseE; }
 };

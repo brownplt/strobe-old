@@ -720,6 +720,7 @@ expr :: Env -- ^the environment in which to type-check this expression
 expr env ee cs e = do 
   state <- get
   let t1 <: t2 = isSubType (stateTypeEnv state) cs t1 t2
+  renderType <- return $ (\t -> renderType (realiasType (stateTypeEnv state) t))
   let unConstraint t = lookupConstraint t cs
   let tenv = stateTypeEnv state
   case e of 
@@ -740,7 +741,7 @@ expr env ee cs e = do
          Just t' -> return (t', (VPNone, M.empty))
          Nothing -> do
            typeError loc $ printf
-             "expected object with field %s, received %s" p (renderType t)
+             "object does not have field %s" p
            return (TAny, (VPNone, M.empty))
    BracketRef (_, loc) e ie -> do
      (t'', _) <- expr env ee cs e
@@ -773,7 +774,7 @@ expr env ee cs e = do
                return (TAny, (VPNone, M.empty))
    OpExpr (_,p) f args_e -> do
      args <- mapM (expr env ee cs) args_e
-     operator cs p f args
+     operator env cs p f args
    Lit (StringLit (_,a) s) -> 
      return (TId "string", (VPLit (StringLit a s) (TId "string"), M.empty))
    Lit (RegexpLit _ _ _ _) -> fail "regexp NYI"
@@ -855,12 +856,12 @@ expr env ee cs e = do
          return (t, (VPNone, M.empty))
      Just _ -> catastrophe p "many types for function in the erased environment"
   
-operator :: [TypeConstraint]
+operator :: Env -> [TypeConstraint]
          -> SourcePos 
          -> FOp 
          -> [(Type, LocalControl)] 
          -> TypeCheck (Type, LocalControl)
-operator cs loc op argsvp = do
+operator env cs loc op argsvp = do
   state <- get
   let t1 <: t2 = isSubType (stateTypeEnv state) cs t1 t2
   let (args, vps) = unzip argsvp
@@ -901,7 +902,18 @@ operator cs loc op argsvp = do
     OpGT -> cmp
     OpGEq -> cmp 
     OpIn -> fail "OpIn NYI"
-    OpInstanceof -> fail "OpInstanceof NYI"
+    OpInstanceof -> do
+      let (objvp, _) = vps !! 0
+      let t=args!!1
+      case unRec t of
+        (TFunc (Just (TObject _ _ ptprops)) _ (TObject _ _ ttprops) _) -> do
+          let procvp (VPId id) = VPType (TObject True False $ nub $ 
+                                           ttprops++ptprops) id
+              procvp (VPMulti vs) = VPMulti (map procvp vs)
+          return (boolType, (procvp objvp, M.empty))
+        _ -> do
+          typeError loc "RHS of instanceof must be constructor"
+          return $ novp boolType
 
     OpEq        -> do
       return (boolType, equalityvp lvp rvp)
