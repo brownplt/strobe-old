@@ -20,9 +20,13 @@ import BrownPLT.JavaScript.Analysis.ANF
 
 import TypedJavaScript.Types
 
+--warning: unsound hack for prototypes so that the correct case
+--works. constructors keep their refined type so that functions can
+--use everything in the prototype.
 globalizeEnv :: Env -> Env
 globalizeEnv env = M.map f env
-  where f (Just (t1, _, _, vp)) = Just (t1, t1, False, vp)
+  where f (Just (_, t@(TFunc (Just _) _ _ _), _, vp)) = Just (t,t,False,vp)
+        f (Just (t1, _, _, vp)) = Just (t1, t1, False, vp)
         f Nothing = Nothing
         
 
@@ -49,6 +53,19 @@ fieldType env "length" (TApp "Array" [_]) = return intType
 fieldType env "push" (TApp "Array" [t]) = return $ 
   TFunc Nothing [TApp "Array" [t], TSequence [t] Nothing, t] 
         undefType LPNone
+--splice and concat are vararg, but ignore that for now.
+fieldType env "splice" (TApp "Array" [t]) = return $ 
+  TFunc Nothing [TApp "Array" [t], TSequence [TId "int", TId "int"] Nothing, 
+                 TId "int", TId "int"] 
+        (TApp "Array" [t]) LPNone
+fieldType env "concat" (TApp "Array" [t]) = return $ 
+  TFunc Nothing [TApp "Array" [t], TSequence [t'] Nothing, t']
+        (TApp "Array" [t]) LPNone
+    where t' = TUnion [t, TApp "Array" [t]]
+
+--shift really returns U(t, undefined)
+fieldType env "shift" (TApp "Array" [t]) = return $ 
+  TFunc Nothing [TApp "Array" [t], TSequence [] Nothing] t LPNone
   
 fieldType env f (TPrototype c) = case M.lookup c env of
   Just (Just (_, TFunc (Just (TObject _ _ protprops)) _ _ _, _, _)) ->

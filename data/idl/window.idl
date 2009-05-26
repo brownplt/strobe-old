@@ -8,8 +8,10 @@
  *   http://www.w3.org/TR/DOM-Level-2-Views/idl-definitions.html
  *
  * It is not clear what is going on, so this is made up.
+ * The Window that is really used is defined in core.tjs for now.
  */
 
 interface Window {
   attribute HTMLDocument document;
+
 }

@@ -115,7 +115,12 @@ external Array_each :: forall a. Array<a>, (a -> ) ->;
 
 external document :: HTMLDocument;
 
-external Window :: Window;
+sealed type TimeoutID :: {}; //it's really an 'int'..
+
+external window :: {
+  document :: HTMLDocument,
+  setTimeout :: ((any... -> any), int -> TimeoutID),
+};
 
 
 
@@ -204,5 +209,4 @@ type TestTuple :: {
     stat :: string,
     message :: string}};
  */
-
 

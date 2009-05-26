@@ -337,8 +337,8 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
                               (repeat (apply vt)))
       let (suppliedFormals, missingFormals) = splitAt (length actuals) formals
       when (length actuals > length formals) $ do
-        typeError p (printf "function expects %d arguments, but %d \
-                            \were supplied" (length formals)
+        typeError p (printf "function :: %s expects %d arguments, but %d \
+                            \were supplied" (renderType f) (length formals)
                             (length actuals))
       let checkArg (actual,formal) = do
             unless (actual <: formal) $ do

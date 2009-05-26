@@ -1,31 +1,40 @@
-type Pulse :: {pulse :: int};
+sealed type PulseVal :: {};
+
+type Pulse :: {stamp :: int, value :: PulseVal};
+
+type UpdaterT :: ((Pulse ->), Pulse ->);
+
+//============
 
 //the stuff 'this' has when leaving the constructor
-type EventStream_constr_enter :: {
-  ...
-};
-
 type EventStream_constr_leave :: rec EventStream_constr_leave . {
-  updater :: ((Pulse ->), Pulse ->),
+  updater :: UpdaterT,
   sendsTo :: Array<EventStream>,
   rank :: int,
-  ...
-};
-
-//the stuff in the prototype:
-type EventStream_proto :: rec EventStream_proto . {
-  constantE :: ([EventStream] int -> EventStream),
   ...
 };
 
 //the full type:
 type EventStream :: rec EventStream . {
-  updater :: ((Pulse ->), Pulse ->),
+  updater :: UpdaterT,
   sendsTo :: Array<EventStream>,
   rank :: int,
-  constantE :: ([EventStream] int -> EventStream),
+  constantE :: ([EventStream] PulseVal -> EventStream),
+  mergeE :: ([EventStream] Array<EventStream> -> EventStream),
+  sendEvent :: ( PulseVal -> )?,
   ...
 };
+
+type Behavior_constr_leave :: {last :: PulseVal,
+                               underlyingRaw :: EventStream,
+                               underlying :: EventStream, ...};
+type Behavior :: {last :: PulseVal,
+                  underlyingRaw :: EventStream,
+                  underlying :: EventStream, };
+
+//============
+type TSNodeT :: {q::Array<EventStream>,
+                 v::EventStream};
 
 external $nodes :: Array<EventStream>;
 external $updater :: ((Pulse ->), Pulse ->);
@@ -96,7 +105,7 @@ var map = function (fn) {
 	}
 };*/
 
-var map2 = function (fn, array) :: forall a b. (a->b), Array<a> -> Array<b> {
+var map1 = function (fn, array) :: forall a b. (a->b), Array<a> -> Array<b> {
   var ret :: Array<b> = [];
   for (var i=0; i < array.length; i++) {
     ret.push(fn(array[i]));
@@ -139,7 +148,7 @@ var fold = function(fn, init ) { //arrays
 	}
 };*/
 
-var fold2 = function (fn, init, array) ::
+var fold1 = function (fn, init, array) ::
       forall a b . (a, b -> b), b, Array<a> -> b {
   var acc = init;
   for (var i=0; i < array.length; i++) {
@@ -176,16 +185,43 @@ var foldR = function (fn, init ) { //arrays
 //////////////////////////////////////////////////
 // Flapjax core
 
+//Pulse: Stamp * Path * Obj
+var Pulse = function (stamp, value) :: int, PulseVal ~~> Pulse {
+  // Timestamps are used by liftB (and ifE).  Since liftB may receive multiple
+  // update signals in the same run of the evaluator, it only propagates the
+  // signal if it has a new stamp.
+  this.stamp = stamp;
+  this.value = value;
+};
+
 var lastRank = 0;
+var stamp = 1;
 
-//this is a hideous looking type. we can fix it by either automatically
-// creating a type alias, or by allowing a type alias to be explicitly
-// written.
+var nextStamp = function () :: (-> int) { return ++stamp; };
+
+//comment was incorrect; this expects not an array of nodes, but a single node!
+    //propagatePulse: Pulse * Array Node ->
+
+//Send the pulse to each node
+var propagatePulse = function (pulse, node) :: (Pulse, EventStream -> )
+{
+  //deal with PQ later.
+  /*var queue = new PQ(); //topological queue for current timestep
+
+  queue.insert({k:node.rank,n:node,v:pulse});
+  while(!(queue.isEmpty())) {
+	  var qv = queue.pop();
+	  qv.n.updater(function(nextPulse) {
+		  for(var i=0; i<qv.n.sendsTo.length;i++)
+			  queue.insert({k:qv.n.sendsTo[i].rank,n:qv.n.sendsTo[i],v:nextPulse});
+	  }, new Pulse(qv.v.stamp,qv.v.value));
+  }*/
+};
+
+
 //Event: Array Node b * ( (Pulse a -> Void) * Pulse b -> Void)
-
 var EventStream = function (nodes,updater) :: ([{...}]
-     Array<EventStream>, (({pulse::int} ->), {pulse::int} ->)
-       ~~> EventStream_constr)
+     Array<EventStream>, UpdaterT ~~> EventStream_constr_leave)
 {
     this.updater = updater;
 
@@ -202,23 +238,241 @@ var EventStream = function (nodes,updater) :: ([{...}]
 var createNode = function (nodes, updater) :: (
     Array<EventStream>, ((Pulse ->), Pulse ->) -> EventStream)
 {
+    //this function needs to see everything in the prototypes in order to
+    //return a full EventStream object
     return new EventStream(nodes, updater);
 };
 
-//mergeE takes varargs, so skip it for now.
+//maybe we should allow syntax like the following for types:
+//attachListener :: EventStream, EventStream -> undefined
+//would be neater
+
+//flow from node to dependent
+//note: does not add flow as counting for rank nor updates parent ranks
+var attachListener = function (node, dependent) :: EventStream, EventStream
+                                                -> undefined
+{
+    node.sendsTo.push(dependent);
+    if(node.rank > dependent.rank) {
+      var lowest = lastRank+1;
+      var q = [dependent];
+      while(q.length) {
+	var cur = q.splice(0,1)[0];
+	cur.rank = ++lastRank;
+	q = q.concat(cur.sendsTo);
+      }
+    }
+};
+
+//removeListener: Node * Node -> Boolean
+//remove flow from node to dependent
+//note: does not remove flow as counting for rank nor updates parent ranks
+var removeListener = function (node, dependent) :: EventStream, EventStream
+                                                -> bool
+{
+  var foundSending = false;
+  for (var i = 0; i < node.sendsTo.length && !foundSending; i++) {
+    if (node.sendsTo[i] == dependent) {
+      node.sendsTo.splice(i, 1);
+      foundSending = true;
+    }
+  }
+
+  return foundSending;
+};
+
+// An internalE is a node that simply propagates all pulses it
+// receives.  It's used internally by various combinators.
+
+var internalE = function(dependsOn) :: Array<EventStream>? -> EventStream {
+  var array :: Array<EventStream> = [];
+  if (typeof dependsOn != "undefined") array = dependsOn;
+  return createNode(array,
+                    function(send,pulse) :: UpdaterT { send(pulse); });
+}
+
+//throw gives a 'stmt unreachable' error, so comment it out fer now.
+var zeroE = function() :: -> EventStream {
+  //really gotta make empty litz work.
+  var array :: Array<EventStream> = [];
+  return createNode(array,
+                    function(send,pulse) :: UpdaterT {
+     /* throw ('zeroE : received a value; zeroE should not receive a value; the value was ' + pulse.value);*/
+  });
+};
+
+//sendEvent moved up:
+//
+//note that this creates a new timestamp and new event queue
+var sendEvent = function (node, value) :: EventStream, PulseVal -> undefined {
+  propagatePulse(new Pulse(nextStamp(), value), node);
+};
+
+
+var oneE = function(val) :: PulseVal -> EventStream {
+  var array :: Array<EventStream> = [];
+  var sent = false;
+  var evt = createNode(array,function(send,pulse) :: UpdaterT {
+    if (sent) {
+      throw ('oneE : received an extra value');
+    }
+    sent = true;
+    send(pulse);
+  });
+  window.setTimeout(function() :: (->) { sendEvent(evt,val); },0);
+  return evt;
+};
+
+//modified to take one array arg instead of varargs.
+// a.k.a. mplus; mergeE(e1,e2) == mergeE(e2,e1)
+var mergeE = function(arry) :: Array<EventStream> -> EventStream {
+  if (arry.length == 0) {
+    return zeroE();
+  }
+  else {
+    var deps = slice@[(EventStream)](arry,0);
+    return internalE(deps);
+  }
+};
+
+EventStream.prototype.sendEvent = undefined;
+EventStream.prototype.mergeE = function(arry) ::
+    [EventStream] Array<EventStream> -> EventStream {
+  var deps = slice@[(EventStream)](arry,0);
+  deps.push(this);
+  return internalE(deps);
+};
 
 EventStream.prototype.constantE = function (constantValue) ::
-    ([EventStream] int -> EventStream) {
+    ([EventStream] PulseVal -> EventStream) {
       return createNode(
         [this],
-        function(send,pulse) :: (({pulse::int} ->), {pulse::int} ->) {
-          pulse.pulse = constantValue;
+        function(send,pulse) :: UpdaterT {
+          pulse.value = constantValue;
           send(pulse);
         });
 };
 
-var constantE = function(e,v) :: EventStream, int -> EventStream {
+var constantE = function(e,v) :: EventStream, PulseVal -> EventStream {
   return e.constantE(v);
 };
 
-new EventStream($nodes, $updater);
+//is there a bug in this code? 3 arguments are given to createNode, where it
+//only takes 2.
+//what type of eventstream does this take? i think it's eventstreams of
+//eventstreams... dnno quoite how to handle that one yet.
+var createTimeSyncNode = function(nodes) :: Array<EventStream> -> EventStream {
+  var nqs = map1@[(EventStream),(TSNodeT)](
+    function(n) :: EventStream -> TSNodeT {
+      var qpulse :: Array<EventStream> = [];
+      return {q:qpulse,
+              v:createNode(
+                  [n],
+                  function(s,p) :: UpdaterT {qpulse.push($es/*p.value*/); s(p);}
+                  /*, nodes*/)};
+    }, nodes);
+
+  return createNode(
+    map1@[(TSNodeT), (EventStream)](
+      function(n) :: TSNodeT -> EventStream {return n.v;},nqs),
+    function(s,p) :: UpdaterT {
+      var allfull = fold1@[(TSNodeT),(bool)](
+        function(n,acc) :: TSNodeT, bool -> bool {
+          return (n.q.length!=0) && acc;},true,nqs);
+      if(allfull) {
+        //p.value should = res, but don't have parametrized pulses yet.
+        var res = map1@[(TSNodeT),(EventStream)](
+          function(n) :: TSNodeT -> EventStream { return n.q.shift();},nqs);
+        //p.value = 666;
+        s(p);
+      }});
+};
+
+//This is up here so we can add things to its prototype that are in
+//flapjax.combinators
+var Behavior = function (event, init, updater) :: ([{...}]
+  EventStream, PulseVal, (PulseVal -> PulseVal)?
+    ~~> Behavior_constr_leave)
+{
+  this.last = init;
+  var behave = this;
+
+  //sendEvent to this might impact other nodes that depend on this event
+  //sendBehavior defaults to this one
+  this.underlyingRaw = event;
+
+  //unexposed, sendEvent to this will only impact dependents of this behaviour
+
+  //***: this is a pain. we do a refinement, but it is only visible in the
+  //outer scope, not in the closure, so we can't just call updater
+  //there...
+
+  //it's overly safe. knowing that updater isn't re-assigned here lets
+  //us know that updater will never be modified once this function
+  //leaves. ah well.
+
+  /*this.underlying = createNode(
+    [event],
+    ((typeof updater != "undefined") ?
+     function (s, p) :: UpdaterT {
+       behave.last = updater(p.value);
+       p.value = behave.last;
+       s(p);} :
+     function (s, p) :: UpdaterT {
+       behave.last = p.value;
+       s(p);}));*/
+  this.underlying = createNode(
+    [event],
+    function (s, p) :: UpdaterT {
+      if (typeof updater != "undefined")
+      {
+        behave.last = updater(p.value);
+        p.value = behave.last;
+      }
+      else
+        behave.last = p.value;
+      s(p);
+    });
+};
+//Behavior.prototype = new Object();
+
+//***: how to deal w/ this? event stream doesn't have sendEvent up till now...
+//and we can't refine this crap either.
+//shrug shrug.
+var receiverE = function() :: (-> EventStream) {
+  var evt = internalE();
+  /*evt.sendEvent = function(value) :: PulseVal -> undefined {
+    propagatePulse(new Pulse(nextStamp(), value),evt);
+  };*/
+  return evt;
+};
+
+// bindE :: EventStream a * (a -> EventStream b) -> EventStream b
+EventStream.prototype.bindE = function(k) ::
+  ([EventStream] (PulseVal -> EventStream) -> EventStream ) {
+  /* m.sendsTo resultE
+   * resultE.sendsTo prevE
+   * prevE.sendsTo returnE
+   */
+  var m = this;
+  var prevE :: EventStream? = undefined;
+
+  var array :: Array<EventStream> = [];
+  var outE = createNode(array,
+                        function(send,pulse) :: UpdaterT { send(pulse); });
+  //outE.name = "bind outE"; //unimportant
+
+  //***: following function doesn't work cause we can't assign to a 'global'
+  //union... =/. we need some way to treat closure variables differently.
+  var inE = createNode([m], function (send,pulse) :: UpdaterT {
+    var local_prevE = prevE;
+    if (typeof local_prevE != "undefined") {
+      removeListener(prevE,outE);
+    }
+    local_prevE = k(pulse.value);
+    attachListener(local_prevE,outE);
+  });
+  //inE.name = "bind inE";
+
+  return outE;
+};

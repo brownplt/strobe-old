@@ -305,7 +305,10 @@ st env rel (t1, t2)
     (_, TAny) -> return (S.insert (t1, t2) rel)
     (TId x, TId y) 
       | x == y   -> return rel
-      | otherwise -> fail $ printf "%s is not a subtype of %s" x y
+{-      | otherwise -> --fail $ printf "%s is not a subtype of %s" x y
+      --temporary hack: if the TId is in the env, then look it up -}
+         
+          
     (TApp c1 args1, TApp c2 args2) -> do
       assert (length args1 == length args2)
       assert (c1 == c2)
@@ -396,6 +399,15 @@ st env rel (t1, t2)
       foldM (\rel t1 -> st env rel (t1, t2)) rel ts1 -- all
     (t1, TUnion ts2) -> do
       anyM (\rel t2 -> st env rel (t1, t2)) rel ts2
+
+    --temporary hack: if the TId is in the env, then look it up -}
+    (TId x, _) -> case M.lookup x env of
+      Just t1' -> st env rel (t1', t2)
+      Nothing -> Nothing
+    (_, TId y) -> case M.lookup y env of
+      Just t2' -> st env rel (t1, t2')
+      Nothing -> Nothing
+
     otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
 
 
@@ -426,6 +438,7 @@ unionThisType (TObject s o p1) (TObject _ _ p2) = TObject s o $
       return $ unionType a b) 
       (M.fromList (map (\(a,b) -> (a, Just b)) p1))
       (M.fromList (map (\(a,b) -> (a, Just b)) p2)))
+unionThisType a b = unionType a b --if we're not in a constructor
 
 vpToEnv :: VP -> Map Id Type
 vpToEnv (VPType t id) = M.singleton id t
