@@ -1,0 +1,224 @@
+type Pulse :: {pulse :: int};
+
+//the stuff 'this' has when leaving the constructor
+type EventStream_constr_enter :: {
+  ...
+};
+
+type EventStream_constr_leave :: rec EventStream_constr_leave . {
+  updater :: ((Pulse ->), Pulse ->),
+  sendsTo :: Array<EventStream>,
+  rank :: int,
+  ...
+};
+
+//the stuff in the prototype:
+type EventStream_proto :: rec EventStream_proto . {
+  constantE :: ([EventStream] int -> EventStream),
+  ...
+};
+
+//the full type:
+type EventStream :: rec EventStream . {
+  updater :: ((Pulse ->), Pulse ->),
+  sendsTo :: Array<EventStream>,
+  rank :: int,
+  constantE :: ([EventStream] int -> EventStream),
+  ...
+};
+
+external $nodes :: Array<EventStream>;
+external $updater :: ((Pulse ->), Pulse ->);
+external $es :: EventStream;
+
+//slice: Array a * Integer * Integer -> Array a
+var slice = function (arr, start, stop) ::
+  forall a. Array<a>, int, int? -> Array<a> {
+	var len = arr.length, r :: Array<a> = [];
+	if( typeof stop == "undefined" ) { stop = len; }
+	if( stop < 0 ) { stop = len + stop; }
+	if( start < 0 ) { start = len - start; }
+	if( stop < start ) { i = start; start = stop; stop = i; }
+	for( var i = 0; i < stop - start; i++ ) { r[i] = arr[start+i]; }
+	return r;
+}
+
+var isEqual = function (a,b) :: forall a b . a, b -> bool {
+	return (a == b) ||
+		( (((typeof(a) == 'number') && isNaN(a)) || a == 'NaN') &&
+		  (((typeof(b) == 'number') && isNaN(b)) || b == 'NaN') );
+};
+
+var forEach = function(fn,arr) :: forall a . (a -> any), Array<a> -> undefined {
+  for (var i = 0 ; i < arr.length; i++) {
+    fn(arr[i]);
+  }
+};
+
+//member: a * Array b -> Boolean
+var member = function(elt, lst) :: forall a b . a, Array<b> -> bool {
+	for (var i = 0; i < lst.length; i++) {
+		if (isEqual@[(b),(a)](lst[i], elt)) {return true;}
+	}
+	return false;
+};
+
+/*var zip = function(arrays) {
+	if (arrays.length == 0) return [];
+	var ret = [];
+	for(var i=0; i<arrays[0].length;i++) {
+		ret.push([]);
+		for(var j=0; j<arrays.length;j++)
+			ret[i].push(arrays[j][i]);
+	}
+	return ret;
+}*/
+
+//TODO once we have sequences:
+/*var zip2 = function(array1,array2) ::
+  forall a b. Array<a>, Array<b> -> Array<@[a,b]> {
+};*/
+
+/*//map: (a * ... -> z) * [a] * ... -> [z]
+var map = function (fn) {
+	var arrays = slice(arguments, 1);
+	if (arrays.length === 0) { return []; }
+	else if (arrays.length === 1) {
+		var ret = [];
+		for(var i=0; i<arrays[0].length; i++) {ret.push(fn(arrays[0][i]));}
+		return ret;
+	}
+	else {
+		var ret = zip(arrays);
+		var o = new Object();
+		for(var i=0; i<ret.length; i++) {ret[i] = fn.apply(o,ret[i]);}
+		return ret;
+	}
+};*/
+
+var map2 = function (fn, array) :: forall a b. (a->b), Array<a> -> Array<b> {
+  var ret :: Array<b> = [];
+  for (var i=0; i < array.length; i++) {
+    ret.push(fn(array[i]));
+  }
+  return ret;
+};
+
+
+//filter: (a -> Boolean) * Array a -> Array a
+var filter = function (predFn, arr) ::
+      forall a . (a->bool), Array<a> -> Array<a> {
+	var res :: Array<a> = [];
+	for (var i = 0; i < arr.length; i++) {
+		if (predFn(arr[i])) { res.push(arr[i]); }
+	}
+	return res;
+};
+/*
+//fold: (a * .... * accum -> accum) * accum * [a] * ... -> accum
+//fold over list(s), left to right
+var fold = function(fn, init ) { //arrays
+	var lists = slice(arguments, 2);
+	if (lists.length === 0) { return init; }
+	else if(lists.length === 1) {
+		var acc = init;
+		for(var i = 0; i < lists[0].length; i++) {
+			acc = fn(lists[0][i],acc);
+		}
+		return acc;
+	}
+	else {
+		var acc = init;
+		for (var i = 0; i < lists[0].length; i++) {
+			var args = map( function (lst) { return lst[i];},
+	          lists);
+			args.push(acc);
+			acc = fn.apply({}, args);
+		}
+		return acc;
+	}
+};*/
+
+var fold2 = function (fn, init, array) ::
+      forall a b . (a, b -> b), b, Array<a> -> b {
+  var acc = init;
+  for (var i=0; i < array.length; i++) {
+    acc = fn(array[i], acc);
+  }
+  return acc;
+};
+
+/* //not used anywhere, so ill type check it later.
+//foldR: (a * .... * accum -> accum) * accum * [a] * ... -> accum
+//fold over list(s), right to left, fold more memory efficient (left to right)
+var foldR = function (fn, init ) { //arrays
+  var lists = slice(arguments, 2);
+	if (lists.length === 0) { return init; }
+	else if(lists.length === 1) {
+		var acc = init;
+		for(var i=lists[0].length - 1; i > -1; i--)
+			acc = fn(lists[0][i],acc);
+		return acc;
+	}
+	else {
+		var acc = init;
+		for (var i = lists[0].length - 1; i > -1; i--) {
+			var args = map( function (lst) { return lst[i];},
+	          lists);
+			args.push(acc);
+			acc = fn.apply({}, args);
+		}
+		return acc;
+	}
+};
+*/
+
+//////////////////////////////////////////////////
+// Flapjax core
+
+var lastRank = 0;
+
+//this is a hideous looking type. we can fix it by either automatically
+// creating a type alias, or by allowing a type alias to be explicitly
+// written.
+//Event: Array Node b * ( (Pulse a -> Void) * Pulse b -> Void)
+
+var EventStream = function (nodes,updater) :: ([{...}]
+     Array<EventStream>, (({pulse::int} ->), {pulse::int} ->)
+       ~~> EventStream_constr)
+{
+    this.updater = updater;
+
+    this.sendsTo = [nodes[0]]; //forward link. need empty array lit because
+      //empty array lits are not implemented yet.
+
+    this.rank = ++lastRank;
+/*
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].sendsTo.push(this);
+    }*/
+};
+
+var createNode = function (nodes, updater) :: (
+    Array<EventStream>, ((Pulse ->), Pulse ->) -> EventStream)
+{
+    return new EventStream(nodes, updater);
+};
+
+//mergeE takes varargs, so skip it for now.
+
+EventStream.prototype.constantE = function (constantValue) ::
+    ([EventStream] int -> EventStream) {
+      return createNode(
+        [this],
+        function(send,pulse) :: (({pulse::int} ->), {pulse::int} ->) {
+          pulse.pulse = constantValue;
+          send(pulse);
+        });
+};
+
+var constantE = function(e,v) :: EventStream, int -> EventStream {
+  return e.constantE(v);
+};
+
+new EventStream($nodes, $updater);

@@ -125,7 +125,7 @@ getTestPaths = do
 main = do
   testPaths <- getTestPaths
   domTypeEnv <- makeInitialEnv
-  (venv, tenv) <- loadCoreEnv domTypeEnv
+  (venv, tenv) <- loadCoreEnv M.empty domTypeEnv []
   let isSubTypeOf = isSubType tenv []
   testCases <- mapM (readTestFile venv (M.union domTypeEnv tenv) isSubTypeOf) 
                     testPaths

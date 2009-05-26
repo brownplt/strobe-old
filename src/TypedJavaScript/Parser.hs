@@ -943,41 +943,48 @@ parseToplevel = externalStmt <|> typeStmt
 
 parseToplevels = do
   whiteSpace
-  res <- parseToplevel `sepBy` whiteSpace
-  eof
-  return res
+  parseToplevel `sepBy` whiteSpace
 
 parseListExpr =
   liftM2 ListExpr getPosition (parseAssignExpr `sepBy1` comma)
 
 --}}}
 
-parseScript:: CharParser state (JavaScript SourcePos)
+parseScript:: CharParser state ([ToplevelStatement SourcePos], 
+                                 JavaScript SourcePos)
 parseScript = do
   whiteSpace
-  liftM2 Script getPosition (parseStatement `sepBy` whiteSpace)
-  
-parseJavaScriptFromFile :: MonadIO m => String -> m [Statement SourcePos]
+  toplevels <- parseToplevels
+  script <- liftM2 Script getPosition (parseStatement `sepBy` whiteSpace)
+  return (toplevels, script)
+
+parseJavaScriptFromFile :: MonadIO m => String 
+                        -> m ([ToplevelStatement SourcePos], 
+                              [Statement SourcePos])
 parseJavaScriptFromFile filename = do
   chars <- liftIO $ readFile filename
   case parse parseScript filename chars of
     Left err               -> fail (show err)
-    Right (Script _ stmts) -> return stmts
+    Right (toplevs, (Script _ stmts)) -> return (toplevs, stmts)
 
 
-parseScriptFromString:: String -> String -> Either ParseError (JavaScript SourcePos)
+parseScriptFromString :: String -> String 
+                      -> Either ParseError ([ToplevelStatement SourcePos],
+                                            JavaScript SourcePos)
 parseScriptFromString src script = parse parseScript src script
 
 emptyParsedJavaScript = 
   Script (error "Parser.emptyParsedJavaScript--no annotation") []
 
-parseTypedJavaScript :: String -> String -> [Statement SourcePos]
+--parse a series of toplevels, then parse a script
+parseTypedJavaScript :: String -> String -> ([ToplevelStatement SourcePos],
+                                             [Statement SourcePos])
 parseTypedJavaScript src str = case parse parseScript src str of
-  Left err -> error (show err)
-  Right (Script _ stmts) -> stmts
+    Left err -> error (show err )
+    Right (toplevels, (Script _ stmts)) -> (toplevels, stmts)
 
-parseString :: String -> [Statement SourcePos]
+parseString :: String -> ([ToplevelStatement SourcePos],[Statement SourcePos])
 parseString str = case parse parseScript "" str of
   Left err -> error (show err)
-  Right (Script _ stmts) -> stmts
+  Right (toplevels, (Script _ stmts)) -> (toplevels, stmts)
 

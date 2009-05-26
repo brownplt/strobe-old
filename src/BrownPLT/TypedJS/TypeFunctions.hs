@@ -40,14 +40,16 @@ freeTypeVariables t = fv t where
   fv (TUnion ts) = M.unions (map fv ts)
   fv (TForall ids _ t) = M.union (M.fromList (zip ids (repeat KindStar)))
                                  (fv t)
-
-
 fieldType :: Env -> Id -> Type -> Maybe Type
 fieldType env id (TObject _ _ ts) = lookup id ts
 fieldType env id (TUnion ts) = do
   types <- mapM (fieldType env id) ts
   return (flattenUnion (TUnion types))
 fieldType env "length" (TApp "Array" [_]) = return intType
+fieldType env "push" (TApp "Array" [t]) = return $ 
+  TFunc Nothing [TApp "Array" [t], TSequence [t] Nothing, t] 
+        undefType LPNone
+  
 fieldType env f (TPrototype c) = case M.lookup c env of
   Just (Just (_, TFunc (Just (TObject _ _ protprops)) _ _ _, _, _)) ->
     lookup f protprops 

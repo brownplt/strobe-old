@@ -149,10 +149,13 @@ unaliasType kinds types type_ = case type_ of
           vararg' = case vararg of
             Nothing -> Nothing
             Just t -> Just (unaliasType kinds types t)
-  TFunc isConstr args ret lp -> 
-   TFunc isConstr args' ret' lp
+  TFunc ptype args ret lp -> 
+   TFunc ptype' args' ret' lp
     where args' = map (unaliasType kinds types) args
           ret' = unaliasType kinds types ret
+          ptype' = case ptype of
+                     Nothing -> Nothing
+                     Just t  -> Just $ unaliasType kinds types t
   TApp s ts -> TApp s (map (unaliasType kinds types) ts)
   TUnion ts -> TUnion (map (unaliasType kinds types) ts)
   TForall vs cs t -> TForall vs cs t' -- TODO: recur into cs?
@@ -165,7 +168,6 @@ unaliasTypeEnv :: KindEnv
                -> Map String Type
 unaliasTypeEnv kinds aliasedTypes = types
   where explicitRec v t = unaliasType kinds aliasedTypes t
-          
         types = M.mapWithKey explicitRec aliasedTypes
 
 type LocalControl = (VP, Map String Type)

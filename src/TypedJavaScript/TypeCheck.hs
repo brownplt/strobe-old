@@ -1048,45 +1048,60 @@ checkDeclaredKinds kinds ee = do
   mapM_ checkAt (M.toList ee)
   
 
+-- process top level statements, making a varenv and typeenv out of them
+procToplevels' :: [TJS.ToplevelStatement SourcePos] 
+               -> (Map String (Type, LocalControl), Map String Type)
+               -> (Map String (Type, LocalControl), Map String Type)
+procToplevels' [] results = results
+procToplevels' ((TJS.ExternalStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = 
+  procToplevels' rest (M.insertWithKey 
+                        (\k n o -> error $ "already in venv: " ++ show k)
+                        s (t, (VPId s, M.empty)) venv, tenv)
+procToplevels' ((TJS.TypeStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = 
+  procToplevels' rest (venv, M.insertWithKey
+                              (\k n o -> error $ "already in tenv: " ++ show k)
+                              s t tenv)
 
-loadCoreEnv :: Map String Type
-            -> IO (Env, Map String Type)
-loadCoreEnv env = do
+procToplevels :: Env -> Map String Type
+              -> [TJS.ToplevelStatement SourcePos]
+              -> IO (Env, Map String Type)
+procToplevels venv tenv toplevels = do
+  let (venv', tenv') = procToplevels' toplevels (M.empty, tenv)
   let kinds = basicKinds
+  case checkTypeEnv kinds tenv' of
+    Left s -> fail s
+    Right () -> do
+      let unaliasedTypes = unaliasTypeEnv kinds tenv'
+      let unalias (t, vp) = Just (res, res, False, vp)
+            where res = unaliasType kinds unaliasedTypes t                
+
+      return (M.unionWithKey (\k n o -> error $ "already in venv: " ++ show k)
+                             venv (M.map unalias venv'),
+              unaliasedTypes)
+
+--adds the core environment to the existing environment
+loadCoreEnv :: Env -> Map String Type -> [TJS.ToplevelStatement SourcePos]
+            -> IO (Env, Map String Type)
+loadCoreEnv venv tenv givenTLs = do
   -- load the global environment from "core.js"
   dir <- getDataDir
   toplevels' <- parseFromFile (parseToplevels) (dir </> "core.tjs")
   toplevels <- case toplevels' of
     Left err -> fail $ "PARSE ERROR ON CORE.TJS: " ++ show err
     Right tls -> return tls
-
-  let procTLs [] results = return results
-      procTLs ((TJS.ExternalStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
-        procTLs rest (M.insertWithKey 
-                        (\k n o -> error $ "already in venv: " ++ show k)
-                        s (Just (t, (VPId s, M.empty))) venv, tenv)
-      procTLs ((TJS.TypeStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = do
-        procTLs rest (venv, M.insertWithKey
-                              (\k n o -> error $ "already in tenv: " ++ show k)
-                              s t tenv)
-  (env, types) <- procTLs toplevels (M.empty, env)
-
-  case checkTypeEnv kinds types of
-    Left s -> fail s
-    Right () -> do
-      let unaliasedTypes = unaliasTypeEnv kinds types
-      let unalias Nothing = Nothing -- strange
-          unalias (Just (t, vp)) = Just (res, res, False, vp)
-            where res = unaliasType kinds unaliasedTypes t                
-
-      return (M.map unalias env, unaliasedTypes)
+  (venv', tenv') <- procToplevels venv tenv (toplevels++givenTLs)
+  --total hack: do this next part again to make aliasing work properly =DD.
+  (venv'', tenv'') <- procToplevels venv' tenv' []
+  return (venv'', tenv'')
+  --procToplevels venv'' tenv'' []
 
 -- |Type-check a Typed JavaScript program.  
-typeCheck :: [TJS.Statement SourcePos] -> IO Env
-typeCheck prog = do
+typeCheck :: [TJS.ToplevelStatement SourcePos]
+          -> [TJS.Statement SourcePos] -> IO Env
+typeCheck toplevels prog = do
   domTypeEnv <- makeInitialEnv
-  (venv, tenv) <- loadCoreEnv domTypeEnv 
-  typeCheckWithGlobals venv (M.union domTypeEnv tenv) prog
+  (venv, tenv) <- loadCoreEnv M.empty domTypeEnv toplevels
+  typeCheckWithGlobals venv tenv prog
 
 
 formatError (p, s) = showSp p ++ ": " ++ s

@@ -68,19 +68,20 @@ getInput files = do
   hPutStrLn stderr "multiple input files are not yet supported"
   exitFailure
 
-data Action = RequireInput ([Statement SourcePos] -> IO ())
+data Action = RequireInput (([ToplevelStatement SourcePos], 
+                             [Statement SourcePos]) -> IO ())
             | NoInput (IO ())
 
 getAction (ANF:args) = return (RequireInput action, args) where
-  action prog = do
+  action (_, prog) = do
     let (topDecls, anfProg) = jsToCore (simplify (eraseTypes prog))
     putStrLn (prettyANF anfProg)
 getAction (TypeCheck:args) = return (RequireInput action, args) where
-  action prog = do
-    typeCheck prog
+  action (toplevels, prog) = do
+    typeCheck toplevels prog
     putStrLn "Type-checking successful."
 getAction (Graphs:args) = return (RequireInput action, args) where
-  action prog = do
+  action (_, prog) = do
     let anf = jsToCore (simplify (eraseTypes prog))
     let (clusterFn,gr) = clusteredIntraproceduralGraphs anf
     let clusterAttrFn :: Int -> [GV.Attribute] -- avoid ambiguity
@@ -93,16 +94,16 @@ getAction (Graphs:args) = return (RequireInput action, args) where
                 (\(n,s) -> [GV.Label (show s)]) -- node atributes
                 edgeFn -- edge attributes
     hPutStrLn stdout (show dot)
-getAction ((PrintType name):args) = return (NoInput action, args) where
-  action = do
+getAction ((PrintType name):args) = return (RequireInput action, args) where
+  action (toplevs, prog) = do
     domTypeEnv <- makeInitialEnv
-    (venv, tenv) <- loadCoreEnv domTypeEnv 
+    (venv, tenv) <- loadCoreEnv M.empty domTypeEnv toplevs
     case M.lookup name tenv of
       Just t -> putStrLn (renderType t)
       Nothing -> fail $ printf "%s is not a type name" name
 getAction args = return (RequireInput action, args) where
-  action prog = do
-    typeCheck prog
+  action (toplevels, prog) = do
+    typeCheck toplevels prog
     putStrLn "Type-checking successful."
 
 main = do

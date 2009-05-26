@@ -94,8 +94,9 @@ type Date :: rec self . {getDay :: ([self] -> int),
                          getDate :: ([self] -> int),
                          setTime :: ([self] int -> int)
                         };
-//temporary date-maker, until we have 'new':
-external _MakeDate :: (-> Date);
+
+external isNaN :: double -> bool;
+
 
 external decodeURI :: (string -> string);
 
@@ -119,75 +120,6 @@ external Window :: Window;
 
 
 
-//stuff from flapjax, temporarily added here to make testfest work
-type FlapjaxElement :: {};
-external makeFJE :: (-> FlapjaxElement); //total hax
-
-//change the following once we have *dicts* and *varargs*
-/*external A :: ({className :: string, href :: string}, HTMLElement ->
-               FlapjaxElement);*/
-external A :: (U(HTMLElement, string)... ->
-               FlapjaxElement);
-//the real return types of these are more specific (namely, HTMLDivElement)
-//but <- doesn't work yet, and i don't wanna copy + paste stuff.
-external DIV0 :: ( -> HTMLElement);
-external DIV :: (U(HTMLElement, string) -> //should be varargs
-                 HTMLElement);
-external DIV2 :: (U(HTMLElement, string),U(HTMLElement, string) ->
-                 HTMLElement);
-external DIV3 :: (U(HTMLElement, string),U(HTMLElement, string),
-                  U(HTMLElement, string) ->
-                 HTMLElement);
-external PRE :: (U(HTMLElement, string) -> HTMLElement);
-
-external TEXTAREA :: (U(HTMLElement, string) -> HTMLElement);
-
-type Pulse :: {stamp :: int, value :: {}}; //value should be parametrized
-type SendT :: (Pulse -> );
-type UpdaterT :: (SendT, Pulse -> );
-
-type Behavior :: {}; //fill in later
-
-external map :: forall a b. ((a -> b), Array<a> -> Array<b>);
-
-//external internal_e :: (Array<EventStream>? -> EventStream);
-
-type EventStream :: rec self . {updater :: UpdaterT,
-                     sendsTo :: Array<self>,
-                     rank :: int,
-                     lift_e :: (forall a b . ((a -> b) -> self)),
-                     constant_e :: (any -> self),
-                     sendEvent :: ([self] {} ->), //{} here should be 'value'
-                                //not sure if sendEvent is in all eventstrems...
-                     filter_e :: (forall a. ((a -> bool) -> self)),
-                     startsWith :: (forall a. a -> Behavior),
-                     once_e :: ( -> self )
-                     };
-//real definition:
-/*type EventStream<a> :: rec self . {updater :: UpdaterT,
-                     sendsTo :: Array<self<a>>,
-                     rank :: int,
-                     lift_e :: (forall b . ((a -> b) -> self<b>)),
-                     constant_e :: (forall b. b -> self<b>),
-                                //not sure if sendEvent is in all eventstrems...
-                     filter_e :: ((a -> bool) -> self<a>),
-                     startsWith :: (a -> Behavior<a>) //docs are wrong?
-                     };*/
-
-external createNode :: (Array<EventStream>, UpdaterT -> EventStream);
-external receiver_e :: (-> EventStream);
-external merge_e :: (Array<EventStream> -> EventStream);
-//real type: (EventStream ... -> EventStream)
-
-external extractEvent_e :: (Behavior, string -> EventStream);
-
-external insertDomE :: (EventStream, U(string, HTMLElement), string? ->
-                        EventStream); //bug in api docs: return type not given
-external insertDomB :: (Behavior, U(HTMLElement, string), string? -> );
-
-external one_e :: any -> EventStream;
-//real type:
-//external one_e :: forall a. a -> EventStream<a>;
 
 //AJAX
 
@@ -272,3 +204,5 @@ type TestTuple :: {
     stat :: string,
     message :: string}};
  */
+
+

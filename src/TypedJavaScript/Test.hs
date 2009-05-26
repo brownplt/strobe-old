@@ -45,7 +45,7 @@ parse src str = case parseScriptFromString src str of
   Left err | isPrettyPrintError err -> 
                (unsafePerformIO $ putStrLn str) `seq` error (show err)
            | otherwise -> error (show err)
-  Right (Script _ stmts) -> stmts
+  Right (_, (Script _ stmts)) -> stmts
 
 isJsFile :: String -> Bool
 isJsFile = (== ".js") . takeExtension 
