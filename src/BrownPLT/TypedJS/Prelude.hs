@@ -20,7 +20,7 @@ module BrownPLT.TypedJS.Prelude
   , noPos
   , everythingBut
   , catastrophe
-  , isLeft, isRight
+  , isLeft, isRight, procEither
   ) where
 
 import Data.Tree
@@ -80,3 +80,7 @@ isLeft _ = False
 isRight :: Either a b -> Bool
 isRight (Right _) = True
 isRight _ = False
+
+procEither :: (a -> b) -> Either a a -> Either b b
+procEither f (Left t) = Left (f t)
+procEither f (Right t) = Right (f t)

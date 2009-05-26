@@ -151,6 +151,22 @@ function () :: (-> int) {
   return p.mag;
 } :: (-> int);
 
+//we'll want to support one plain assignment to .prototype, most likely.
+function () :: (-> int) {
+  function Point(x,y) :: [{summed :: ([{x::int, y::int}] -> int), ...}] int, int
+                      ~~> {x::int, y::int,mag::int,...} {
+    this.x = x;
+    this.y = y;
+    this.mag = this.summed();
+  }
+  Point.prototype = {};
+  Point.prototype.summed = function () :: [{x::int, y::int}] -> int {
+    return this.x + this.y;
+  };
+  var p = new Point(10, 12);
+  return p.mag;
+} :: (-> int);
+
 //we can't create an object until we assign summed, though:
 function () :: (-> int) {
   function Point(x,y) :: [{summed :: ([{x::int, y::int}] -> int), ...}] int, int
@@ -198,3 +214,87 @@ function () :: (-> {x::int,y::int,summed::(->string)}) {
   return p;
 } @@ fails;
 
+
+//===========================
+//stuff from flapjax
+
+function () :: (-> ) {
+  var lastRank = 0;
+
+  //this is a hideous looking type. we can fix it by either automatically
+  // creating a type alias, or by allowing a type alias to be explicitly
+  // written.
+  //Event: Array Node b * ( (Pulse a -> Void) * Pulse b -> Void)
+  var EventStream = function (nodes,updater) :: ([{...}]
+     Array<(rec self . {
+            updater::(({pulse::int} ->), {pulse::int} ->),
+            sendsTo::Array<self>,
+            rank::int, ...})>,
+     (({pulse::int} ->), {pulse::int} ->)
+       ~~> rec self . {
+            updater::(({pulse::int} ->), {pulse::int} ->),
+            sendsTo::Array<self>,
+            rank::int, ...})
+  {
+    this.updater = updater;
+
+    this.sendsTo = [nodes[0]]; //forward link. need empty array lit because
+      //empty array lits are not implemented yet.
+
+    this.rank = ++lastRank;
+
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].sendsTo[0] = this; //.push(this); //push TBI
+    }
+  };
+
+  var createNode = function (nodes, updater) :: (
+    Array<(rec self . {
+            updater::(({pulse::int} ->), {pulse::int} ->),
+            sendsTo::Array<self>,
+            rank::int, ...})>,
+     (({pulse::int} ->), {pulse::int} ->)
+       -> rec self . {
+            updater::(({pulse::int} ->), {pulse::int} ->),
+            sendsTo::Array<self>,
+            rank::int, ...})
+  {
+    return new EventStream(nodes, updater);
+  };
+
+  //mergeE takes varargs, so skip it for now.
+  EventStream.prototype.constantE = function (constantValue) ::
+    ([rec self . {
+            updater::(({pulse::int} ->), {pulse::int} ->),
+            sendsTo::Array<self>,
+            rank::int, ...}]
+     int -> rec self . {
+            updater::(({pulse::int} ->), {pulse::int} ->),
+            sendsTo::Array<self>,
+            rank::int, ...}) { //all the pulse things should be a's, not int.
+      return createNode(
+        [this],
+        function(send,pulse) :: (({pulse::int} ->), {pulse::int} ->) {
+          pulse.pulse = constantValue;
+          send(pulse);
+        });
+  };
+  var constantE = function(e,v) ::
+    //parsing fail causes this to really mess up. if you don't have parens
+    //around the rec selfs, you get a really incomprehensible error. we have to
+    //work on that maybe.
+    ((rec self . {
+            updater::(({pulse::int} ->), {pulse::int} ->),
+            sendsTo::Array<self>,
+            rank::int,
+            constantE :: ([self] int -> self),...}),
+     int
+     -> (rec self2 . {
+            updater::(({pulse::int} ->), {pulse::int} ->),
+            sendsTo::Array<self2>,
+            rank::int,
+            constantE :: ([self2] int -> self2),...}))
+     { return e.constantE(v); };
+
+  //little use-case will come later. these types are too painful to type in.
+} @@ succeeds;

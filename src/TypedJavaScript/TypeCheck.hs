@@ -372,7 +372,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
       -- For call statements, we must ensure that the result type is
       -- a subtype of the named result.
       -- this works for constructors, too.
-      env' <- case er of
+      env' <- case (procEither unRec er) of
                 Left r   -> doAssignment (<:) p env r_v r (VPNone, M.empty)
                 Right tt@(TObject _ _ ttprops) -> do
                   let (Just (TObject _ _ ptprops)) = ptype
@@ -382,8 +382,9 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
                   --prototype.
                   let ttype = TObject True False $ nub $ ttprops++ptprops
                   doAssignment (<:) p env r_v ttype (VPNone, M.empty)
-                Right _ -> do
-                  typeError p "'this' is not an object in the constructor!"
+                Right tt -> do
+                  typeError p $ printf "'this' is not an object in the \
+                    \constructor, but %s" (renderType tt)
                   return env
       return env'
 
@@ -478,9 +479,12 @@ stmt env ee cs erettype node s = do
          
          case unRec tAct of
           TPrototype constrid -> do
+           --TODO: use deconstrfntype here instead of this stuff.
            let (Just (Just (tDec,(TFunc (Just (TObject hs io protprops)) 
-                                        cargs ctt@(TObject _ _ cttprops) lp),
+                                        cargs ctt' lp),
                             loc,vp))) = M.lookup constrid env
+           ctt <- return $ unRec ctt'
+           let (TObject _ _ cttprops) = ctt
            case lookup prop protprops of
              Nothing -> do
                let env' = M.insert constrid 
@@ -508,13 +512,13 @@ stmt env ee cs erettype node s = do
            case lookup prop props of
             Nothing -> case isThis of
               False -> typeError p "extending non-this object NYI" >> noop
-              True  -> case erettype of
+              True  -> case (procEither unRec erettype) of
                 Left t -> typeError p "can't extend 'this' in non-constructor">>
                             noop
                 Right t@(TObject _ _ tprops) -> case lookup prop tprops of
                   Nothing -> (typeError p $ printf
                                "can't add %s to this :: %s; field is not in the\
-                               \ final this type"
+                               \ given constructed this type"
                                prop (renderType t)) >> noop
                   Just t'
                     | t_rhs <: t' -> do
@@ -526,10 +530,12 @@ stmt env ee cs erettype node s = do
                         return $ zip (map fst succs) (repeat env')
                     | otherwise -> do
                         typeError p $ printf
-                          "property %s has type %s in final this, but got %s" 
+                          "property %s has type %s in constructed this, \
+                          \but got %s" 
                           prop (renderType t') (renderType t_rhs)
                         noop
-                Right _ -> catastrophe p "'this' is not an object!"
+                Right t -> catastrophe p (printf 
+                             "'this' is not an object, but %s" (renderType t))
                 
             Just t' | isUnion t' -> do
                         typeError p $ 
@@ -546,6 +552,13 @@ stmt env ee cs erettype node s = do
                           "property %s has type %s, received %s" prop
                           (renderType t') (renderType t_rhs)
                         noop
+          TFunc (Just pt) _ _ _ 
+            | prop == "prototype" -> do
+                typeError p $ "assigning entire object to .prototype NYI"
+                noop
+            | otherwise -> do
+                typeError p $ "expected object, received a constructor"
+                noop
           t' -> do
             typeError p $ printf "expected object, received %s" 
               (renderType t')
@@ -572,7 +585,8 @@ stmt env ee cs erettype node s = do
           | otherwise -> do
               if (not $ t_prop <: intType)
                 then typeError p "array index not an integer"
-                else typeError p "array rhs wrong"
+                else typeError p $ printf "array rhs wrong. expected %s, got %s"
+                  (renderType t_elem) (renderType t_rhs)
               noop
         (Just (Just (_, TApp "Array" [t_elem], _, _)), Just Nothing) -> do
           typeError p (printf "index variable %s is undefined" method)
@@ -776,7 +790,7 @@ expr env ee cs e = do
      case ts of
        [] -> do
          typeError p "empty array needs a type"
-         fatalTypeError "fatal type error"
+         return $ (TAny, (VPNone, M.empty))
        (t:ts) -> do 
          let tRes = TApp "Array" [foldr unionType t ts]
          return $ (tRes, (VPNone, M.empty))
