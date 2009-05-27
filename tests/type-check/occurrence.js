@@ -1,3 +1,4 @@
+
 function (x) :: (U(int, bool) -> bool) {
   //the typed scheme paper example
   return (typeof x == "number" ? (x<<3)==8 : !x);
@@ -13,6 +14,7 @@ function (x) :: (U(int, bool, string) -> bool) {
 } @@ fails;
 
 function (x) :: U(string, bool) -> string { return x; } @@ fails;
+
 function (x) :: U(string, bool) -> string {
   if (true) return x;
   return "h";

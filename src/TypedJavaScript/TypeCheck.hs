@@ -624,7 +624,7 @@ stmt env ee cs erettype node s = do
           occurit (node, Just (BoolLit _ True)) = (node, gammaPlus env vp)
           occurit (node, Just (BoolLit _ False)) = (node, gammaMinus env vp)
           occurit _ = error "Ifstmt's branches are wack"
-      return $ map occurit succs
+      return [] -- return $ map occurit succs
 
     WhileStmt _ e s -> do
       expr env ee cs e -- this permits non-boolean tests
@@ -665,12 +665,12 @@ stmt env ee cs erettype node s = do
             (renderType rettype)
           noop
 
-    ReturnStmt (_,p) (Just e) -> do
+    ReturnStmt (n,p) (Just e) -> do
       (te, vp) <- expr env ee cs e
       unless (te <: rettype) $ 
         typeError p $ printf 
                "function is declared to return %s, but this statement returns \
-               \%s" (renderType rettype) (renderType te)
+               \%s (%s)" (renderType rettype) (renderType te) (show n)
       noop
 
     LabelledStmt _ _ _ -> noop
@@ -1041,6 +1041,11 @@ typeCheckProgram env enclosingKindEnv constraints
      
   checkDeclaredKinds (M.union (M.map (const KindStar) tenv) kindEnv) ee
   let cs' = cs ++ constraints
+
+  state <- get
+  let stmtEnvs = localTypes gr env' (stateTypeEnv state)
+  put $ state { stateEnvs = stmtEnvs }
+  
   finalEnv <- body env' ee cs' rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descend into nested functions, we ensure that functions satisfy
   -- their declared types.

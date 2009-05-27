@@ -465,9 +465,9 @@ unionTypeVP :: Maybe (Type, Type, Bool, LocalControl)
             -> Maybe (Type, Type, Bool, LocalControl)
 unionTypeVP Nothing Nothing = Nothing
 unionTypeVP Nothing (Just (t, tact, b, v)) = 
-  Just (TUnion [undefType, t], TUnion [undefType, tact], b, (VPNone, M.empty))
+  Just (t, tact, b, (VPNone, M.empty))
 unionTypeVP (Just (t, tact, b, v)) Nothing = 
-  Just (TUnion [undefType, t], TUnion [undefType, tact], b, (VPNone, M.empty))
+  Just (t, tact, b, (VPNone, M.empty))
 unionTypeVP (Just (t1, t1act, b1, (vp1, e1)))(Just (t2, t2act, b2, (vp2, e2)))=
   if b1 /= b2 
     then error "OMG"
