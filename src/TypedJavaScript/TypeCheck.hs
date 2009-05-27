@@ -28,7 +28,7 @@ import Control.Exception (Exception (..), SomeException (..), throw, catch)
 import Paths_TypedJavaScript
 import Text.ParserCombinators.Parsec (parseFromFile)
 import TypedJavaScript.Parser (parseToplevels)
-
+import BrownPLT.TypedJS.LocalTypes
 
 import System.Directory
 import System.FilePath

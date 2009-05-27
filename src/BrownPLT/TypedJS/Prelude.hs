@@ -21,6 +21,7 @@ module BrownPLT.TypedJS.Prelude
   , everythingBut
   , catastrophe
   , isLeft, isRight, procEither
+  , Node
   ) where
 
 import Data.Tree
@@ -36,7 +37,7 @@ import Data.Traversable (Traversable)
 import Text.PrettyPrint.HughesPJ
 import Text.Printf
 import Data.Graph.Inductive.PatriciaTree (Gr)
-
+import Data.Graph.Inductive (Node, Graph)
 
 instance Monad (Either String) where
   return v = Right v
