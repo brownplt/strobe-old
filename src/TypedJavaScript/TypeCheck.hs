@@ -269,7 +269,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
   (_, f, f_isLocal, f_vp) <- forceEnvLookup p env f_v
   case deconstrFnType f of
     Nothing -> do
-      typeError p ("expected function; received " ++ show f)
+      typeError p ("expected function; received " ++ renderType f)
       noop
     Just (vs, cs', formals'', vararg, er, latentPred, ptype) -> do
       when (isNewStmt && isNothing ptype) $
@@ -304,8 +304,8 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
       -- functions. constructors don't have this, yet.      
       insts <- if isNewStmt then return [] else forceLookupMultiErasedEnv ee p
       unless (length vs == length insts) $ do
-        typeError p (printf "expected %d type argument(s), received %d"
-                            (length vs) (length insts))
+        typeError p (printf "expected %d type argument(s) for %s, received %d"
+                            (length vs) f_v (length insts))
 
       let checkInst (t, v, TCSubtype _ t')
             | t <: t' = return (TCSubtype v t)
@@ -917,6 +917,7 @@ operator env cs loc op argsvp = do
           let procvp (VPId id) = VPType (TObject False False $ nub $ 
                                            ttprops++ptprops) id
               procvp (VPMulti vs) = VPMulti (map procvp vs)
+              procvp _ = VPNone
           return (boolType, (procvp objvp, M.empty))
         _ -> do
           typeError loc "RHS of instanceof must be constructor"

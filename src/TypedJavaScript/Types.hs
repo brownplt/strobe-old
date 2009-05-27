@@ -577,6 +577,7 @@ equalityvp' a@(VPLit (StringLit l s) (TId "string")) b@(VPTypeof x) =
 
 -- "x == 3" restricts x to be an integer!
 -- but it doesn't restrict x to _not_ be an integer, so we can't use VPType.
+-- however, "x == undefined" acts just like "typeof x == 'undefined'".
 equalityvp' (VPId x) (VPLit _ t) = VPWeakType t x
 equalityvp' (VPLit _ t) (VPId x) = VPWeakType t x
 
