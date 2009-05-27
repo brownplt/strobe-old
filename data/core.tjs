@@ -1,7 +1,6 @@
-//methods of Array should go here
-
-//constructors should go here, too
-
+//debugging in typechecker:
+external $printtype$ :: any ->;
+external $printvp$ :: any ->;
 
 
 type Object :: rec Object . {
@@ -45,7 +44,6 @@ type String :: rec String . {
   toString :: ([String] -> string)
 };
 
-external $printtype$ :: any ->;
 
 type Boolean :: rec Boolean . {
   valueOf :: ([Boolean] -> bool),

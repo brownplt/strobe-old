@@ -495,17 +495,17 @@ flattenUnion  t = t
 
 
 -- Helpers for occurrence typing, from TypedScheme paper
+
+--TODO: make sure restrict and remove are correct in the otherwise
+--cases; they're different than the typed scheme paper
+
 restrict :: Type -> Type -> Type
 restrict s t
  | s <: t = s -- usually, t <: s, so we do some work during restriction
  | otherwise = case t of
      
-     --TODO: make sure TRefined-ness deals well with the following case:
      TUnion ts -> flattenUnion $ 
                         TUnion (map (restrict s) ts)
-     --TODO: make sure restrict is correct; this is different than
-     --the typed scheme paper
-     --TODO: make sure returning a TRefined here is correct
      _ -> let rez = flattenUnion $
                       TUnion (filter (\hm -> hm <: t)
                                      (case s of
@@ -521,11 +521,8 @@ remove s t
  | otherwise = case t of
      TUnion ts -> flattenUnion $ 
                         TUnion (map (remove s) ts)
-     --TODO: make sure remove is correct; this is different than
-     --the typed scheme paper
      _ -> flattenUnion $ 
-            TUnion  
-                   (filter (\hm -> not $ hm <: t)
+            TUnion (filter (\hm -> not $ hm <: t)
                            (case s of
                              TUnion ts -> ts
                              _ -> [s]))

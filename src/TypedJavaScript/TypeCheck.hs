@@ -604,11 +604,17 @@ stmt env ee cs erettype node s = do
     CallStmt (_,p) r_v f_v args_v -> do
       env' <- doFuncConstr (<:) p env ee cs r_v f_v args_v False
       when (f_v == "$printtype$") $ do
-        liftIO $ putStrLn $ printf "at %s: %s :: %s" (show p)
+        liftIO $ putStrLn $ printf "$printtype$ at %s: %s has type %s" (show p)
           (args_v !! 2) 
-          (show (maybe "notinenv" 
+          (maybe "notinenv" 
                   (maybe "notype" (\(tDec,tAct,_,_) -> renderType tAct)) 
-                  (M.lookup (args_v !! 2) env')))
+                  (M.lookup (args_v !! 2) env'))
+      when (f_v == "$printvp$") $ do
+        liftIO $ putStrLn $ printf "$printvp$ at %s: %s has VP %s" (show p)
+          (args_v !! 2) 
+          (maybe "notinenv" 
+                  (maybe "noVP" (\(_,_,_,(vp,ef)) -> renderVP vp)) 
+                  (M.lookup (args_v !! 2) env'))
       return $ zip (map fst succs) (repeat env')
 
     IfStmt (_, p) e s1 s2 -> do
@@ -903,11 +909,12 @@ operator env cs loc op argsvp = do
     OpGEq -> cmp 
     OpIn -> fail "OpIn NYI"
     OpInstanceof -> do
+      --this doesn't seem to work in the gammaMinus case. 
       let (objvp, _) = vps !! 0
       let t=args!!1
       case unRec t of
         (TFunc (Just (TObject _ _ ptprops)) _ (TObject _ _ ttprops) _) -> do
-          let procvp (VPId id) = VPType (TObject True False $ nub $ 
+          let procvp (VPId id) = VPType (TObject False False $ nub $ 
                                            ttprops++ptprops) id
               procvp (VPMulti vs) = VPMulti (map procvp vs)
           return (boolType, (procvp objvp, M.empty))

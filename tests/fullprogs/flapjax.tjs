@@ -1,3 +1,6 @@
+//*** means something messed up cause of assignment/mutation being restrictive
+//### means something messed up cause of lack of parametrized things
+
 sealed type PulseVal :: {value :: int}; //###
 
 type Pulse :: {stamp :: int, value :: PulseVal}; //###
@@ -32,15 +35,24 @@ type EventStream :: rec EventStream . {
                  -> EventStream),
   switchE :: ([EventStream] -> EventStream),
   ifE :: ([EventStream] EventStream, EventStream -> EventStream),
+  andE :: ([EventStream] Array<EventStream> -> EventStream),
+  orE :: ([EventStream] Array<EventStream> -> EventStream),
+  //substType captures if we uncomment the following line:
+  //delayE :: ([EventStream] U(Behavior, int) -> EventStream),
   ...
 };
 
 type Behavior_constr_leave :: {last :: PulseVal,
                                underlyingRaw :: EventStream,
                                underlying :: EventStream, ...};
-type Behavior :: {last :: PulseVal,
-                  underlyingRaw :: EventStream,
-                  underlying :: EventStream, };
+type Behavior :: rec Behavior . {
+  last :: PulseVal,
+  underlyingRaw :: EventStream,
+  underlying :: EventStream,
+  valueNow :: ([Behavior] -> PulseVal),
+  changes :: ([Behavior] -> EventStream),
+  ...
+};
 
 //============
 type TSNodeT :: {q::Array<EventStream>,
@@ -50,6 +62,7 @@ type TSNodeT :: {q::Array<EventStream>,
 external $nodes :: Array<EventStream>;
 external $updater :: ((Pulse ->), Pulse ->);
 external $es :: EventStream;
+external $pv :: PulseVal;
 
 //slice: Array a * Integer * Integer -> Array a
 var slice = function (arr, start, stop) ::
@@ -591,10 +604,134 @@ EventStream.prototype.ifE = function(thenE,elseE) ::
                    send(pulse); } })]);
 };
 
+//we could be restrictive and have test be U(bool, EventStream), but having
+//it be any also works =D.
 var ifE = function(test,thenE,elseE) ::
-  U(bool, EventStream), EventStream, EventStream -> EventStream {
+  any, EventStream, EventStream -> EventStream {
   if (test instanceof EventStream)
     { return test.switchE(); }//test.ifE(thenE,elseE); }
   else
     { return test ? thenE : elseE; }
 };
+
+//andE modified to take an array of nodes
+var andE = function (nodes) :: Array<EventStream> -> EventStream {
+  //### $pv should be 'true'.
+  var acc = (nodes.length > 0) ? nodes[nodes.length - 1] : oneE($pv);
+
+  for (var i = nodes.length - 2; i > -1; i--) {
+    acc = ifE(
+      nodes[i],
+      acc,
+      nodes[i].constantE($pv)); //### $pv = false
+  }
+  return acc;
+};
+
+EventStream.prototype.andE = function(others) ::
+    ([EventStream] Array<EventStream> -> EventStream) {
+  var deps = [this].concat(others);
+  return andE(deps);
+};
+
+//modified to take array of nodes
+var orE = function (nodes) :: Array<EventStream> -> EventStream {
+  var acc = (nodes.length > 2)?
+             nodes[nodes.length - 1] : oneE($pv); //### $pv = false
+  for (var i = nodes.length - 2; i > -1; i--) {
+    acc = ifE(
+      nodes[i],
+      nodes[i],
+      acc);
+  }
+  return acc;
+};
+
+EventStream.prototype.orE = function(others) ::
+    ([EventStream] Array<EventStream> -> EventStream) {
+  var deps = [this].concat(others);
+  return orE(deps);
+};
+
+var delayStaticE = function (event, time) :: EventStream, int -> EventStream {
+  var resE = internalE();
+
+  createNode(
+    [event],
+    function (s, p) :: UpdaterT {
+      //have to add 'window.' here for now:
+      window.setTimeout(
+        function () :: (->) { sendEvent(resE, p.value);},
+        time ); });
+
+  return resE;
+};
+
+//moved from lower:
+Behavior.prototype.valueNow = function() :: ([Behavior] -> PulseVal) {
+  return this.last;
+};
+var valueNow = function(behavior) :: Behavior -> PulseVal {
+  return behavior.valueNow();
+};
+
+Behavior.prototype.changes = function() :: ([Behavior] -> EventStream) {
+  return this.underlying;
+};
+var changes = function (behave) :: Behavior -> EventStream {
+  return behave.changes();
+}
+
+
+//delayE: Event a * [Behavior] Number ->  Event a
+EventStream.prototype.delayE = function (time) ::
+  ([EventStream] U(Behavior, int) -> EventStream) {
+  var event = this;
+
+  //*** had to move receiverEE out here. too-restrictive occurrence
+  //typing!  it feels like 'define before use' could do something
+  //about this. if we had block-level scoping, we wouldn'tst need to
+  //do this
+  var receiverEE = internalE();
+  //if (time instanceof Behavior) {
+  if (typeof time != "number") {
+    var link :: {from::EventStream, towards::EventStream} = {
+      from: event,
+      towards: delayStaticE(event, 31337) //### 31337 --> valueNow(time))
+    };
+
+    //TODO: Change semantics such that we are always guaranteed to get
+    //an event going out?
+
+    var switcherE = createNode(
+      [changes(time)],
+      function (s, p) :: UpdaterT {
+        removeListener(link.from, link.towards);
+        link =  {
+          from: event,
+          towards: delayStaticE(event, 1337) //### 1337 --> p.value)
+        };
+        sendEvent(receiverEE, $pv); //### $pv --> link.towards);
+      });
+
+    var resE = receiverEE.switchE();
+
+    sendEvent(switcherE, valueNow(time));
+    return resE;
+  }
+  else {
+    //*** if we do "time instanceof Behavior", time is still a union
+    //here, for some reason. must fix.
+    return delayStaticE(event, time);
+  }
+};
+
+/* *** pending substtype being capture-free
+var delayE = function(sourceE,interval) :: EventStream, int -> EventStream {
+  return sourceE.delayE(interval);
+};*/
+
+//ask arjun how to do map
+//mapE: ([Event] (. Array a -> b)) . Array [Event] a -> [Event] b
+/*var mapE = function (fn //...*/
+

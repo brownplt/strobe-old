@@ -1,7 +1,7 @@
 -- |Pretty-printing Typed JavaScript.
 module TypedJavaScript.PrettyPrint
   ( showSp
-  , renderType
+  , renderType, renderVP
   , renderStatements
   ) where
 
@@ -40,6 +40,12 @@ typeConstraint tc = case tc of
 renderType :: Type -> String
 renderType t = render (type_ t)
 
+renderVP :: VP -> String
+renderVP (VPId x) = "VPId " ++ x
+renderVP (VPType t x) = "VPType (" ++ render (type_ t) ++ ") " ++ x
+renderVP (VPMulti vps) = "VPMulti [" ++ (foldl (\a b -> a ++ "," ++ b) "" 
+                                               (map renderVP vps)) ++ "]"
+renderVP r = "VPhurrr"
 
 renderStatements :: [Statement a] -> String
 renderStatements ss = render $ vcat (map (\s -> stmt s <> semi) ss)
@@ -70,7 +76,12 @@ type_ t = case t of
   TRec id t -> hang (text "rec" <+> text id <+> text ".") 2 (type_ t)
   TObject hasSlack isOpen fields -> 
    braces $ open <> nest 2 (commas (map field fields) <> s)
-    where field (id, t') = text id <+> text "::" <+> type_ t'
+    where fieldFull (id, t') = text id <+> text "::" <+> type_ t'
+          fieldShrt (id, x)  = text id <+> text "::" <+> text x <> text "***"
+          field (id, t') = let tfield = render $ type_ t' in
+            if length tfield > 40 
+               then fieldShrt (id, filter ((/=) '\n') $ take 40 tfield)
+               else fieldFull (id, t')
           open = text $ if isOpen then "(open)" else ""                  
           s = case hasSlack of
                 True -> text ", ..."
