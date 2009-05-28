@@ -10,8 +10,8 @@ function (x) :: (U(int, bool) -> bool) {
 } :: (U(int, bool) -> bool);
 
 function (x) :: (U(int, bool, string) -> bool) {
-  return (isInt(x) ? (x<<3)==8 : !x);
-} @@ fails;
+  return (typeof x == "number" ? (x<<3)==8 : !x);
+} @@ succeeds;
 
 function (x) :: U(string, bool) -> string { return x; } @@ fails;
 

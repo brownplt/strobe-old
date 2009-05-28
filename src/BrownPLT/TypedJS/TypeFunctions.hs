@@ -10,6 +10,7 @@ module BrownPLT.TypedJS.TypeFunctions
   , isVarRef, isPrototype
   , openObject, closeObject
   , replaceAliases
+  , renderLocalEnv
   ) where
 
 import qualified Data.Map as M
@@ -17,7 +18,7 @@ import qualified Data.Map as M
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.JavaScript.Analysis.ANF
-
+import TypedJavaScript.PrettyPrint
 import TypedJavaScript.Types
 
 --warning: unsound hack for prototypes so that the correct case
@@ -124,3 +125,12 @@ lookupAlias kindEnv tenv pos t = case t of
 
 
 replaceAliases kindEnv tenv p t = everywhere (mkT(lookupAlias kindEnv tenv p)) t
+
+-- |Pretty-prints just the local types in an environment.
+renderLocalEnv :: Env -> String
+renderLocalEnv env = show (M.map asString (M.filter selectLocal env))
+  where selectLocal (Just (_, _, True, _)) = True
+        selectLocal _               = False
+        asString (Just (tDec, tAct, _, _)) = 
+          renderType tDec ++ " => " ++ renderType tAct
+        asString Nothing = error "renderLocalEnv: expected (Just _)"

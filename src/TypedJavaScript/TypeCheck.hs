@@ -112,7 +112,13 @@ updateLocalEnv (node, incomingEnv)= do
   state <- get
   let e1 = incomingEnv
   let e2 = M.findWithDefault M.empty node (stateEnvs state)
-  let result = M.insertWith unionEnv node incomingEnv (stateEnvs state)
+  let f e1 e2 = 
+        let r = unionEnv e1 e2
+          in {-trace (printf "Unioning %s\n to %s\n for %s\n" 
+                           (renderLocalEnv e1) (renderLocalEnv e2)
+                           (renderLocalEnv r))-}
+                   r
+  let result = M.insertWith f node incomingEnv (stateEnvs state)
   put $ state { stateEnvs = result } 
 
 enterNodeOf :: Graph -> G.Node
@@ -157,9 +163,15 @@ stmtForBody :: Env -- ^environment of the enclosing function for a nested
 stmtForBody enclosingEnv erasedEnv constraints rettype node = do
   localEnv <- lookupLocalEnv node
   s <- nodeToStmt node
+  {-
+  liftIO $ putStrLn $ "stmt: " ++ show s
+  liftIO $ putStrLn $ "localEnv:\n" ++ (renderLocalEnv localEnv)
+  liftIO $ putStrLn $ "enclosingEnv:\n" ++ (renderLocalEnv localEnv)
+  -}
   succs <- stmt (M.union localEnv enclosingEnv) erasedEnv constraints rettype 
                 node s
   mapM_ updateLocalEnv succs
+  return ()
     
 
 
@@ -409,7 +421,7 @@ stmt env ee cs erettype node s = do
                    Left t -> t
                    Right t -> undefType
   case s of
-    EnterStmt _ -> noop
+    EnterStmt _ -> return []
     ExitStmt (exitNode, p) -> do
       -- All predecessors of Exit must be ReturnStmt
       let gr = stateGraph state
@@ -461,6 +473,7 @@ stmt env ee cs erettype node s = do
 
     AssignStmt (_,p) v e -> do
       (te,e_vp) <- expr env ee cs e
+      liftIO $ printf "%s := %s\n" v (renderType te)
       env' <- doAssignment (<:) p env v te e_vp
       return $ zip (map fst succs) (repeat env')
 
@@ -667,6 +680,7 @@ stmt env ee cs erettype node s = do
 
     ReturnStmt (n,p) (Just e) -> do
       (te, vp) <- expr env ee cs e
+      liftIO $ printf "expr = %s, type = %s\n" (show e) (renderType te)
       unless (te <: rettype) $ 
         typeError p $ printf 
                "function is declared to return %s, but this statement returns \

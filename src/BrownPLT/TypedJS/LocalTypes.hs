@@ -3,19 +3,21 @@ module BrownPLT.TypedJS.LocalTypes
   ) where
 
 import TypedJavaScript.Types
+import TypedJavaScript.PrettyPrint
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.JavaScript.Analysis.ANF
 import qualified BrownPLT.JavaScript.Analysis.LocalTypes as LT
 import qualified Data.Map as M
 import qualified Data.Set as S
 import BrownPLT.JavaScript.Analysis.Intraprocedural (Graph)
+import BrownPLT.TypedJS.TypeFunctions
 
 
 localTypes :: Graph
            -> Env -- ^enclosing environment
            -> Map Id Type
            -> Map Node Env -- ^environment at each statement
-localTypes gr env typeAliases = staticEnvs
+localTypes gr env typeAliases =  staticEnvs
   where f (id, Nothing) = Just (id, LT.TUnreachable)
         f (id, Just (tDec, _, _, _)) = Just (id, asRuntimeType typeAliases tDec)
         -- visible, runtime types of the initial environment
@@ -28,11 +30,13 @@ localTypes gr env typeAliases = staticEnvs
           Nothing -> error "TypedJS.LocalTypes: unbound id"
           Just Nothing -> Nothing
           Just (Just (tDec, tAct, False, vp)) -> Just (tDec, tAct, False, vp)
-          Just (Just (t, _, True, vp)) -> 
-            Just (t, asStaticType typeAliases rt t, True, vp)
+          Just (Just (t, _, True, vp)) -> Just (t, tDec, True, vp)
+            where tDec = asStaticType typeAliases rt (flattenUnion t)
+                  pr = case isUnion t && not (isUnion tDec) of 
+                         False -> ""
+                         True -> printf "%s : %s => %s (actually %s)" id (renderType t) (renderType tDec) (show rt)
         -- visible, static environments at each statement
         staticEnvs = M.map (\env -> M.mapWithKey toStatic env) visibleEnvs
-        
 
 
 asRuntimeType :: Map Id Type -> Type -> LT.Type
@@ -60,8 +64,7 @@ asRuntimeType aliases t = case t of
   TUnion ts -> case map (asRuntimeType aliases) ts of
     [] -> error "asRuntimeType aliases: empty union"
     [rt] -> rt
-    (rt:rts) -> (foldr LT.unionType rt rts)
-
+    (rt:rts) -> let x = (foldr LT.unionType rt rts) in x
 
 maybeAsStaticType :: Map Id Type -> LT.Type -> Type -> Maybe Type
 maybeAsStaticType aliases rt st = case (rt, st) of
@@ -77,14 +80,19 @@ maybeAsStaticType aliases rt st = case (rt, st) of
   (_, TProperty{}) -> error "maybeAsStaticType aliases: TProperty NYI"
   (LT.TUnk, st) -> Just st
   
-  (LT.TUnion rts, _) -> Just (TUnion (catMaybes sts'))
-    where sts' = map (flip (maybeAsStaticType aliases) st) 
-                     (map LT.TBasic (S.toList rts))
-  (_, TUnion sts) -> Just (TUnion (catMaybes sts'))
-    where sts' = map (maybeAsStaticType aliases rt) sts
-
+  (LT.TUnion rts, _) -> 
+    case catMaybes (map (flip (maybeAsStaticType aliases) st)
+                         (map LT.TBasic (S.toList rts))) of
+      [] -> Nothing
+      [t] -> Just t
+      ts -> Just (TUnion ts)
+  (_, TUnion sts) ->
+    case catMaybes $ map (maybeAsStaticType aliases rt) sts of
+      [] -> Nothing
+      [t] -> Just t
+      ts -> Just (TUnion ts)
   (LT.TBasic LT.TString, TId "string") -> Just st
-  (LT.TBasic LT.TBoolean, TId "boolean") -> Just st
+  (LT.TBasic LT.TBoolean, TId "bool") -> Just st
   (LT.TBasic LT.TNumber, TId "double") -> Just st
   (LT.TBasic LT.TNumber, TId "int") -> Just st
   (LT.TBasic LT.TFunction, TFunc {}) -> Just st
