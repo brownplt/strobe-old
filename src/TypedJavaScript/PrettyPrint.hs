@@ -11,7 +11,6 @@ import TypedJavaScript.Syntax
 import BrownPLT.JavaScript.Analysis.ANFPrettyPrint (prettyLit)
 import BrownPLT.TypedJS.Prelude
 
-
 -- Displays the statement in { ... }, unless it already is in a block.
 inBlock :: Statement a -> Doc
 inBlock s@(BlockStmt _ _) = stmt s
@@ -86,9 +85,11 @@ type_ t = case t of
           s = case hasSlack of
                 True -> text ", ..."
                 False -> empty
-  TUnion [TId "undefined", t] -> parens (type_ t) <> text "?"
-  TUnion [t, TId "undefined"] -> parens (type_ t) <> text "?"
-  TUnion ts -> text "U" <+> parens (commas (map type_ ts))
+  TUnion ts -> text "U" <+> parens (commas (map type_ ts'))
+                 where ts' = if elem undefType ts
+                               then (undefType:(delete undefType ts))
+                               else ts 
+                       undefType = TId "undefined"
   TId v -> text v
   TForall ids cs t' ->
     text "forall" <+> (commas (map text ids)) <+> constraintsDoc <+> 

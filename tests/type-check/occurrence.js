@@ -272,7 +272,34 @@ function (x) :: (U(int, bool) -> string) {
 //magic
 function (x) :: U(int, bool, string) -> U(int, bool) {
   if ((typeof x == "number") || (typeof x == "boolean"))
+  var isint :: int = 3;
+  if ((typeof x == "number") || 3) //(typeof x == "bool"))
+  {
+    isint = x;
     return x;
+  }
+  return 4;
+} @@ fails;
+
+function (x) :: U(int, bool, string) -> U(int, bool) {
+  var isUintbool :: U(int, bool) = 3;
+  if ((typeof x == "number") || (typeof x == "boolean"))
+  {
+    isUintbool = x;
+    return x;
+  }
+  return 4;
+} :: U(int, bool, string) -> U(int, bool);
+function (x) :: U(int, bool, string) -> U(int, bool) {
+  var isUintbool :: U(int, bool) = 3;
+  var isStr :: string = "HAHA";
+  if ((typeof x == "number") || (typeof x == "boolean"))
+  {
+    isUintbool = x;
+    return x;
+  }
+  else
+    isStr = x;
   return 4;
 } :: U(int, bool, string) -> U(int, bool);
 

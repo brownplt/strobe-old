@@ -1,7 +1,11 @@
 //*** means something messed up cause of assignment/mutation being restrictive
 //### means something messed up cause of lack of parametrized things
-
-sealed type PulseVal :: {value :: int}; //###
+//@@@ means substType captures fail
+//$$$ means we need apply to work!
+//%%% means we need latent predicates!
+//^^^ means occurrence typing is failing
+//xxx means i dnno what is going on
+sealed type PulseVal :: {pulsevalhax :: int}; //###
 
 type Pulse :: {stamp :: int, value :: PulseVal}; //###
 
@@ -24,7 +28,7 @@ type EventStream :: rec EventStream . {
   rank :: int,
   constantE :: ([EventStream] PulseVal -> EventStream),
   mergeE :: ([EventStream] Array<EventStream> -> EventStream),
-  sendEvent :: ( PulseVal -> )?,
+  sendEvent :: ([EventStream] PulseVal -> ),
   bindE:: ([EventStream] (PulseVal -> EventStream) -> EventStream ),
   mapE :: ([EventStream] (PulseVal -> PulseVal) -> EventStream),
   notE :: ([EventStream] -> EventStream),
@@ -37,10 +41,20 @@ type EventStream :: rec EventStream . {
   ifE :: ([EventStream] EventStream, EventStream -> EventStream),
   andE :: ([EventStream] Array<EventStream> -> EventStream),
   orE :: ([EventStream] Array<EventStream> -> EventStream),
-  //substType captures if we uncomment the following line:
+
+  filterRepeatsE :: ([EventStream] PulseVal? -> EventStream),
+
+  //@@@ substType captures if we uncomment the following lines:
   //delayE :: ([EventStream] U(Behavior, int) -> EventStream),
+  //snapshotE :: ([EventStream] Behavior -> EventStream),
+  //calmE :: ([EventStream] U(Behavior, int) -> EventStream),
+  //startsWith :: ([EventStream] PulseVal -> Behavior),
+
   ...
 };
+
+//@@@:
+external startsWith :: (EventStream, PulseVal -> Behavior);
 
 type Behavior_constr_leave :: {last :: PulseVal,
                                underlyingRaw :: EventStream,
@@ -51,6 +65,9 @@ type Behavior :: rec Behavior . {
   underlying :: EventStream,
   valueNow :: ([Behavior] -> PulseVal),
   changes :: ([Behavior] -> EventStream),
+  switchB :: ([Behavior] -> Behavior),
+  delayB :: ([Behavior] U(Behavior, int), PulseVal? -> Behavior),
+  sendBehavior :: ([Behavior] PulseVal ->),
   ...
 };
 
@@ -63,6 +80,9 @@ external $nodes :: Array<EventStream>;
 external $updater :: ((Pulse ->), Pulse ->);
 external $es :: EventStream;
 external $pv :: PulseVal;
+external $b :: Behavior;
+//### uber hax to make up for $pv
+external $pvcast :: forall a . (PulseVal -> a);
 
 //slice: Array a * Integer * Integer -> Array a
 var slice = function (arr, start, stop) ::
@@ -76,7 +96,7 @@ var slice = function (arr, start, stop) ::
 	return r;
 }
 
-var isEqual = function (a,b) :: forall a b . a, b -> bool {
+var isEqual = function (a,b) :: any, any -> bool {
 	return (a == b) ||
 		( (((typeof(a) == 'number') && isNaN(a)) || a == 'NaN') &&
 		  (((typeof(b) == 'number') && isNaN(b)) || b == 'NaN') );
@@ -91,7 +111,7 @@ var forEach = function(fn,arr) :: forall a . (a -> any), Array<a> -> undefined {
 //member: a * Array b -> Boolean
 var member = function(elt, lst) :: forall a b . a, Array<b> -> bool {
 	for (var i = 0; i < lst.length; i++) {
-		if (isEqual@[(b),(a)](lst[i], elt)) {return true;}
+		if (isEqual(lst[i], elt)) {return true;}
 	}
 	return false;
 };
@@ -137,8 +157,10 @@ var map1 = function (fn, array) :: forall a b. (a->b), Array<a> -> Array<b> {
   return ret;
 };
 
-
 //filter: (a -> Boolean) * Array a -> Array a
+
+//%%% with latent predicates, this could be more useful:
+//filter: (a --b--> Boolean) * Array a -> Array b
 var filter = function (predFn, arr) ::
       forall a . (a->bool), Array<a> -> Array<a> {
 	var res :: Array<a> = [];
@@ -359,7 +381,11 @@ var mergeE = function(arry) :: Array<EventStream> -> EventStream {
   }
 };
 
-EventStream.prototype.sendEvent = undefined;
+EventStream.prototype.sendEvent = function (value) ::
+  ([EventStream] PulseVal ->) {
+  propagatePulse(new Pulse(nextStamp(), value), this);
+};
+
 EventStream.prototype.mergeE = function(arry) ::
     [EventStream] Array<EventStream> -> EventStream {
   var deps = slice@[(EventStream)](arry,0);
@@ -460,24 +486,14 @@ var Behavior = function (event, init, updater) :: ([{...}]
 };
 //Behavior.prototype = new Object();
 
-//***: how to deal w/ this? event stream doesn't have sendEvent up till now...
-//and we can't refine this crap either.
-//shrug shrug.
 var receiverE = function() :: (-> EventStream) {
   var evt = internalE();
-  /*evt.sendEvent = function(value) :: PulseVal -> undefined {
-    propagatePulse(new Pulse(nextStamp(), value),evt);
-  };*/
   return evt;
 };
 
 // bindE :: EventStream a * (a -> EventStream b) -> EventStream b
-EventStream.prototype.bindE = function(k) ::
+/*EventStream.prototype.bindE = function(k) ::
   ([EventStream] (PulseVal -> EventStream) -> EventStream ) {
-  /* m.sendsTo resultE
-   * resultE.sendsTo prevE
-   * prevE.sendsTo returnE
-   */
   var m = this;
   var prevE :: EventStream? = undefined;
 
@@ -486,8 +502,6 @@ EventStream.prototype.bindE = function(k) ::
                         function(send,pulse) :: UpdaterT { send(pulse); });
   //outE.name = "bind outE"; //unimportant
 
-  //***: following function doesn't work cause we can't assign to a 'global'
-  //union... =/. we need some way to treat closure variables differently.
   var inE = createNode([m], function (send,pulse) :: UpdaterT {
     var local_prevE = prevE;
     if (typeof local_prevE != "undefined") {
@@ -497,6 +511,39 @@ EventStream.prototype.bindE = function(k) ::
     attachListener(local_prevE,outE);
   });
   //inE.name = "bind inE";
+
+  return outE;
+};*/
+
+//***: following function doesn't work cause we can't assign to a 'global'
+//union... =/. we need some way to treat closure variables differently.
+//however, we can work around it this time with a 'first' variable,
+//because prevE is only undefined before anything happens.
+
+// bindE :: EventStream a * (a -> EventStream b) -> EventStream b
+EventStream.prototype.bindE = function(k) ::
+  ([EventStream] (PulseVal -> EventStream) -> EventStream) {
+  /* m.sendsTo resultE
+   * resultE.sendsTo prevE
+   * prevE.sendsTo returnE
+   */
+  var m = this;
+  //give prevE a filler value
+  var prevE :: EventStream = zeroE(); //undefined;
+  var first = true;
+
+  var array :: Array<EventStream> = [];
+  var outE = createNode(array,
+                        function(send,pulse) :: UpdaterT { send(pulse); });
+
+  var inE = createNode([m], function (send,pulse) :: UpdaterT {
+    if (!first) { //typeof prevE != "undefined") {
+      removeListener(prevE,outE);
+    }
+    prevE = k(pulse.value);
+    attachListener(prevE,outE);
+    first = false;
+  });
 
   return outE;
 };
@@ -516,7 +563,7 @@ EventStream.prototype.mapE = function(f) ::
 //### pending parametrized pulses
 EventStream.prototype.notE = function() :: ([EventStream] -> EventStream) {
   return this.mapE(function(v) :: (PulseVal -> PulseVal) {
-                     v.value = (!v.value ? 1 : 0);
+                     v.pulsevalhax = (!v.pulsevalhax ? 1 : 0);
                      return v; });
 };
 
@@ -577,7 +624,7 @@ var collectE = function(e,i,f) ::
 
 // a.k.a. join
 EventStream.prototype.switchE = function() :: ([EventStream] -> EventStream) {
-  //*** what? does bindE only take event streams of event streams? does
+  //xxx what? does bindE only take event streams of event streams? does
   //this only take eventstreams containing eventstreams?
   return this.bindE(function(v) :: PulseVal -> EventStream { return $es; //v;
     });
@@ -720,13 +767,13 @@ EventStream.prototype.delayE = function (time) ::
     return resE;
   }
   else {
-    //*** if we do "time instanceof Behavior", time is still a union
+    //^^^ if we do "time instanceof Behavior", time is still a union
     //here, for some reason. must fix.
     return delayStaticE(event, time);
   }
 };
 
-/* *** pending substtype being capture-free
+/* @@@ pending substtype being capture-free
 var delayE = function(sourceE,interval) :: EventStream, int -> EventStream {
   return sourceE.delayE(interval);
 };*/
@@ -735,3 +782,380 @@ var delayE = function(sourceE,interval) :: EventStream, int -> EventStream {
 //mapE: ([Event] (. Array a -> b)) . Array [Event] a -> [Event] b
 /*var mapE = function (fn //...*/
 
+
+EventStream.prototype.snapshotE = function (valueB) ::
+  ([EventStream] Behavior -> EventStream) {
+  return createNode(
+    [this],
+    function (s, p) :: UpdaterT {
+      p.value = valueNow(valueB);
+      s(p);
+    }
+    );
+};
+
+//@@@ add this one substType captures works:
+/*var snapshotE = function(triggerE,valueB) ::
+    EventStream, Behavior -> EventStream {
+  return triggerE.snapshotE(valueB);
+};*/
+
+EventStream.prototype.filterRepeatsE = function(optStart) ::
+  ([EventStream] PulseVal? -> EventStream) {
+//*** can't assign to 'prev', cause it's a global union =/..
+// fix it by making prev not undefinable.
+//  var hadFirst = optStart === undefined ? false : true;
+//  var prev = optStart;
+
+  if (typeof optStart == "undefined") {
+    var hadFirst = false;
+    var prev = $pv; //filler value
+  }
+  else
+  {
+    hadFirst = true;
+    prev = optStart;
+  }
+
+  return this.filterE(function (v) :: PulseVal -> bool {
+    if (!hadFirst || !(isEqual(prev,v))) {
+      hadFirst = true;
+      prev = v;
+      return true;
+    }
+    else {
+      return false;
+    }
+  });
+};
+
+var filterRepeatsE = function(sourceE,optStart) ::
+  EventStream, PulseVal? -> EventStream {
+  return sourceE.filterRepeatsE(optStart);
+};
+
+//*** changed this to use -1 instead of null
+//credit Pete Hopkins
+var calmStaticE = function (triggerE, time) :: EventStream, int -> EventStream {
+  var out = internalE();
+  createNode(
+    [triggerE],
+    function() :: (-> UpdaterT) {
+      var towards :: TimeoutID = -1; //undefined;
+      return function (s, p) :: UpdaterT {
+        if (towards != -1) { window.clearTimeout(towards); }
+        towards = window.setTimeout(
+          function () :: (->) {
+            towards = -1;
+            sendEvent(out,p.value) },
+          time );
+      };
+    }());
+  return out;
+};
+
+//calmE: Event a * [Behavior] Number -> Event a
+//*** the refinement for 'time' gets forgotton in the inner functions, aargh
+EventStream.prototype.calmE = function(time) ::
+  ([EventStream] U(Behavior, int) -> EventStream) {
+  //if (time instanceof Behavior) {
+  if (typeof time != "number") {
+    var out = internalE();
+    createNode(
+      [this],
+      function() :: (-> UpdaterT) {
+        var towards = -1;
+        return function (s, p) :: UpdaterT {
+          if (typeof time == "number") throw "OMG OCCURR TYPE FAIL";
+          if (towards !== -1) { window.clearTimeout(towards); }
+          towards = window.setTimeout(
+            function () :: (->) {
+              if (typeof out == "undefined") throw "OT FAIL";
+              towards = -1;
+              sendEvent(out,p.value) },
+            valueNow(time).pulsevalhax); //### remove .pulsevalhax
+        };
+      }());
+    return out;
+  }
+  else {
+    return calmStaticE(this,time);
+  }
+};
+
+//@@@
+/*var calmE = function(sourceE,interval) :: EventStream, U(Behavior,int)
+                                       -> EventStream {
+  return sourceE.calmE(interval);
+};*/
+
+EventStream.prototype.blindE = function (time) ::
+  ([EventStream] U(Behavior, int) -> EventStream) {
+  return createNode(
+    [this],
+    function () :: (-> UpdaterT) {
+      /*var intervalFn = time instanceof Behavior ?
+         function () :: (-> int) { return valueNow(time); } :
+         function () :: (-> int) { return time; };*/
+      var intervalFn = function() :: (-> int) {
+        //if (time instanceof Behavior)
+        if (typeof time != "number")
+          return valueNow(time).pulsevalhax;
+        else
+          return time;
+      };
+
+      var lastSent = (new Date()).getTime() - intervalFn() - 1;
+      return function (s, p) :: UpdaterT {
+        var curTime = (new Date()).getTime();
+        if (curTime - lastSent > intervalFn()) {
+          lastSent = curTime;
+          s(p);
+        }
+      };
+    }());
+};
+
+//###
+/*var blindE = function(sourceE,interval) {
+  return sourceE.blindE(interval);
+};*/
+
+EventStream.prototype.startsWith = function(init) ::
+  ([EventStream] PulseVal -> Behavior) {
+  return new Behavior(this,init);
+};
+
+//###
+/*var startsWith = function(e,init) {
+  if (!(e instanceof EventStream)) {
+    throw 'startsWith: expected EventStream; received ' + e;
+  }
+  return e.startsWith(init);
+};*/
+
+Behavior.prototype.switchB = function() :: ([Behavior] -> Behavior) {
+  var behaviourCreatorsB = this;
+  var init = valueNow(behaviourCreatorsB);
+
+  var prevSourceE :: EventStream = $es; //*** filler. was: 'undefined;'
+  var first = true;
+
+  var receiverE = internalE(); //bugfix! 'new' was being used here.
+
+  //XXX could result in out-of-order propagation! Fix!
+  var makerE =
+    createNode(
+      [changes(behaviourCreatorsB)],
+      function (_, p) :: UpdaterT{
+        //### remove once parapoly stuff works.
+        if (!(p.value instanceof Behavior)) { throw 'switchB: expected Behavior as value of Behavior of first argument'; } //SAFETY
+        if (!first) { //typeof prevSourceE != "undefined") {
+          removeListener(prevSourceE, receiverE);
+        }
+        first = false;
+
+        prevSourceE = changes(p.value);
+        attachListener(prevSourceE, receiverE);
+
+        sendEvent(receiverE, valueNow(p.value));
+      });
+
+  if (init instanceof Behavior) {
+    sendEvent(makerE, $pv); //### init);
+  }
+
+  return startsWith(
+    receiverE,
+    init instanceof Behavior? valueNow(init) : init);
+};
+
+var switchB = function (b) :: (Behavior -> Behavior) { return b.switchB(); };
+
+//moved up:
+var createTimerNodeStatic = function (interval) :: (int -> EventStream) {
+  var node = internalE();
+  //node.__timerId = __getTimerId();
+
+  var fn = function () :: (->) {
+    sendEvent(node, $pv);}; //###, (new Date()).getTime());};
+  var timer = window.setInterval(fn, interval);
+
+  //timerDisablers[node.__timerId] = function () {clearInterval(timer); };
+  return node;
+};
+
+var _timerE_behavior = function (interval) :: Behavior -> EventStream {
+  var receiverE = internalE();
+
+  //the return
+  var res = receiverE.switchE();
+
+  //keep track of previous timer to disable it
+  var prevE = createTimerNodeStatic(valueNow(interval).pulsevalhax);
+
+  //init
+  sendEvent(receiverE, $pv); //###, prevE);
+
+  //interval changes: collect old timer
+  createNode(
+    [changes(interval)],
+    function (_, p) :: UpdaterT {
+      //disableTimerNode(prevE);
+      prevE = createTimerNodeStatic(p.value.pulsevalhax);
+      sendEvent(receiverE, $pv); //###, prevE);
+    });
+
+/*  res.__timerId = __getTimerId();
+  timerDisablers[res.__timerId] = function () {
+    disableTimerNode[prevE]();
+    return;
+  };*/
+
+  return res;
+};
+
+
+var timerE = function (interval) :: U(Behavior, int) -> EventStream {
+  //if (interval instanceof Behavior) {
+  if (typeof interval != "number") {
+    return _timerE_behavior(interval);
+  } else {
+    return createTimerNodeStatic(interval);
+  }
+};
+
+//TODO test, signature
+var timerB = function(interval) :: U(Behavior, int) -> Behavior {
+  return startsWith(timerE(interval), $pv); //###< (new Date()).getTime());
+};
+
+
+//TODO test, signature
+var delayStaticB = function (triggerB, time, init) ::
+  Behavior, int, PulseVal -> Behavior {
+  return startsWith(delayStaticE(changes(triggerB), time), init);
+};
+
+Behavior.prototype.delayB = function (time, init) ::
+  ([Behavior] U(Behavior, int), PulseVal? -> Behavior) {
+  var triggerB = this;
+  //if (time instanceof Behavior) {
+  if (typeof time != "number") {
+    return startsWith(
+      $es, /*delayE(
+        changes(triggerB),
+        time), //@@@ function doesnt work cause substype captures */
+      typeof init != "undefined" ? init : valueNow(triggerB));
+  } else {
+    return delayStaticB(
+      triggerB,
+      time,
+      typeof init != "undefined" ? init : valueNow(triggerB));
+  }
+};
+
+var delayB = function(srcB, timeB, init) ::
+  Behavior, U(Behavior, int), PulseVal? -> Behavior{
+  return srcB.delayB(timeB,init);
+};
+
+//artificially send a pulse to underlying event node of a behaviour
+//note: in use, might want to use a receiver node as a proxy or an identity map
+Behavior.prototype.sendBehavior = function(val) ::
+  ([Behavior] PulseVal ->) {
+  sendEvent(this.underlyingRaw,val);
+};
+
+var sendBehavior = function (b,v) :: Behavior, PulseVal -> undefined {
+  b.sendBehavior(v); };
+
+//moved up:
+//### all these behaviors must be parametrized
+//$$$ im stuck without apply, here. will just have to make
+//many many versions of the same function..
+//%%% lack of LPs means we can't use filter here.
+var liftB3 = function (fn, b1, b2, b3) :: forall a b c . (
+  U((a, b, c -> PulseVal), Behavior),
+  U(a, Behavior), U(b, Behavior), U(c, Behavior) -> Behavior) {
+
+  //var args = slice(arguments, 1);
+  //dependencies
+
+  //luckily we can work around filter's limitations:
+/*  var constituentsE =
+    map(changes,
+        filter(function (v) { return v instanceof Behavior; },
+          arguments));*/
+
+  var _arguments :: Array<any> = [fn, b1, b2, b3];
+  var bs :: Array<Behavior> = [];
+  for (var i=0; i < _arguments.length; i++) {
+    var x = _arguments[i];
+    if (x instanceof Behavior)
+      bs.push(x);
+  }
+  var constituentsE = map1@[(Behavior),(EventStream)](changes, bs);
+
+  //calculate new vals
+  var getCur = function (v) :: U(Behavior, PulseVal) -> PulseVal {
+    //^^^ fix once instanceof works in the else case
+    //return v instanceof Behavior ? v.last : v;
+    return $pv;
+  };
+
+  var ctx = this;
+  var getRes = function () :: (-> PulseVal) {
+    //### uber uber fail
+    var func = $pvcast@[(a,b,c -> PulseVal)](getCur($pv)); //fn));
+    return func($pvcast@[(a)](getCur($pv)),//b1)),
+                $pvcast@[(b)](getCur($pv)),//b2)),
+                $pvcast@[(c)](getCur($pv)));//b3)));
+  };
+
+  if(constituentsE.length == 1) {
+    return new Behavior(constituentsE[0],getRes(),getRes);
+  }
+
+  //gen/send vals @ appropriate time
+
+  //^^^ without the annotation on prevStamp, the type checker thinks
+  //its type if U(int, undefined) for some reason..
+  var prevStamp :: int = -1;
+
+  var mid = createNode(constituentsE, function (s, p) :: UpdaterT {
+      if (p.stamp != prevStamp) {
+        prevStamp = p.stamp;
+        s(p);
+  }});
+  return new Behavior(mid,getRes(),getRes);
+};
+
+//moved up:
+//createConstantB: a -> Behavior a
+var constantB = function (val) :: PulseVal -> Behavior {
+  return new Behavior(internalE(), val);
+};
+
+//###
+Behavior.prototype.ifB = function(trueB,falseB) ::
+  ([Behavior] U(Behavior, PulseVal), U(Behavior, PulseVal) -> Behavior) {
+  var testB = this;
+  //TODO auto conversion for behaviour funcs
+
+  //^^^ fix once !instanceof works
+  //if (!(trueB instanceof Behavior)) { trueB = constantB(trueB); }
+  //if (!(falseB instanceof Behavior)) { falseB = constantB(falseB); }
+  trueB = $b;
+  falseB = $b;
+  //###
+  return liftB3@[(PulseVal),(PulseVal),(PulseVal)](
+    function(te,t,f) :: (PulseVal, PulseVal, PulseVal -> PulseVal) {
+      return te ? t : f; },
+    testB,trueB,falseB);
+};
+
+//will learn nothing new from the rest of em!
+
+/////////////////////////////////////////////////////////////////////////////
+// DOM Utilities

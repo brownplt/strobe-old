@@ -81,17 +81,26 @@ type String :: {length :: int,
 */
 
 //'static' methods of Date:
-external Date :: {parse :: (string -> int),
-                  UTC :: (int, int, int?, int?, int?, int?, int? -> int)};
-type Date :: rec self . {getDay :: ([self] -> int),
-                         getMonth :: ([self] -> int),
-                         getYear :: ([self] -> int),
+/*external Date :: {parse :: (string -> int),
+                  UTC :: (int, int, int?, int?, int?, int?, int? -> int)};*/
+
+type Date :: rec self . {getDate :: ([self] -> int),
+                         getDay :: ([self] -> int),
                          getFullYear :: ([self] -> int),
                          getHours :: ([self] -> int),
+                         getMilliseconds :: ([self] -> int),
                          getMinutes :: ([self] -> int),
-                         getDate :: ([self] -> int),
+                         getMonth :: ([self] -> int),
+                         getSeconds :: ([self] -> int),
+                         getTime :: ([self] -> int),
+                         getTimezoneOffset :: ([self] -> int),
+                         getUTCDate :: ([self] -> int),
+                         getUTCDay :: ([self] -> int),
+                         //...
+                         getYear :: ([self] -> int),
                          setTime :: ([self] int -> int)
                         };
+external Date :: ([{...}] int?, int?, int?, int?, int?, int?, int? ~~> Date);
 
 external isNaN :: double -> bool;
 
@@ -113,11 +122,16 @@ external Array_each :: forall a. Array<a>, (a -> ) ->;
 
 external document :: HTMLDocument;
 
-sealed type TimeoutID :: {}; //it's really an 'int'..
+type TimeoutID  :: int; //this should really be sealed somehow.
+type IntervalID :: int; //this should really be sealed somehow.
 
 external window :: {
   document :: HTMLDocument,
-  setTimeout :: ((any... -> any), int -> TimeoutID),
+
+  setTimeout    :: ((any... -> any), int -> TimeoutID),
+  setInterval   :: ((any... -> any), int -> IntervalID),
+  clearTimeout  :: (TimeoutID ->),
+  clearInterval :: (IntervalID ->),
 };
 
 
