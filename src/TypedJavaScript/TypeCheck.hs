@@ -8,7 +8,7 @@ import qualified Data.Set as S
 import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Strict
 import qualified TypedJavaScript.Syntax as TJS
-import TypedJavaScript.Syntax (Type (..), TypeConstraint (..), VP (..), 
+import TypedJavaScript.Syntax (Type (..), TypeConstraint (..), 
   LatentPred (..))
 import TypedJavaScript.Types
 import TypedJavaScript.Graph
@@ -221,14 +221,14 @@ forceLookupMultiErasedEnv ee p = case M.lookup p ee of
 
 
 forceEnvLookup :: SourcePos -> Env -> Id 
-               -> TypeCheck (Type, Type, Bool, LocalControl)
+               -> TypeCheck (Type, Type, Bool)
 forceEnvLookup loc env name = case M.lookup name env of
   Nothing -> do
     typeError loc $ printf "identifier %s is unbound" name
-    return (TAny, TAny, False, (VPNone, M.empty))
+    return (TAny, TAny, False)
   Just Nothing -> do
     typeError loc $ printf "identifier %s is uninitialized" name
-    return (TAny, TAny, False, (VPNone, M.empty))
+    return (TAny, TAny, False)
   Just (Just t) -> return t
 
 assert :: Monad m => Bool -> String -> m ()
@@ -240,9 +240,8 @@ doAssignment :: (Type -> Type -> Bool) -- ^local subtype relation
              -> Env -- ^current environment
              -> Id -- ^LHS of assignment
              -> Type -- ^type of the RHS of assignment
-             -> LocalControl  -- ^visible predicate on the RHS
              -> TypeCheck Env -- ^resulting environment
-doAssignment (<:) p env v te (e_vp, ef) 
+doAssignment (<:) p env v te 
  | v == "this" = typeError p "Cannot assign to 'this'!" >> return env
  | head v /= '@' && isPrototype te = typeError p "Cannot assign .prototype to\
      \ anything" >> return env
@@ -256,16 +255,14 @@ doAssignment (<:) p env v te (e_vp, ef)
   -- they will subsequently act as declared variables and won't be permitted
   -- to "change types."
   Just Nothing -> do 
-    return $ M.insert v (Just (te, te, True,
-                               (VPMulti [VPId v, e_vp], M.empty))) env
+    return $ M.insert v (Just (te, te, True)) env
   -- Local variable (3rd element of the tuple is True).  Local variables
   -- may be assigned to so long as the subtype relation is preserved.  The
   -- assignment locally refines tDec to te.
-  Just (Just (tDec, tAct, True, (v_vp, ef))) --local variable
+  Just (Just (tDec, tAct, True)) --local variable
     | te <: tDec ->  do
         -- TODO: remove, from environment, any VP referring to this var!
-        let env' = M.insert v (Just (tDec, te, True, 
-                                     (VPMulti [VPId v, e_vp], M.empty))) 
+        let env' = M.insert v (Just (tDec, te, True)) 
                             env
         return env'
    | otherwise -> do
@@ -280,7 +277,7 @@ doAssignment (<:) p env v te (e_vp, ef)
   -- If the variable is not a union, we may assign a new value.  However, this
   -- precludes visible-predicates from refining types to specific /values/.
   -- For example, we cannot refine to false.
-  Just (Just (tDec, tAct, False, (v_vp, ef)))
+  Just (Just (tDec, tAct, False))
     | isUnion tDec -> do
         typeError p $ 
           printf "cannot assign to global union %s :: %s"
@@ -291,8 +288,7 @@ doAssignment (<:) p env v te (e_vp, ef)
         return env
     | te <: tDec ->  do
         -- TODO: remove, from environment, any VP referring to this var!
-        let env' = M.insert v (Just (tDec, te, False,
-                                     (VPMulti [VPId v, v_vp], M.empty))) 
+        let env' = M.insert v (Just (tDec, te, False))
                             env
         return env'
    | otherwise -> do
@@ -315,7 +311,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
   let noop = return env 
    in do
   state <- get
-  (_, f, f_isLocal, f_vp) <- forceEnvLookup p env f_v
+  (_, f, f_isLocal) <- forceEnvLookup p env f_v
   case deconstrFnType f of
     Nothing -> do
       typeError p ("expected function; received " ++ renderType f)
@@ -332,16 +328,14 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
                  then return $ Just $ TObject True False []
                  else return ptype
       
-      actualsWithVP' <- liftM (map (\(_, t, _, vp) -> (t, vp)))
-                              (mapM (forceEnvLookup p env) args_v)
-      let (actuals', actuals_vps) = unzip actualsWithVP'
+      actuals' <- liftM (map (\(_, t, _) -> t))
+                        (mapM (forceEnvLookup p env) args_v)
       --in functions, have to dotref the 'this'
       actuals <- if isNewStmt then return actuals' else do
         let this':rest = actuals'
         this <- dotrefContext this' --motivation: if 'this' is a
                                     --string, int, etc, it is automatically
                                     --converted to an object.   
-        --actuals_vps contains VP, including VPId for the var name itself.
         return $ this:rest
       
       -- ANF doesn't supply arguments array or this to constructor yet, so
@@ -422,7 +416,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
       -- a subtype of the named result.
       -- this works for constructors, too.
       env' <- case (procEither unRec er) of
-                Left r   -> doAssignment (<:) p env r_v r (VPNone, M.empty)
+                Left r   -> doAssignment (<:) p env r_v r 
                 Right tt@(TObject _ _ ttprops) -> do
                   let (Just (TObject _ _ ptprops)) = ptype
                   --the assumption is that there is no conflict
@@ -430,7 +424,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
                   --guaranteed whenever assignments are done to the
                   --prototype.
                   let ttype = TObject True False $ nub $ ttprops++ptprops
-                  doAssignment (<:) p env r_v ttype (VPNone, M.empty)
+                  doAssignment (<:) p env r_v ttype
                 Right tt -> do
                   typeError p $ printf "'this' is not an object in the \
                     \constructor, but %s" (renderType tt)
@@ -481,7 +475,7 @@ stmt env ee cs erettype node s = do
         case M.lookup "this" env of
           Nothing -> catastrophe p "'this' not found in environment!"
           Just Nothing -> catastrophe p "'this' has no type in environment!"
-          Just (Just (tDec, tAct, _, _))
+          Just (Just (tDec, tAct, _))
             | (closeObject tAct) <: ttype -> return ()
             | otherwise  -> typeError p $ printf 
                 "'this' has type %s at constructor exit, expected %s" 
@@ -493,30 +487,30 @@ stmt env ee cs erettype node s = do
 
     -- x :: Array<t> = [ ]
     AssignStmt (_,p) v (Lit (ArrayLit _ [])) -> case M.lookup v env of
-      Just (Just (_, TApp "Array" [t], _, _)) ->
+      Just (Just (_, TApp "Array" [t], _)) ->
         noop
       -- Usually caused by the arguments array of zero-arity functions.
       Just Nothing -> do
         let env' = M.insert v 
                      (Just (TSequence [] Nothing, TSequence [] Nothing, 
-                            True, (VPNone, M.empty))) env
+                            True)) env
         return (zip (map fst succs) (repeat env'))
       Nothing -> do
         typeError p $ printf "%s is unbound" v
         noop
-      Just (Just (_, t, _, _)) ->  do
+      Just (Just (_, t, _)) ->  do
         typeError p (printf "[] is an array; given type: %s" (renderType t))
         noop
 
     AssignStmt (_,p) v e -> do
-      (te,e_vp) <- expr env ee cs e
+      te <- expr env ee cs e
       liftIO $ printf "%s := %s\n" v (renderType te)
-      env' <- doAssignment (<:) p env v te e_vp
+      env' <- doAssignment (<:) p env v te 
       liftIO $ putStrLn (renderLocalEnv env')
       return $ zip (map fst succs) (repeat env')
 
     DirectPropAssignStmt (_,p) obj prop e -> do
-      (t_rhs, e_vp) <- expr env ee cs e
+      t_rhs <- expr env ee cs e
       let isThis = obj == "this"
       case M.lookup obj env of
         Nothing -> 
@@ -525,7 +519,7 @@ stmt env ee cs erettype node s = do
           -- Variable is in scope but is yet to be defined.
           typeError p $ printf "can't assign to obj %s; has no type yet" obj
           noop
-        Just (Just (tDec, tAct', isLocal, vp)) -> do
+        Just (Just (tDec, tAct', isLocal)) -> do
          tAct <- dotrefContext tAct'
          
          case unRec tAct of
@@ -533,7 +527,7 @@ stmt env ee cs erettype node s = do
            --TODO: use deconstrfntype here instead of this stuff.
            let (Just (Just (tDec,(TFunc (Just (TObject hs io protprops)) 
                                         cargs ctt' lp),
-                            loc,vp))) = M.lookup constrid env
+                            loc))) = M.lookup constrid env
            ctt <- return $ unRec ctt'
            let (TObject _ _ cttprops) = ctt
            case lookup prop protprops of
@@ -544,7 +538,7 @@ stmt env ee cs erettype node s = do
                                                   hs io 
                                                   ((prop,t_rhs):protprops)))
                                           cargs ctt lp),
-                                   loc,vp)) env
+                                   loc)) env
                --make sure adding this to the prototype won't violate
                --what we expect the constructed thistype to be.
                case lookup prop cttprops of
@@ -576,7 +570,7 @@ stmt env ee cs erettype node s = do
                         let env' = M.insert obj
                                      (Just (tDec, TObject hasSlack isOpen
                                                     ((prop,t_rhs):props),
-                                           isLocal, vp))
+                                           isLocal))
                                      env
                         return $ zip (map fst succs) (repeat env')
                     | otherwise -> do
@@ -616,10 +610,10 @@ stmt env ee cs erettype node s = do
             noop
           
     IndirectPropAssignStmt (_,p) obj method e -> do 
-      (t_rhs, _) <- expr env ee cs e
+      t_rhs <- expr env ee cs e
       case (M.lookup obj env, M.lookup method env) of
-        (Just (Just (_, TApp "Array" [t_elem], isLocal, _)), 
-         Just (Just (_, t_prop, _, _)))
+        (Just (Just (_, TApp "Array" [t_elem], isLocal)), 
+         Just (Just (_, t_prop, _)))
           | isUnion t_elem -> do
               typeError p $
                 printf "cannot mutate to a union element of an array"
@@ -639,7 +633,7 @@ stmt env ee cs erettype node s = do
                 else typeError p $ printf "array rhs wrong. expected %s, got %s"
                   (renderType t_elem) (renderType t_rhs)
               noop
-        (Just (Just (_, TApp "Array" [t_elem], _, _)), Just Nothing) -> do
+        (Just (Just (_, TApp "Array" [t_elem], _)), Just Nothing) -> do
           typeError p (printf "index variable %s is undefined" method)
           noop
         z -> do
@@ -658,24 +652,13 @@ stmt env ee cs erettype node s = do
         liftIO $ putStrLn $ printf "$printtype$ at %s: %s has type %s" (show p)
           (args_v !! 2) 
           (maybe "notinenv" 
-                  (maybe "notype" (\(tDec,tAct,_,_) -> renderType tAct)) 
-                  (M.lookup (args_v !! 2) env'))
-      when (f_v == "$printvp$") $ do
-        liftIO $ putStrLn $ printf "$printvp$ at %s: %s has VP %s" (show p)
-          (args_v !! 2) 
-          (maybe "notinenv" 
-                  (maybe "noVP" (\(_,_,_,(vp,ef)) -> renderVP vp)) 
+                  (maybe "notype" (\(tDec,tAct,_) -> renderType tAct)) 
                   (M.lookup (args_v !! 2) env'))
       return $ zip (map fst succs) (repeat env')
 
     IfStmt (_, p) e s1 s2 -> do
-      (t, (vp, ef)) <- expr env ee cs e -- this permits non-boolean tests
-      assert (length succs == 2) "IfStmt should have two successors"
-      let occurit (node, Nothing) = error "ifstmt's branches should have lits!"
-          occurit (node, Just (BoolLit _ True)) = (node, gammaPlus env vp)
-          occurit (node, Just (BoolLit _ False)) = (node, gammaMinus env vp)
-          occurit _ = error "Ifstmt's branches are wack"
-      return [] -- return $ map occurit succs
+      expr env ee cs e -- this permits non-boolean tests
+      return []
 
     WhileStmt _ e s -> do
       expr env ee cs e -- this permits non-boolean tests
@@ -686,19 +669,19 @@ stmt env ee cs erettype node s = do
         typeError p (printf "can only forin through a named object, given %s"
                        (show e))
       let VarRef _ oid = e
-      (t, vp) <- expr env ee cs e
+      t <- expr env ee cs e
       case t of
         TObject _ _ fields ->        
           case M.lookup id env of 
             Nothing -> do 
               typeError p $ printf "id %s for forin loop is unbound" id
               fatalTypeError ""
-            Just (Just (tDec, tAct', isLocal, vp)) -> typeError p 
+            Just (Just (tDec, tAct', isLocal)) -> typeError p 
               (printf "id %s already has a type in a forin, but it shouldnt") >> fatalTypeError "fatal"
             Just Nothing -> do
               let env' = M.insert id
                            (Just (TIterator oid, TIterator oid, 
-                                  True, (VPNone, M.empty))) env
+                                  True)) env
               return (zip (map fst succs) (repeat env'))
         _ -> typeError p (printf "trying to forin through %s, not obj" 
                             (renderType t)) >> fatalTypeError "fatal"
@@ -717,8 +700,7 @@ stmt env ee cs erettype node s = do
           noop
 
     ReturnStmt (n,p) (Just e) -> do
-      (te, vp) <- expr env ee cs e
-      liftIO $ printf "expr = %s, type = %s\n" (show e) (renderType te)
+      te <- expr env ee cs e
       unless (te <: rettype) $ 
         typeError p $ printf 
                "function is declared to return %s, but this statement returns \
@@ -732,15 +714,8 @@ stmt env ee cs erettype node s = do
     ContinueStmt _ _ -> noop
 
     SwitchStmt (i,p) id cases default_ -> do
-      --assumption: succs contains the same lits that cases does
-      (t, vp) <- expr env ee cs (VarRef (i,p) id)
-      let occurit (node, Just lit) = do
-            (tlit, vplit) <- expr env ee cs (Lit lit)
-            return (node, gammaPlus env (fst $ equalityvp vp vplit))
-          occurit (node, Nothing) = do --default branch
-            tsvps <- mapM (expr env ee cs . Lit) (map fst cases)
-            return (node,foldl gammaMinus env (map (fst . equalityvp vp . snd) tsvps))
-      mapM occurit succs
+      t <- expr env ee cs (VarRef (i,p) id)
+      return []
 
 -- in pJS, string, int, etc. can all be used as objects.
 -- but they're not objects; they get converted.
@@ -774,7 +749,7 @@ expr :: Env -- ^the environment in which to type-check this expression
      -> ErasedEnv
      -> [TypeConstraint]
      -> Expr (Int,SourcePos)
-     -> TypeCheck (Type, LocalControl) 
+     -> TypeCheck Type
 expr env ee cs e = do 
   state <- get
   let t1 <: t2 = isSubType (stateTypeEnv state) cs t1 t2
@@ -783,43 +758,41 @@ expr env ee cs e = do
   let tenv = stateTypeEnv state
   case e of 
    VarRef (_,p) id -> do
-     (tDec, tAct, b, lc) <- forceEnvLookup p env id
-     case lc of
-       (VPNone, ef) -> return (tAct, (VPId id, ef))
-       (vp, ef) -> return (tAct, (VPMulti [VPId id, vp], ef))
+     (tDec, tAct, b) <- forceEnvLookup p env id
+     return tAct
    DotRef (_, loc) e p -> do
-     (t'', _) <- expr env ee cs e
+     t'' <- expr env ee cs e
      if isConstr t'' && p == "prototype" && isVarRef e then do
        let (VarRef _ cid) = e
-       return (TPrototype cid, (VPNone, M.empty))
+       return (TPrototype cid)
       else do
        t' <- dotrefContext (unRec t'')
        let t = unConstraint (unRec t')
        case fieldType env p t of
-         Just t' -> return (t', (VPNone, M.empty))
+         Just t' -> return t'
          Nothing -> do
            typeError loc $ printf
              "object does not have field %s" p
-           return (TAny, (VPNone, M.empty))
+           return TAny
    BracketRef (_, loc) e ie -> do
-     (t'', _) <- expr env ee cs e
+     t'' <- expr env ee cs e
      t' <- dotrefContext (unRec t'')
      let t = unRec t'
-     (it', _) <- expr env ee cs ie
+     it' <- expr env ee cs ie
      let it = unRec it'
      case t of
        TApp "Array" [btype]
          | not (it <: intType) -> do
              typeError loc $ printf 
                "array index must be an integer, received %s" (renderType it)
-             return (btype, (VPNone, M.empty))
-         | otherwise -> return (btype, (VPNone, M.empty))
+             return btype
+         | otherwise -> return btype
        TObject _ _ props
          | isVarRef e -> case it of
              TIterator z -> do
                let (VarRef _ ename) = e
                if ename == z
-                 then return (TProperty ename, (VPNone, M.empty))
+                 then return (TProperty ename)
                  else do typeError loc $ 
                            printf "fail to obj[prop]: obj's name \
                                   \doesn't match name iterator is for"
@@ -829,41 +802,34 @@ expr env ee cs e = do
                     fatalTypeError "fatal type error"
        _ -> do typeError loc $ 
                  printf "expected array, got %s" (show t)
-               return (TAny, (VPNone, M.empty))
+               return TAny
    OpExpr (_,p) f args_e -> do
      args <- mapM (expr env ee cs) args_e
      operator env cs p f args
-   Lit (StringLit (_,a) s) -> 
-     return (TId "string", (VPLit (StringLit a s) (TId "string"), M.empty))
+   Lit (StringLit (_,a) s) -> return $ TId "string"
    Lit (RegexpLit _ _ _ _) -> fail "regexp NYI"
-   Lit (NumLit (_,a) n) ->
-     return (TId "double", (VPLit (NumLit a n) (TId "double"), M.empty))
-   Lit (IntLit (_,a) n) -> 
-     return (TId "int", (VPLit (IntLit a n) (TId "int"), M.empty))
-   Lit (BoolLit (_,a) v) ->
-     return (boolType, (VPLit (BoolLit a v) boolType, M.empty))
-   Lit (NullLit (_,p)) -> fail "NullLit NYI (not even in earlier work)"
+   Lit (NumLit (_,a) n) -> return $ TId "double"
+   Lit (IntLit (_,a) n) -> return $ TId "int"
+   Lit (BoolLit (_,a) v) -> return boolType
+   Lit (NullLit (_,p)) -> fail "NullLit NYI"
    Lit (ArrayLit (_,p) es) -> do
-     r <- mapM (expr env ee cs) es
-     let ts = map fst r
+     ts <- mapM (expr env ee cs) es
      case ts of
        [] -> do
          typeError p "empty array needs a type"
-         return $ (TAny, (VPNone, M.empty))
+         return TAny
        (t:ts) -> do 
          let tRes = TApp "Array" [foldr unionType t ts]
-         return $ (tRes, (VPNone, M.empty))
+         return tRes
      
    Lit (ArgsLit (_,p) es) -> do
-     r <- mapM (expr env ee cs) es
-     let ts = map fst r
+     ts <- mapM (expr env ee cs) es
      let resT = (TSequence ts Nothing)
-     return (resT, (VPNone, M.empty))
+     return resT
 
    Lit (ObjectLit (_, loc) props) -> do
      let prop (Left s, (_, propLoc), e) = do
-           -- the VP is simply dropped, but it is always safe to drop a VP
-           (t, vp) <- expr env ee cs e
+           t <- expr env ee cs e
            case M.lookup propLoc ee of
              Just [t'] 
                | t <: t' -> return (s, t')
@@ -880,7 +846,7 @@ expr env ee cs e = do
          prop (Right n, (_, propLoc), e) = do
            catastrophe propLoc "object literals with numeric keys NYI"
      propTypes <- mapM prop props
-     return (TObject False False propTypes, (VPNone, M.empty))
+     return $ TObject False False propTypes
    Lit (FuncLit (_, p) args locals body) -> case M.lookup p ee of
      Nothing -> catastrophe p "function lit is not in the erased environment"
      Just [t] -> do
@@ -889,58 +855,54 @@ expr env ee cs e = do
          --argtypes is ("thistype", argarraytype, real args)
          --args should be is ("this", "arguments", real args)
          | length argTypes == length args -> 
-             return (t, (VPNone, M.empty))
+             return t
          | otherwise -> do
              typeError p $ 
                printf "argument number mismatch in funclit: %s args named, but \
                       \%s in the type:%s\n%s\n"
                  (show (length args - 2)) (show (length argTypes - 2))
                  (renderType t) (show $ map renderType argTypes)
-             return (t, (VPNone, M.empty))
+             return t
        Just (_, _, argTypes, _, _, _, (Just _))  --constructors. is hacked atm.
          --argtypes is (this, args, real args)
          --args should be (real args), but is currently (this, args, real args)
          | length argTypes == length args -> 
-             return (t, (VPNone, M.empty))
+             return t
          | otherwise -> do
              typeError p $ 
                printf "argument number mismatch in funclit: %s args named, but \
                       \%s in the type:%s\n%s\n"
                  (show (length args - 2)) (show (length argTypes - 2))
                  (renderType t) (show $ map renderType argTypes)
-             return (t, (VPNone, M.empty))
+             return t
        Nothing -> do
          typeError p $ printf "not a function type: %s" (renderType t)
-         return (t, (VPNone, M.empty))
+         return t
      Just _ -> catastrophe p "many types for function in the erased environment"
   
 operator :: Env -> [TypeConstraint]
          -> SourcePos 
          -> FOp 
-         -> [(Type, LocalControl)] 
-         -> TypeCheck (Type, LocalControl)
-operator env cs loc op argsvp = do
+         -> [Type] 
+         -> TypeCheck Type
+operator env cs loc op args = do
   state <- get
   let t1 <: t2 = isSubType (stateTypeEnv state) cs t1 t2
-  let (args, vps) = unzip argsvp
   -- The ANF transform gaurantees that the number of arguments is correct for
   -- the specified operator.
-  let novp t = (t, (VPNone, M.empty))
   
   let lhs = args !! 0
   let rhs = args !! 1 -- Do not use rhs if op takes just one argument!
-  let lvp = vps !! 0
-      rvp = vps !! 1                      
   let cmp = do
         unless ((lhs <: stringType && rhs <: stringType) ||
                 ((lhs <: doubleType || lhs <: intType) && 
                  (rhs <: doubleType || rhs <: intType))) $ do
           typeError loc (printf "can only compare numbers and strings")
-        return $ novp boolType
+        return boolType
   let numeric requireInts returnDouble = do
         let result = if returnDouble 
-                       then return (novp doubleType)
-                       else return $ novp (if lhs <: intType then rhs else lhs)
+                       then return (doubleType)
+                       else return (if lhs <: intType then rhs else lhs)
         case requireInts of
           True -> do
             unless (lhs <: intType && rhs <: intType) $
@@ -962,26 +924,18 @@ operator env cs loc op argsvp = do
     OpIn -> fail "OpIn NYI"
     OpInstanceof -> do
       --this doesn't seem to work in the gammaMinus case. 
-      let (objvp, _) = vps !! 0
       let t=args!!1
       case unRec t of
-        (TFunc (Just (TObject _ _ ptprops)) _ (TObject _ _ ttprops) _) -> do
-          let procvp (VPId id) = VPType (TObject False False $ nub $ 
-                                           ttprops++ptprops) id
-              procvp (VPMulti vs) = VPMulti (map procvp vs)
-              procvp _ = VPNone
-          return (boolType, (procvp objvp, M.empty))
+        (TFunc (Just (TObject _ _ ptprops)) _ (TObject _ _ ttprops) _) -> 
+          return boolType
         _ -> do
           typeError loc "RHS of instanceof must be constructor"
-          return $ novp boolType
-
+          return boolType
     OpEq        -> do
-      return (boolType, equalityvp lvp rvp)
-    OpStrictEq  -> return (boolType, equalityvp lvp rvp)
-    OpNEq -> return (boolType, (VPNot vp, ef))
-      where (vp, ef) = equalityvp lvp rvp
-    OpStrictNEq -> return (boolType, (VPNot vp, ef))
-      where (vp, ef) = equalityvp lvp rvp
+      return boolType
+    OpStrictEq  -> return boolType
+    OpNEq -> return boolType
+    OpStrictNEq -> return boolType
     OpMul -> numeric False False
     OpDiv -> numeric False True
     OpMod -> numeric False True
@@ -992,29 +946,23 @@ operator env cs loc op argsvp = do
     OpBAnd -> numeric True False
     OpBXor -> numeric True False
     OpBOr -> numeric True False
-    OpAdd | lhs <: stringType || rhs <: stringType -> return $ novp stringType
+    OpAdd | lhs <: stringType || rhs <: stringType -> return stringType
           | otherwise -> numeric False False
-    PrefixLNot -> case lvp of
-      (VPNot vp, ef) -> return (boolType, (vp, ef))
-      (vp, ef) -> return (boolType, (VPNot vp, ef))
-    PrefixBNot | lhs <: intType -> return (novp intType)
+    PrefixLNot -> return boolType
+    PrefixBNot | lhs <: intType -> return intType
                | otherwise -> do
                    typeError loc $ printf
                      "bitwise not expects an integer, received %s" 
                      (renderType lhs)
-                   return (novp intType)
-    PrefixMinus | lhs <: doubleType -> return (novp lhs)
-	              | lhs <: intType -> return (novp lhs)
+                   return intType
+    PrefixMinus | lhs <: doubleType -> return lhs
+	              | lhs <: intType -> return lhs
                 | otherwise -> do
                     typeError loc "prefix - expects int/double"
-                    return (novp doubleType)
+                    return doubleType
     PrefixVoid -> do
       catastrophe loc (printf "void has been removed")
-    PrefixTypeof -> do
-      let tproc (VPId i) = VPTypeof i
-          tproc (VPMulti vs) = VPMulti (nub (map tproc vs))
-          tproc _ = VPNone
-      return (stringType, (tproc (fst lvp), M.empty))
+    PrefixTypeof -> return stringType
 
 -- |When a node has multiple parents, this function combines their environments.
 unionEnv :: Env -> Env -> Env
@@ -1064,7 +1012,7 @@ uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
       --the only typed things here are args and explicitly typed locals, both
       --of which have VPId name. if it doesn't have a type, it's an ANF var,
       --and it will be given one in due time.
-  let novp (a,Just t)  = (a, Just (t, t, True, (VPId a, M.empty)))
+  let novp (a,Just t)  = (a, Just (t, t, True))
       novp (a,Nothing) = (a, Nothing)
       env' = M.union (M.fromList (map novp $ argtypes++localtypes)) env 
   return (env', cs, rettype, functype)
@@ -1126,13 +1074,13 @@ checkDeclaredKinds kinds ee = do
 
 -- process top level statements, making a varenv and typeenv out of them
 procToplevels' :: [TJS.ToplevelStatement SourcePos] 
-               -> (Map String (Type, LocalControl), Map String Type)
-               -> (Map String (Type, LocalControl), Map String Type)
+               -> (Map String Type, Map String Type)
+               -> (Map String Type, Map String Type)
 procToplevels' [] results = results
 procToplevels' ((TJS.ExternalStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = 
   procToplevels' rest (M.insertWithKey 
                         (\k n o -> error $ "already in venv: " ++ show k)
-                        s (t, (VPId s, M.empty)) venv, tenv)
+                        s t venv, tenv)
 procToplevels' ((TJS.TypeStmt _ (TJS.Id _ s) t):rest) (venv, tenv) = 
   procToplevels' rest (venv, M.insertWithKey
                               (\k n o -> error $ "already in tenv: " ++ show k)
@@ -1148,7 +1096,7 @@ procToplevels venv tenv toplevels = do
     Left s -> fail s
     Right () -> do
       let unaliasedTypes = unaliasTypeEnv kinds tenv'
-      let unalias (t, vp) = Just (res, res, False, vp)
+      let unalias t = Just (res, res, False)
             where res = unaliasType kinds unaliasedTypes t                
 
       return (M.unionWithKey (\k n o -> error $ "already in venv: " ++ show k)
@@ -1228,8 +1176,7 @@ typeCheckWithGlobals venv tenv prog = catchFatalTypeError $ do
   -- add this:
   let venv' = 
         M.insert "this" 
-                 (Just (TEnvId "Window", TEnvId "Window", False, 
-                        (VPNone, M.empty))) venv
+                 (Just (TEnvId "Window", TEnvId "Window", False)) venv
   
   assertReachable intraprocs
   assertDefUse venv' (topDecls, anfProg)

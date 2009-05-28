@@ -26,8 +26,8 @@ import TypedJavaScript.Types
 --use everything in the prototype.
 globalizeEnv :: Env -> Env
 globalizeEnv env = M.map f env
-  where f (Just (_, t@(TFunc (Just _) _ _ _), _, vp)) = Just (t,t,False,vp)
-        f (Just (t1, _, _, vp)) = Just (t1, t1, False, vp)
+  where f (Just (_, t@(TFunc (Just _) _ _ _), _)) = Just (t,t,False)
+        f (Just (t1, _, _)) = Just (t1, t1, False)
         f Nothing = Nothing
         
 
@@ -69,7 +69,7 @@ fieldType env "shift" (TApp "Array" [t]) = return $
   TFunc Nothing [TApp "Array" [t], TSequence [] Nothing] t LPNone
   
 fieldType env f (TPrototype c) = case M.lookup c env of
-  Just (Just (_, TFunc (Just (TObject _ _ protprops)) _ _ _, _, _)) ->
+  Just (Just (_, TFunc (Just (TObject _ _ protprops)) _ _ _, _)) ->
     lookup f protprops 
   _ -> Nothing
 fieldType _ _ _ = Nothing
@@ -129,8 +129,8 @@ replaceAliases kindEnv tenv p t = everywhere (mkT(lookupAlias kindEnv tenv p)) t
 -- |Pretty-prints just the local types in an environment.
 renderLocalEnv :: Env -> String
 renderLocalEnv env = show (M.map asString (M.filter selectLocal env))
-  where selectLocal (Just (_, _, True, _)) = True
+  where selectLocal (Just (_, _, True)) = True
         selectLocal _               = False
-        asString (Just (tDec, tAct, _, _)) = 
+        asString (Just (tDec, tAct, _)) = 
           renderType tDec ++ " => " ++ renderType tAct
         asString Nothing = error "renderLocalEnv: expected (Just _)"

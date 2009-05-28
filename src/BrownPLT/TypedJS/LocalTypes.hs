@@ -20,7 +20,7 @@ localTypes :: Graph
            -> Map Node (Map Id LT.Type) -- ^runtime env. at each statement
 localTypes gr env typeAliases =  visibleEnvs
   where f (id, Nothing) = Just (id, LT.TUnreachable)
-        f (id, Just (tDec, _, _, _)) = Just (id, asRuntimeType typeAliases tDec)
+        f (id, Just (tDec, _, _)) = Just (id, asRuntimeType typeAliases tDec)
         -- visible, runtime types of the initial environment
         decEnv = M.fromList $ mapMaybe f (M.toList env)
         
@@ -33,7 +33,7 @@ refineEnvWithRuntime typeAliases env rt = env'
   where toStatic id rt = case M.lookup id  env of
           Nothing -> error $ printf "TypedJS.LocalTypes: %s is unbound" id
           Just Nothing -> trace ("dropping: " ++ id) Nothing
-          Just (Just (tDec, t, isLocal, vp)) -> Just (tDec, tAct, isLocal, vp)
+          Just (Just (tDec, t, isLocal)) -> Just (tDec, tAct, isLocal)
             where tAct = asStaticType typeAliases rt (flattenUnion t)
                   pr = case isUnion t && not (isUnion tAct) of 
                          False -> ""

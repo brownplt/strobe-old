@@ -2,7 +2,7 @@
 module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
-         ForInit(..),ForInInit(..),Type(..), VP(..),LatentPred(..),         
+         ForInit(..),ForInInit(..),Type(..), LatentPred(..),         
          ToplevelStatement(..),
          showSp, propToString, unId, eqLit,
          TypeConstraint (..)) where
@@ -61,32 +61,6 @@ data ToplevelStatement a
   | ExternalStmt a (Id a) Type
   deriving (Show)
 
-
-data VP = VPId String
-        | VPType Type String
-        | VPNone
-        | VPWeakType Type String --result of "x == 3"
-        | VPTypeof String
-        | VPNot VP
-        | VPLit (Lit SourcePos) Type
-        | VPMulti [VP]
-    deriving (Show, Ord, Eq)
-
--- VPId "x" == VPLit 3 (TId "int")
---  becomes:
--- VPType (TVal 3 (TId "int")) "x"
--- when it's true: 
---    restrict x to TVal 3 int
--- when false:
---    remove TVal 3 int from x
-
--- x --> VPId "x"
--- typeof e where e has vp VPID "x" --> VPTypeof "x"
--- e1 == e2 where e1 has vp VPTypeof "x" and
---  e2 has vp VPLit "number" (TId "String"):
--- VPTypeof "x" == VPLit "number" (TId "string")
---  becomes:
--- VPType (TId "double") "x"
 
 data LatentPred = LPType Type | LPNone
     deriving (Show, Eq, Ord, Data, Typeable)

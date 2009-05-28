@@ -12,7 +12,7 @@ import qualified BrownPLT.IDL as IDL
 import BrownPLT.IDL.RemoveInheritance
 import TypedJavaScript.Prelude
 import TypedJavaScript.Types
-import TypedJavaScript.Syntax (Type (..), LatentPred (..), VP (..))
+import TypedJavaScript.Syntax (Type (..), LatentPred (..))
 
 
 -- |The order in which these files are specified does not matter.

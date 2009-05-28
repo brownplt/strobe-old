@@ -1,7 +1,7 @@
 -- |Pretty-printing Typed JavaScript.
 module TypedJavaScript.PrettyPrint
   ( showSp
-  , renderType, renderVP
+  , renderType
   , renderStatements
   ) where
 
@@ -39,12 +39,6 @@ typeConstraint tc = case tc of
 renderType :: Type -> String
 renderType t = render (type_ t)
 
-renderVP :: VP -> String
-renderVP (VPId x) = "VPId " ++ x
-renderVP (VPType t x) = "VPType (" ++ render (type_ t) ++ ") " ++ x
-renderVP (VPMulti vps) = "VPMulti [" ++ (foldl (\a b -> a ++ "," ++ b) "" 
-                                               (map renderVP vps)) ++ "]"
-renderVP r = "VPhurrr"
 
 renderStatements :: [Statement a] -> String
 renderStatements ss = render $ vcat (map (\s -> stmt s <> semi) ss)

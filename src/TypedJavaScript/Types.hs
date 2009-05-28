@@ -15,17 +15,14 @@ module TypedJavaScript.Types
   , substType 
   , unRec
   , isSubType
-  , unionType, unionTypeVP, unionThisTypeVP, equalityvp
-  , gammaPlus, gammaMinus
+  , unionType, unionTypeVP, unionThisTypeVP
   , checkTypeEnv
   , unaliasTypeEnv
   , unaliasType, realiasType
   , Type (..)
-  , VP (..)
   , TypeConstraint (..)
   , LatentPred (..)
   , flattenUnion
-  , LocalControl
   ) where
 
 import BrownPLT.JavaScript.Analysis.ANF
@@ -35,8 +32,7 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 
 -- we don't want TJS expressions here
-import TypedJavaScript.Syntax (Type (..), VP (..), 
-  TypeConstraint(..), LatentPred(..))
+import TypedJavaScript.Syntax (Type (..), TypeConstraint(..), LatentPred(..))
 import qualified TypedJavaScript.Syntax as TJS
 
 
@@ -172,10 +168,8 @@ realiasType :: Map String Type -> Type
 realiasType types type_ = case type_ of
   _ -> type_
 
-type LocalControl = (VP, Map String Type)
-
 --maps names to (declared type, actual type, vp)
-type Env = Map String (Maybe (Type, Type, Bool, LocalControl))
+type Env = Map String (Maybe (Type, Type, Bool))
 
 emptyEnv :: Env
 emptyEnv = M.empty
@@ -264,8 +258,6 @@ inferLit expr =
 -- additional constraints.  It should not be exported as the type-checker must
 -- check for subtypes in the presence of user-specified constraints.
 --
--- The functions that use this (gammaPlus, gammaMinux, unionTypeVP) may need
--- to take an additional list of constraints.
 x <: y = isSubType M.empty [] x y
 
 
@@ -443,40 +435,23 @@ unionThisType (TObject s o p1) (TObject _ _ p2) = TObject s o $
       (M.fromList (map (\(a,b) -> (a, Just b)) p2)))
 unionThisType a b = unionType a b --if we're not in a constructor
 
-vpToEnv :: VP -> Map Id Type
-vpToEnv (VPType t id) = M.singleton id t
-vpToEnv (VPMulti vps) = M.unionsWith (\t1 t2 -> flattenUnion $ TUnion [t1, t2])
-                                     (map vpToEnv vps)
-vpToEnv _ = M.empty
-
-envToVP :: Map Id Type -> VP
-envToVP env = VPMulti  $ map toVP (M.toList env)
-  where toVP :: (Id, Type) -> VP
-        toVP (id, t) = VPType t id
-
-combineVPs :: VP -> VP -> VP
-combineVPs vp1 vp2 = envToVP (vpToEnv (VPMulti [vp1, vp2]))
-
-unionTypeVP :: Maybe (Type, Type, Bool, LocalControl)
-            -> Maybe (Type, Type, Bool, LocalControl)
-            -> Maybe (Type, Type, Bool, LocalControl)
+unionTypeVP :: Maybe (Type, Type, Bool)
+            -> Maybe (Type, Type, Bool)
+            -> Maybe (Type, Type, Bool)
 unionTypeVP Nothing Nothing = Nothing
-unionTypeVP Nothing (Just (t, tact, b, v)) = 
-  Just (t, tact, b, (VPNone, M.empty))
-unionTypeVP (Just (t, tact, b, v)) Nothing = 
-  Just (t, tact, b, (VPNone, M.empty))
-unionTypeVP (Just (t1, t1act, b1, (vp1, e1)))(Just (t2, t2act, b2, (vp2, e2)))=
+unionTypeVP Nothing (Just (t, tact, b)) = Just (t, tact, b)
+unionTypeVP (Just (t, tact, b)) Nothing = Just (t, tact, b)
+unionTypeVP (Just (t1, t1act, b1)) (Just (t2, t2act, b2)) =
   if b1 /= b2 
     then error "OMG"
-    else Just (unionType t1 t2, unionType t1act t2act, b1, 
-               (combineVPs vp1 vp2, M.empty))
+    else Just (unionType t1 t2, unionType t1act t2act, b1) 
 
-unionThisTypeVP :: (Type, Type, Bool, LocalControl)
-              -> (Type, Type, Bool, LocalControl)
-              -> (Type, Type, Bool, LocalControl)
-unionThisTypeVP (td1, ta1, b1, (v1,e1)) (td2, ta2, b2, (v2,e2)) =
-  (unionThisType td1 td2, unionThisType ta1 ta2, b1, 
-   (combineVPs v1 v2, M.empty))
+
+unionThisTypeVP :: (Type, Type, Bool)
+              -> (Type, Type, Bool)
+              -> (Type, Type, Bool)
+unionThisTypeVP (td1, ta1, b1) (td2, ta2, b2) =
+  (unionThisType td1 td2, unionThisType ta1 ta2, b1) 
 
 
 flattenUnion :: (Type) -> (Type)
@@ -489,103 +464,3 @@ flattenUnion (TUnion ts) =
           noneormanyt -> TUnion noneormanyt
 
 flattenUnion  t = t
-
-
--- Helpers for occurrence typing, from TypedScheme paper
-
---TODO: make sure restrict and remove are correct in the otherwise
---cases; they're different than the typed scheme paper
-
-restrict :: Type -> Type -> Type
-restrict s t
- | s <: t = s -- usually, t <: s, so we do some work during restriction
- | otherwise = case t of
-     
-     TUnion ts -> flattenUnion $ 
-                        TUnion (map (restrict s) ts)
-     _ -> let rez = flattenUnion $
-                      TUnion (filter (\hm -> hm <: t)
-                                     (case s of
-                                        TUnion ts -> ts
-                                        _ -> [s]))
-           in case rez of 
-                TUnion [] -> t
-                _ -> rez
-
-remove :: (Type) -> (Type) -> (Type)
-remove s t
- | s <: t = TUnion  []
- | otherwise = case t of
-     TUnion ts -> flattenUnion $ 
-                        TUnion (map (remove s) ts)
-     _ -> flattenUnion $ 
-            TUnion (filter (\hm -> not $ hm <: t)
-                           (case s of
-                             TUnion ts -> ts
-                             _ -> [s]))
-     
-gammaPlus :: Env -> VP -> Env
-gammaPlus env (VPType t v) =  case M.lookup v env of
-  Nothing -> env
-  Just Nothing -> env
-  Just (Just (tDec, t', b, vp_t)) -> 
-    M.insert v (Just (tDec, restrict t' t, b, vp_t)) env
--- if (x), when true, removes all things from x that are like "undefined"
---gammaPlus g (VPId x) = gammaMinus g (VPType (TId noPos "undefined") x)
-gammaPlus g (VPNot vp) = gammaMinus g vp
-gammaPlus g (VPMulti vs) = foldl gammaPlus g vs
-gammaPlus env (VPWeakType t v) = gammaPlus env (VPType t v)
-gammaPlus g _ = g
-
-gammaMinus :: Env -> VP -> Env
-gammaMinus env (VPType t v) = case M.lookup v env of
-  Nothing -> env
-  Just Nothing -> env
-  Just (Just (tDec, t', b, vp_t)) -> 
-    M.insert v (Just (tDec, remove t' t, b, vp_t)) env
--- if (x), when false, leaves only things in x that are like "undefined"
---gammaMinus g (VPId x) = gammaPlus g (VPType (TId noPos "undefined") x)
-gammaMinus g (VPNot vp) = gammaPlus g vp
-gammaMinus g (VPMulti vs) = foldl gammaMinus g vs
-gammaMinus g _ = g
-
-
-equalityvp :: LocalControl -> LocalControl -> LocalControl
-equalityvp (vp1, ef1) (vp2, ef2) = (equalityvp' vp1 vp2, error "equalityvp")
-
--- combine two VPs into a third, happens with == sign.
-equalityvp' :: VP -> VP -> VP
--- x == 4
--- typeof x == "number"
-equalityvp' (VPTypeof x) (VPLit (StringLit l s) (TId "string")) = case s of
-  "number"    -> VPType (TId "double") x
-  "undefined" -> VPType undefType x
-  "boolean"   -> VPType (TId "bool") x
-  "string"    -> VPType (TId "string") x
-  --this should be: the function that all funcs are subtypes of
-  "function"  -> 
-   VPType (TFunc Nothing [TUnion [], TSequence [] Nothing] (TId "any") LPNone) x
-  --this should be: the object that all objects are subtypes of
-  -- but without any specific attributes... dnno!
-  "object"    -> error "equalityvp' for object nyi" --VPType (TObject []) x
-  _           -> VPNone
-equalityvp' a@(VPLit (StringLit l s) (TId "string")) b@(VPTypeof x) = 
-  equalityvp' b a
-
--- "x == 3" restricts x to be an integer!
--- but it doesn't restrict x to _not_ be an integer, so we can't use VPType.
--- however, "x == undefined" acts just like "typeof x == 'undefined'".
-equalityvp' (VPId x) (VPLit _ t) = VPWeakType t x
-equalityvp' (VPLit _ t) (VPId x) = VPWeakType t x
-
--- yay for cartesian product.
--- this could be done implicitly from the other equalityvp' definition, but
--- then we'd have nested VPMultis. doesn't really matter.
-equalityvp' (VPMulti v1) (VPMulti v2) = 
-  VPMulti (nub [equalityvp' a b | a <- v1, b <- v2])               
-equalityvp' a (VPMulti vs) = 
-  VPMulti (map (equalityvp' a) vs)
-equalityvp' a@(VPMulti{}) b = equalityvp' b a
-
-equalityvp' _ _ = VPNone
-
