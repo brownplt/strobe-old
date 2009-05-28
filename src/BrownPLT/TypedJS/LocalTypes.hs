@@ -72,7 +72,9 @@ asRuntimeType aliases t = case t of
 
 maybeAsStaticType :: Map Id Type -> LT.Type -> Type -> Maybe Type
 maybeAsStaticType aliases rt st = case (rt, st) of
-  (_, TRec _ st') -> maybeAsStaticType aliases rt st'
+  (_, TRec id st') -> do
+    t <- maybeAsStaticType (M.insert id (TId id) aliases) rt st'
+    return (TRec id t)
   (_, TEnvId id) -> case M.lookup id aliases of
     Just (TRec _ (TObject {})) -> case rt of
       LT.TBasic LT.TObject -> Just st
@@ -95,6 +97,7 @@ maybeAsStaticType aliases rt st = case (rt, st) of
       [] -> Nothing
       [t] -> Just t
       ts -> Just (TUnion ts)
+  (_, TId id) | id `M.member` aliases -> Just (TId id)
   (LT.TBasic LT.TString, TId "string") -> Just st
   (LT.TBasic LT.TBoolean, TId "bool") -> Just st
   (LT.TBasic LT.TNumber, TId "double") -> Just st
