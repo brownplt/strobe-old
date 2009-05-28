@@ -22,6 +22,7 @@ module BrownPLT.TypedJS.Prelude
   , catastrophe
   , isLeft, isRight, procEither
   , Node
+  , trace
   ) where
 
 import Data.Tree
@@ -38,6 +39,10 @@ import Text.PrettyPrint.HughesPJ
 import Text.Printf
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.Graph.Inductive (Node, Graph)
+import System.IO.Unsafe
+
+trace :: String -> a -> a
+trace s r = (unsafePerformIO $ putStrLn s) `seq` r
 
 instance Monad (Either String) where
   return v = Right v

@@ -28,7 +28,6 @@ module TypedJavaScript.Types
   , LocalControl
   ) where
 
-import Debug.Trace
 import BrownPLT.JavaScript.Analysis.ANF
 import TypedJavaScript.Prelude
 import TypedJavaScript.PrettyPrint()
@@ -38,7 +37,6 @@ import qualified Data.Map as M
 -- we don't want TJS expressions here
 import TypedJavaScript.Syntax (Type (..), VP (..), 
   TypeConstraint(..), LatentPred(..))
--- but we do need the lits
 import qualified TypedJavaScript.Syntax as TJS
 
 
@@ -107,7 +105,7 @@ checkKinds kinds t = case t of
     let kinds' = M.union (M.fromList (zip ids (repeat KindStar))) kinds
     assertKinds kinds' (t, KindStar)
     return KindStar
-  TEnvId id -> fail "TEnvId for checkkinds NYI"
+  TEnvId id -> return KindStar
 
 -- |Checks a type-environment for consistency, given a kind-environment.
 -- Once the type-environment has passes this check, attempts to substitute
@@ -127,7 +125,7 @@ unaliasType :: KindEnv -> Map String Type
             -> Type
             -> Type
 unaliasType kinds types type_ = case type_ of
-  TEnvId{} -> error "unaliasType TEnvId NYI"
+  TEnvId id -> type_
   TId v -> case M.lookup v kinds of
     Just KindStar -> type_
     Just k -> error $ printf "unaliasType kindsTypeEnv: %s has kind %s" v 
@@ -135,9 +133,7 @@ unaliasType kinds types type_ = case type_ of
     Nothing -> case M.lookup v types of
       -- BrownPLT.TypedJS.IntialEnvironment.bindingFromIDL maps interfaces 
       -- named v to the type (TRec v ...).
-      --
-      -- No need for recursion, the lookup in types is recursive
-      Just  t -> t
+      Just  t -> TEnvId v
       Nothing -> error $ printf "unaliasType kindsTypeEnv: unbound type %s" v
   -- Stops infinite recursion
   TRec v t -> TRec v (unaliasType kinds (M.insert v (TId v) types) t)
@@ -415,6 +411,7 @@ st env rel (t1, t2)
       Nothing -> Nothing
 
     otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
+
 
 
 isSubType :: Map String Type

@@ -7,6 +7,7 @@ import BrownPLT.TypedJS.Prelude
 import BrownPLT.JavaScript.Analysis.ANF
 import qualified BrownPLT.JavaScript.Analysis.LocalTypes as LT
 import qualified Data.Map as M
+import qualified Data.Set as S
 import BrownPLT.JavaScript.Analysis.Intraprocedural (Graph)
 
 
@@ -14,7 +15,6 @@ localTypes :: Graph
            -> Env -- ^enclosing environment
            -> Map Id Type
            -> Map Node Env -- ^environment at each statement
-
 localTypes gr env typeAliases = staticEnvs
   where f (id, Nothing) = Just (id, LT.TUnreachable)
         f (id, Just (tDec, _, _, _)) = Just (id, asRuntimeType typeAliases tDec)
@@ -67,6 +67,9 @@ maybeAsStaticType :: Map Id Type -> LT.Type -> Type -> Maybe Type
 maybeAsStaticType aliases rt st = case (rt, st) of
   (_, TRec _ st') -> maybeAsStaticType aliases rt st'
   (_, TEnvId id) -> case M.lookup id aliases of
+    Just (TRec _ (TObject {})) -> case rt of
+      LT.TBasic LT.TObject -> Just st
+      otherwise -> Nothing
     Just st' -> maybeAsStaticType aliases rt st'
     Nothing -> error $ printf "maybeAsStaticType: unbound (TEnvId %s)" id
   (_, TIterator{}) -> error "maybeAsStaticType aliases: TIterator NYI"
@@ -75,7 +78,8 @@ maybeAsStaticType aliases rt st = case (rt, st) of
   (LT.TUnk, st) -> Just st
   
   (LT.TUnion rts, _) -> Just (TUnion (catMaybes sts'))
-    where sts' = map (flip (maybeAsStaticType aliases) st) (map LT.TBasic rts)
+    where sts' = map (flip (maybeAsStaticType aliases) st) 
+                     (map LT.TBasic (S.toList rts))
   (_, TUnion sts) -> Just (TUnion (catMaybes sts'))
     where sts' = map (maybeAsStaticType aliases rt) sts
 

@@ -218,7 +218,7 @@ doAssignment (<:) p env v te (e_vp, ef)
         let env' = M.insert v (Just (tDec, te, True, 
                                      (VPMulti [VPId v, e_vp], M.empty))) 
                             env
-        return env'
+        return M.empty -- env'
    | otherwise -> do
        typeError p $
          printf "error assigning to %s :: %s; given an expression of type %s"
