@@ -259,3 +259,13 @@ function () :: (-> int) {
   x = 3;
   return x;
 } @@ succeeds;
+
+function () :: (-> int) {
+  var x :: U(int, string) = 4;
+  return x;
+} @@ succeeds;
+	
+function () :: (-> int) {
+  var x :: any = 4;
+  return x;
+} @@ succeeds;

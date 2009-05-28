@@ -1,5 +1,6 @@
 module BrownPLT.TypedJS.LocalTypes 
   ( localTypes
+  , refineEnvWithRuntime
   ) where
 
 import TypedJavaScript.Types
@@ -16,8 +17,8 @@ import BrownPLT.TypedJS.TypeFunctions
 localTypes :: Graph
            -> Env -- ^enclosing environment
            -> Map Id Type
-           -> Map Node Env -- ^environment at each statement
-localTypes gr env typeAliases =  staticEnvs
+           -> Map Node (Map Id LT.Type) -- ^runtime env. at each statement
+localTypes gr env typeAliases =  visibleEnvs
   where f (id, Nothing) = Just (id, LT.TUnreachable)
         f (id, Just (tDec, _, _, _)) = Just (id, asRuntimeType typeAliases tDec)
         -- visible, runtime types of the initial environment
@@ -25,18 +26,21 @@ localTypes gr env typeAliases =  staticEnvs
         
         -- visible, runtime types at each statement
         visibleEnvs = LT.localTypes gr decEnv
-        
-        toStatic id rt = case M.lookup id  env of
-          Nothing -> error "TypedJS.LocalTypes: unbound id"
-          Just Nothing -> Nothing
-          Just (Just (tDec, tAct, False, vp)) -> Just (tDec, tAct, False, vp)
-          Just (Just (t, _, True, vp)) -> Just (t, tDec, True, vp)
-            where tDec = asStaticType typeAliases rt (flattenUnion t)
-                  pr = case isUnion t && not (isUnion tDec) of 
+
+
+refineEnvWithRuntime :: Map Id Type -> Env -> Map Id LT.Type -> Env
+refineEnvWithRuntime typeAliases env rt = env'
+  where toStatic id rt = case M.lookup id  env of
+          Nothing -> error $ printf "TypedJS.LocalTypes: %s is unbound" id
+          Just Nothing -> trace ("dropping: " ++ id) Nothing
+          Just (Just (tDec, t, isLocal, vp)) -> Just (tDec, tAct, isLocal, vp)
+            where tAct = asStaticType typeAliases rt (flattenUnion t)
+                  pr = case isUnion t && not (isUnion tAct) of 
                          False -> ""
-                         True -> printf "%s : %s => %s (actually %s)" id (renderType t) (renderType tDec) (show rt)
+                         True -> printf "%s : %s => %s (actually %s)" id (renderType t) (renderType tAct) (show rt)
         -- visible, static environments at each statement
-        staticEnvs = M.map (\env -> M.mapWithKey toStatic env) visibleEnvs
+
+        env' = M.mapWithKey toStatic rt
 
 
 asRuntimeType :: Map Id Type -> Type -> LT.Type

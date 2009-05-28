@@ -270,9 +270,8 @@ function (x) :: (U(int, bool) -> string) {
 } :: (U(int, bool) -> string);
 
 //magic
-//TODO: fix operator precedence
 function (x) :: U(int, bool, string) -> U(int, bool) {
-  if ((typeof x == "number") || (typeof x == "bool"))
+  if ((typeof x == "number") || (typeof x == "boolean"))
     return x;
   return 4;
 } :: U(int, bool, string) -> U(int, bool);

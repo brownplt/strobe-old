@@ -29,7 +29,7 @@ import Paths_TypedJavaScript
 import Text.ParserCombinators.Parsec (parseFromFile)
 import TypedJavaScript.Parser (parseToplevels)
 import BrownPLT.TypedJS.LocalTypes
-
+import qualified BrownPLT.JavaScript.Analysis.LocalTypes as LT
 import System.Directory
 import System.FilePath
 
@@ -37,7 +37,8 @@ data TypeCheckState = TypeCheckState {
   stateGraph :: Graph,
   stateEnvs :: Map Int Env,
   stateTypeEnv :: Map String Type,
-  stateErrors :: [(SourcePos, String)]
+  stateErrors :: [(SourcePos, String)],
+  stateLocalTypes :: Map Node (Map Id LT.Type)
 } deriving (Typeable)
 
 instance Show TypeCheckState where
@@ -49,7 +50,7 @@ instance Exception TypeCheckState where
 
 
 emptyTypeCheckState :: TypeCheckState
-emptyTypeCheckState = TypeCheckState G.empty M.empty M.empty []
+emptyTypeCheckState = TypeCheckState G.empty M.empty M.empty [] M.empty
 
 
 basicKinds :: KindEnv
@@ -70,6 +71,7 @@ typeError :: SourcePos
           -> TypeCheck ()
 typeError loc msg = do
   s <- get
+  fail $ " at " ++ show loc ++ ": " ++ msg
   put $ s { stateErrors = (loc, msg):(stateErrors s) }
 
 fatalTypeError :: String
@@ -106,6 +108,19 @@ lookupLocalEnv node = do
   case M.lookup node (stateEnvs state) of
     Nothing -> return emptyEnv
     Just env -> return env
+
+setLocalEnv :: Node -> Env -> TypeCheck ()
+setLocalEnv node env = do
+  state <- get
+  put $ state { stateEnvs = M.insert node env (stateEnvs state) }
+
+
+lookupRuntimeEnv :: Node -> TypeCheck (Map Id LT.Type)
+lookupRuntimeEnv node = do
+  state <- get
+  case M.lookup node (stateLocalTypes state) of
+    Just runtimeEnv -> return runtimeEnv
+    Nothing -> fail "lookupRuntimeEnv: no runtime environment"
 
 updateLocalEnv :: (G.Node, Env) -> TypeCheck ()
 updateLocalEnv (node, incomingEnv)= do
@@ -161,16 +176,38 @@ stmtForBody :: Env -- ^environment of the enclosing function for a nested
             -> G.Node
             -> TypeCheck ()
 stmtForBody enclosingEnv erasedEnv constraints rettype node = do
+  state <- get
   localEnv <- lookupLocalEnv node
+  runtimeEnv <- lookupRuntimeEnv node
+  let refinedLocalEnv = refineEnvWithRuntime (stateTypeEnv state) 
+                                             (M.union localEnv enclosingEnv)
+                                             runtimeEnv
+  setLocalEnv node refinedLocalEnv
+
   s <- nodeToStmt node
-  {-
+  
   liftIO $ putStrLn $ "stmt: " ++ show s
-  liftIO $ putStrLn $ "localEnv:\n" ++ (renderLocalEnv localEnv)
-  liftIO $ putStrLn $ "enclosingEnv:\n" ++ (renderLocalEnv localEnv)
-  -}
-  succs <- stmt (M.union localEnv enclosingEnv) erasedEnv constraints rettype 
+  liftIO $ putStrLn $ "refinedLocalEnv: " ++ (renderLocalEnv refinedLocalEnv)
+  liftIO $ putStrLn $ "localEnv: " ++ (renderLocalEnv localEnv)
+  liftIO $ putStrLn $ "runtimeEnv: " ++ (show runtimeEnv)
+  
+  succs <- stmt refinedLocalEnv erasedEnv constraints rettype 
                 node s
   mapM_ updateLocalEnv succs
+
+  succs <- stmtSuccs s
+  localEnv <- lookupLocalEnv node
+  
+  let propagate (Just t) Nothing = Just t
+      propagate t1 t2 = t2
+  let f (succ, _) = do
+        succEnv <- lookupLocalEnv succ
+        let newBinds = M.unionWith propagate localEnv succEnv
+        state <- get
+        put $ state { stateEnvs = M.insert succ newBinds (stateEnvs state) }
+  mapM_ f succs
+
+ 
   return ()
     
 
@@ -230,7 +267,7 @@ doAssignment (<:) p env v te (e_vp, ef)
         let env' = M.insert v (Just (tDec, te, True, 
                                      (VPMulti [VPId v, e_vp], M.empty))) 
                             env
-        return M.empty -- env'
+        return env'
    | otherwise -> do
        typeError p $
          printf "error assigning to %s :: %s; given an expression of type %s"
@@ -475,6 +512,7 @@ stmt env ee cs erettype node s = do
       (te,e_vp) <- expr env ee cs e
       liftIO $ printf "%s := %s\n" v (renderType te)
       env' <- doAssignment (<:) p env v te e_vp
+      liftIO $ putStrLn (renderLocalEnv env')
       return $ zip (map fst succs) (repeat env')
 
     DirectPropAssignStmt (_,p) obj prop e -> do
@@ -1057,8 +1095,7 @@ typeCheckProgram env enclosingKindEnv constraints
   let cs' = cs ++ constraints
 
   state <- get
-  let stmtEnvs = localTypes gr env' (stateTypeEnv state)
-  put $ state { stateEnvs = stmtEnvs }
+  put $ state { stateLocalTypes = localTypes gr env' (stateTypeEnv state) }
   
   finalEnv <- body env' ee cs' rettype (enterNodeOf gr) (exitNodeOf gr)
   -- When we descend into nested functions, we ensure that functions satisfy
