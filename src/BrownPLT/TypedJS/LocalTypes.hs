@@ -32,14 +32,9 @@ refineEnvWithRuntime :: Map Id Type -> Env -> Map Id LT.Type -> Env
 refineEnvWithRuntime typeAliases env rt = env'
   where toStatic id rt = case M.lookup id  env of
           Nothing -> error $ printf "TypedJS.LocalTypes: %s is unbound" id
-          Just Nothing -> trace ("dropping: " ++ id) Nothing
+          Just Nothing -> Nothing
           Just (Just (tDec, t, isLocal)) -> Just (tDec, tAct, isLocal)
             where tAct = asStaticType typeAliases rt (flattenUnion t)
-                  pr = case isUnion t && not (isUnion tAct) of 
-                         False -> ""
-                         True -> printf "%s : %s => %s (actually %s)" id (renderType t) (renderType tAct) (show rt)
-        -- visible, static environments at each statement
-
         env' = M.mapWithKey toStatic rt
 
 
@@ -52,6 +47,13 @@ projBaseType (LT.TKnown set) = case S.toList set of
   [t] -> Just t
   otherwise -> Nothing
 projBaseType _ = Nothing
+
+
+projUnionType  :: LT.Type -> Maybe [LT.Type]
+projUnionType (LT.TKnown set) = case S.toList set of
+  ts@(_:_:_) -> Just (map (\t -> LT.TKnown (S.singleton t)) ts)
+  otherwise -> Nothing
+projUnionType _ = Nothing
 
 
 asRuntimeType :: Map Id Type -> Type -> LT.Type
@@ -86,8 +88,15 @@ maybeAsStaticType aliases rt st = case (rt, st) of
   (_, TRec id st') -> do
     t <- maybeAsStaticType (M.insert id (TId id) aliases) rt st'
     return (TRec id t)
+  (_, TForall ids constraints type_) -> do
+    let ids' = M.fromList $ map (\id -> (id, TId id)) ids
+    type_' <- maybeAsStaticType (M.union ids' aliases) rt type_
+    return (TForall ids constraints type_') 
   (_, TEnvId id) -> case M.lookup id aliases of
     Just (TRec _ (TObject {})) -> case rt of
+      (projBaseType -> Just LT.TObject) -> Just st
+      otherwise -> Nothing
+    Just (TObject {}) -> case rt of
       (projBaseType -> Just LT.TObject) -> Just st
       otherwise -> Nothing
     Just st' -> maybeAsStaticType aliases rt st'
@@ -95,19 +104,7 @@ maybeAsStaticType aliases rt st = case (rt, st) of
   (_, TIterator{}) -> error "maybeAsStaticType aliases: TIterator NYI"
   (_, TPrototype{}) -> error "maybeAsStaticType aliases: TPrototype NYI"
   (_, TProperty{}) -> error "maybeAsStaticType aliases: TProperty NYI"
-  (LT.TUnk, st) -> Just st
   
-  (LT.TKnown rts, _) -> 
-    case catMaybes (map (flip (maybeAsStaticType aliases) st)
-                         (map injBaseType (S.toList rts))) of
-      [] -> Nothing
-      [t] -> Just t
-      ts -> Just (TUnion ts)
-  (_, TUnion sts) ->
-    case catMaybes $ map (maybeAsStaticType aliases rt) sts of
-      [] -> Nothing
-      [t] -> Just t
-      ts -> Just (TUnion ts)
   (_, TId id) | id `M.member` aliases -> Just (TId id)
   (projBaseType -> Just LT.TString, TId "string") -> Just st
   (projBaseType -> Just LT.TBoolean, TId "bool") -> Just st
@@ -121,6 +118,26 @@ maybeAsStaticType aliases rt st = case (rt, st) of
     TSequence {} -> Just st
     TApp "Array" _ -> Just st
     otherwise -> Nothing
+  (projUnionType -> Just rts, TUnion sts) -> do
+    let projs = [maybeAsStaticType aliases rt st | rt <- rts, st <- sts]
+    case catMaybes projs of
+      [] -> Nothing
+      [t] -> Just t
+      ts -> Just (TUnion ts)
+
+  
+  (projUnionType -> Just rts, _) -> 
+    case catMaybes (map (flip (maybeAsStaticType aliases) st) rts) of
+      [] -> Nothing
+      [t] -> Just t
+      ts -> Just (TUnion ts)
+  (_, TUnion sts) -> 
+    case catMaybes $ map (maybeAsStaticType aliases rt) sts of
+      [] -> Nothing
+      [t] -> Just t
+      ts -> Just (TUnion ts)
+  
+  (LT.TUnk, st) -> Just st
     
   otherwise -> Nothing -- at runtime if the type is rt, the static type cannot 
                        -- be st

@@ -127,12 +127,7 @@ updateLocalEnv (node, incomingEnv)= do
   state <- get
   let e1 = incomingEnv
   let e2 = M.findWithDefault M.empty node (stateEnvs state)
-  let f e1 e2 = 
-        let r = unionEnv e1 e2
-          in {-trace (printf "Unioning %s\n to %s\n for %s\n" 
-                           (renderLocalEnv e1) (renderLocalEnv e2)
-                           (renderLocalEnv r))-}
-                   r
+  let f e1 e2 = unionEnv e1 e2
   let result = M.insertWith f node incomingEnv (stateEnvs state)
   put $ state { stateEnvs = result } 
 
@@ -185,11 +180,13 @@ stmtForBody enclosingEnv erasedEnv constraints rettype node = do
   setLocalEnv node refinedLocalEnv
 
   s <- nodeToStmt node
-  
+ 
+{- 
   liftIO $ putStrLn $ "stmt: " ++ show s
-  liftIO $ putStrLn $ "refinedLocalEnv: " ++ (renderLocalEnv refinedLocalEnv)
   liftIO $ putStrLn $ "localEnv: " ++ (renderLocalEnv localEnv)
   liftIO $ putStrLn $ "runtimeEnv: " ++ (show runtimeEnv)
+  liftIO $ putStrLn $ "refinedLocalEnv: " ++ (renderLocalEnv refinedLocalEnv)
+-}
   
   succs <- stmt refinedLocalEnv erasedEnv constraints rettype 
                 node s
@@ -504,9 +501,7 @@ stmt env ee cs erettype node s = do
 
     AssignStmt (_,p) v e -> do
       te <- expr env ee cs e
-      liftIO $ printf "%s := %s\n" v (renderType te)
       env' <- doAssignment (<:) p env v te 
-      liftIO $ putStrLn (renderLocalEnv env')
       return $ zip (map fst succs) (repeat env')
 
     DirectPropAssignStmt (_,p) obj prop e -> do
