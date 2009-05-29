@@ -479,6 +479,9 @@ function (x) :: (U(int->bool, bool->int) -> bool) {
 } :: (U(int->bool, bool->int) -> bool);*/
 
 //&&
+function (dubfun, x) :: ((double -> bool), U(double,string) -> bool) {
+  return (typeof(x)=='number' && isNaN(x)) || false;
+} :: ((double -> bool), U(double, string) -> bool);
 function (dubfun, x) :: ((double -> bool), any -> bool) {
-  return (typeof(dubfun)=='number' && isNaN(x)) || false;
+  return (typeof(x)=='number' && isNaN(x)) || false;
 } :: ((double -> bool), any -> bool);
