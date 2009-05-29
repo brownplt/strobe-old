@@ -43,20 +43,31 @@ refineEnvWithRuntime typeAliases env rt = env'
         env' = M.mapWithKey toStatic rt
 
 
+injBaseType :: LT.BaseType -> LT.Type
+injBaseType bt = LT.TKnown (S.singleton bt)
+
+
+projBaseType :: LT.Type -> Maybe LT.BaseType
+projBaseType (LT.TKnown set) = case S.toList set of
+  [t] -> Just t
+  otherwise -> Nothing
+projBaseType _ = Nothing
+
+
 asRuntimeType :: Map Id Type -> Type -> LT.Type
 asRuntimeType aliases t = case t of
-  TObject {} ->  LT.TBasic LT.TObject
+  TObject {} ->  injBaseType LT.TObject
   TAny ->  LT.TUnk
   TRec _ _ ->  asRuntimeType aliases (unRec t)
-  TSequence _ _ ->  LT.TBasic LT.TObject
-  TFunc {} ->  LT.TBasic LT.TFunction
-  TId "string" ->  LT.TBasic LT.TString
-  TId "bool" ->  LT.TBasic LT.TBoolean
-  TId "double" ->  LT.TBasic LT.TNumber
-  TId "int" ->  LT.TBasic LT.TNumber
-  TId "undefined" ->  LT.TBasic LT.TUndefined
+  TSequence _ _ ->  injBaseType LT.TObject
+  TFunc {} ->  injBaseType LT.TFunction
+  TId "string" ->  injBaseType LT.TString
+  TId "bool" ->  injBaseType LT.TBoolean
+  TId "double" ->  injBaseType LT.TNumber
+  TId "int" ->  injBaseType LT.TNumber
+  TId "undefined" ->  injBaseType LT.TUndefined
   TId s -> error $ printf "asRuntimeType aliases: unexpected (TId %s)" s
-  TApp "Array" _ ->  LT.TBasic LT.TObject
+  TApp "Array" _ ->  injBaseType LT.TObject
   TApp _ _ -> error $ "asRuntimeType aliases: unxpected TApp"
   TForall _ _ t' ->  asRuntimeType aliases t'
   TEnvId id -> case M.lookup id aliases of
@@ -75,7 +86,7 @@ maybeAsStaticType aliases rt st = case (rt, st) of
   (_, TRec _ st') -> maybeAsStaticType aliases rt st'
   (_, TEnvId id) -> case M.lookup id aliases of
     Just (TRec _ (TObject {})) -> case rt of
-      LT.TBasic LT.TObject -> Just st
+      (projBaseType -> Just LT.TObject) -> Just st
       otherwise -> Nothing
     Just st' -> maybeAsStaticType aliases rt st'
     Nothing -> error $ printf "maybeAsStaticType: unbound (TEnvId %s)" id
@@ -84,9 +95,9 @@ maybeAsStaticType aliases rt st = case (rt, st) of
   (_, TProperty{}) -> error "maybeAsStaticType aliases: TProperty NYI"
   (LT.TUnk, st) -> Just st
   
-  (LT.TUnion rts, _) -> 
+  (LT.TKnown rts, _) -> 
     case catMaybes (map (flip (maybeAsStaticType aliases) st)
-                         (map LT.TBasic (S.toList rts))) of
+                         (map injBaseType (S.toList rts))) of
       [] -> Nothing
       [t] -> Just t
       ts -> Just (TUnion ts)
@@ -95,14 +106,14 @@ maybeAsStaticType aliases rt st = case (rt, st) of
       [] -> Nothing
       [t] -> Just t
       ts -> Just (TUnion ts)
-  (LT.TBasic LT.TString, TId "string") -> Just st
-  (LT.TBasic LT.TBoolean, TId "bool") -> Just st
-  (LT.TBasic LT.TNumber, TId "double") -> Just st
-  (LT.TBasic LT.TNumber, TId "int") -> Just st
-  (LT.TBasic LT.TFunction, TFunc {}) -> Just st
-  (LT.TBasic LT.TUndefined, TId "undefined") -> Just st
-  (LT.TBasic (LT.TFixedString _), TId "string") -> Just st
-  (LT.TBasic LT.TObject, _) -> case st of
+  (projBaseType -> Just LT.TString, TId "string") -> Just st
+  (projBaseType -> Just LT.TBoolean, TId "bool") -> Just st
+  (projBaseType -> Just LT.TNumber, TId "double") -> Just st
+  (projBaseType -> Just LT.TNumber, TId "int") -> Just st
+  (projBaseType -> Just LT.TFunction, TFunc {}) -> Just st
+  (projBaseType -> Just LT.TUndefined, TId "undefined") -> Just st
+  (projBaseType -> Just (LT.TFixedString _), TId "string") -> Just st
+  (projBaseType -> Just LT.TObject, _) -> case st of
     TObject {} -> Just st
     TSequence {} -> Just st
     TApp "Array" _ -> Just st
