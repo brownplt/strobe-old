@@ -68,9 +68,10 @@ asRuntimeType aliases t = case t of
   TId "double" ->  injBaseType LT.TNumber
   TId "int" ->  injBaseType LT.TNumber
   TId "undefined" ->  injBaseType LT.TUndefined
-  TId s -> error $ printf "asRuntimeType aliases: unexpected (TId %s)" s
+  --TId s -> error $ printf "asRuntimeType aliases: unexpected (TId %s)" s
+  TId s -> LT.TUnk --a parametrized type (like in a forall)
   TApp "Array" _ ->  injBaseType LT.TObject
-  TPrototype {} -> injBaseType LT.TObject
+  TPrototype {} ->  injBaseType LT.TObject
   TApp _ _ -> error $ "asRuntimeType aliases: unxpected TApp"
   TForall _ _ t' ->  asRuntimeType aliases t'
   TEnvId id -> case M.lookup id aliases of

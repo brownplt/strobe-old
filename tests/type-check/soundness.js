@@ -177,23 +177,33 @@ function () :: (-> ) {
   inner(y);
 } @@ succeeds;
 
-//maybe subtyping shouldnt work the same for func calls?
+//a more general thing proving it's not int/double:
+function (obj1, obj2, b) :: forall Ta Tb : Ta <: Tb . (
+  {x::Ta}, {x::Tb}, Tb ->) {
 
-//must make sure block level scoping is ok.
-/*
-{
-  var z :: (-> int) = function() :: (-> int) { return 3; };
-
-  if (false)
-  {
-    var x :: int = 5;
-    z = function() :: (-> int) { return x; };
+  function writeB(obj) :: ({x :: Tb} -> ) {
+    obj.x = b;
   }
 
-  z();
-}
-  */
+  writeB(obj2);
+} :: forall Ta Tb : Ta <: Tb . ({x::Ta},{x::Tb},Tb->);
+function (obj1, obj2, b) :: forall Ta Tb : Ta <: Tb . (
+  {x::Ta}, {x::Tb}, Tb ->) {
 
+  function writeB(obj) :: ({x :: Tb} -> ) {
+    obj.x = b;
+  }
+  //if writeB succeeds, obj1's x field will be oblimerated by something
+  //more general!
+  //two ways to do this:
+  //1) less principled - assume a type ID can be an object, so don't
+  //   allow mutating a TId field. should be sound, but will suck.
+  //   fix double/int by making int not <: double.
+  //2) more principled - mark each field as optionally 'readonly' / 'immutable'
+  //   can't write to readonly fields. readonly field subtyping works
+  //   the same way, but writable field subtyping is invariant.
+  writeB(obj1);
+} @@ fails;
 
 //declare before use stuff
 function () :: (->) {
@@ -264,7 +274,7 @@ function () :: (-> int) {
   var x :: U(int, string) = 4;
   return x;
 } @@ succeeds;
-	
+
 function () :: (-> int) {
   var x :: any = 4;
   return x;
