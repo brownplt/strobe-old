@@ -45,6 +45,8 @@ freeTypeVariables t = fv t where
   fv (TUnion ts) = M.unions (map fv ts)
   fv (TForall ids _ t) = M.union (M.fromList (zip ids (repeat KindStar)))
                                  (fv t)
+  fv _ = M.empty --prototype, property, iterator, and envid 
+
 fieldType :: Env -> Id -> Type -> Maybe Type
 fieldType env id (TObject _ _ ts) = lookup id ts
 fieldType env id (TUnion ts) = do

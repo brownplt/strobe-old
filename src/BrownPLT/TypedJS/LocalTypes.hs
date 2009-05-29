@@ -57,6 +57,7 @@ asRuntimeType aliases t = case t of
   TId "undefined" ->  LT.TBasic LT.TUndefined
   TId s -> error $ printf "asRuntimeType aliases: unexpected (TId %s)" s
   TApp "Array" _ ->  LT.TBasic LT.TObject
+  TPrototype {} -> LT.TBasic LT.TObject
   TApp _ _ -> error $ "asRuntimeType aliases: unxpected TApp"
   TForall _ _ t' ->  asRuntimeType aliases t'
   TEnvId id -> case M.lookup id aliases of
@@ -64,7 +65,6 @@ asRuntimeType aliases t = case t of
     Nothing -> error $ printf "asRuntimeType: unbound (TEnvId %s)" id
   TIterator {} -> error "asRuntimeType aliases: TIterator NYI"
   TProperty {} -> error "asRuntimeType aliases: TProperty NYI"
-  TPrototype {} -> error "asRuntimeType aliases: TPrototype NYI"
   TUnion ts -> case map (asRuntimeType aliases) ts of
     [] -> error "asRuntimeType aliases: empty union"
     [rt] -> rt
@@ -81,9 +81,6 @@ maybeAsStaticType aliases rt st = case (rt, st) of
       otherwise -> Nothing
     Just st' -> maybeAsStaticType aliases rt st'
     Nothing -> error $ printf "maybeAsStaticType: unbound (TEnvId %s)" id
-  (_, TIterator{}) -> error "maybeAsStaticType aliases: TIterator NYI"
-  (_, TPrototype{}) -> error "maybeAsStaticType aliases: TPrototype NYI"
-  (_, TProperty{}) -> error "maybeAsStaticType aliases: TProperty NYI"
   (LT.TUnk, st) -> Just st
   
   (LT.TUnion rts, _) -> 
@@ -107,9 +104,17 @@ maybeAsStaticType aliases rt st = case (rt, st) of
   (LT.TBasic (LT.TFixedString _), TId "string") -> Just st
   (LT.TBasic LT.TObject, _) -> case st of
     TObject {} -> Just st
+    TPrototype {} -> Just st --TODO: i think...
     TSequence {} -> Just st
     TApp "Array" _ -> Just st
     otherwise -> Nothing
+
+  --here we have a prototype refined to a non-object. 
+  --I think the declared type is always right, though...
+  (_, TPrototype{}) -> Just st
+
+  (_, TIterator{}) -> error "maybeAsStaticType aliases: TIterator NYI"
+  (_, TProperty{}) -> error "maybeAsStaticType aliases: TProperty NYI"
     
   otherwise -> Nothing -- at runtime if the type is rt, the static type cannot 
                        -- be st

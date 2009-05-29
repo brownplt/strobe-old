@@ -477,3 +477,8 @@ function (x) :: (U(int->bool, bool->int) -> bool) {
     return x(100);
   return false;
 } :: (U(int->bool, bool->int) -> bool);*/
+
+//&&
+function (dubfun, x) :: ((double -> bool), any -> bool) {
+  return (typeof(dubfun)=='number' && isNaN(x)) || false;
+} :: ((double -> bool), any -> bool);
