@@ -297,6 +297,8 @@ st env rel (t1, t2)
       Just t2' -> st env rel (t1, t2')
       Nothing -> error $ printf "BrownPLT.TypedJS.Subtypes.st: TEnvId %s is \
                                 \not in the environment. t1 <: TEnvId y" y
+    -- int <: double because it makes sense, and also they are
+    -- represented the same in javascript.
     (TId "int", TId "double") -> return rel
     (_, TAny) -> return (S.insert (t1, t2) rel)
     (TId x, TId y) 

@@ -43,7 +43,7 @@ parseIDLType t = case t of
   IDL.TInt -> intType
   IDL.TBool -> boolType
   IDL.TVoid -> undefType
-  IDL.TId id -> TId id
+  IDL.TId id -> TEnvId id
 
 
 -- |Assumes all names are unique in the list of members.  This is guaranteed
