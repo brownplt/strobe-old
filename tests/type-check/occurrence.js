@@ -485,3 +485,18 @@ function (dubfun, x) :: ((double -> bool), U(double,string) -> bool) {
 function (dubfun, x) :: ((double -> bool), any -> bool) {
   return ((typeof(x)=='number') && isNaN(x)) || false;
 } :: ((double -> bool), any -> bool);
+
+//restricting 'any':
+function (x) :: (any -> bool) {
+  var rez :: bool = false;
+  if (typeof x == "boolean")
+    rez = x;
+  return rez;
+} :: (any -> bool);
+
+function (x) :: (any -> bool) {
+  var tx = typeof x;
+  if (typeof tx == "string")
+    return false;
+  return false;
+} :: any -> bool;

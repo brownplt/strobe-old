@@ -59,7 +59,7 @@ projUnionType _ = Nothing
 asRuntimeType :: Map Id Type -> Type -> LT.Type
 asRuntimeType aliases t = case t of
   TObject {} ->  injBaseType LT.TObject
-  TAny ->  LT.TUnk
+  TAny -> LT.TUnk
   TRec _ _ ->  asRuntimeType aliases (unRec t)
   TSequence _ _ ->  injBaseType LT.TObject
   TFunc {} ->  injBaseType LT.TFunction

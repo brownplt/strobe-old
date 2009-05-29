@@ -48,6 +48,9 @@ function (b,a) :: ({x::int,y::int}, {x::double}->) {
 
 function () :: (->) {
   var p :: {point :: { ... } } = {a: '4', b: '3', c: '1gg', d: '55t'};
+} @@ fails;
+function () :: (->) {
+  var p :: {point :: { ... } } = {point :{a: '4', b: '3', c: '1gg', d: '55t'}};
 } :: (->);
 
 function (b,a) :: ({x::int,y::int}, {x::int, ... }->) {
