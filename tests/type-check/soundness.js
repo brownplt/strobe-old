@@ -100,6 +100,35 @@ function () :: (->) {
   oomra(z);
   z.x.field2;
 } @@ succeeds;
+//minor parsing thins: slack implies readonly
+function () :: (->) {
+  function oomra(y) :: ({x :: {field :: int, ... }} ->) {
+    y.x.field = 30;
+  }
+
+  var z = {x : {field:50, field2: 9000}};
+  oomra(z);
+  z.x.field2;
+} @@ succeeds;
+function () :: (->) {
+  function oomra(y) :: ({x :: {field :: int, ... }} ->) {
+    y.x = {field: 4};
+  }
+
+  var z = {x : {field:50, field2: 9000}};
+  oomra(z);
+  z.x.field2;
+} @@ fails;
+function () :: (->) {
+  function oomra(y) :: ({x :: {field :: int, ... }} ->) {
+    var zbr :: {field :: int, ...} = {field: 5};
+    y.x = zbr;
+  }
+
+  var z = {x : {field:50, field2: 9000}};
+  oomra(z);
+  z.x.field2;
+} @@ fails;
 
 function() :: (->) {
   function writeToF2(bar) :: ({ field2::int, ... } -> ) {
@@ -109,7 +138,7 @@ function() :: (->) {
   // z <: y
   var z :: {x :: { field :: int, field2 :: int }} =
     {x : {field: 50, field2: 9000 } };
-  var y :: {readonly x :: { field :: int, ... }} =
+  var y :: {x :: { field :: int, ... }} =
            {x : {field: 50 }};
 
   var t :: int = y.x.field;
@@ -197,13 +226,13 @@ function () :: (-> ) {
 } @@ succeeds;
 
 function () :: (-> ) {
-  function inner(x) :: ({readonly foo :: {broohah :: int, ... }} ->) {
+  function inner(x) :: ({foo :: {broohah :: int, ... }} ->) {
     x.foo.broohah = 4;
   };
 
   var z :: {foo :: {broohah :: int, foohah :: int}} =
     {foo: {broohah: 1, foohah: 2}};
-  var y :: {readonly foo :: {broohah :: int, ... }} =
+  var y :: {foo :: {broohah :: int, ... }} =
     {foo: {broohah: 3}};
   y = z;
   inner(y);

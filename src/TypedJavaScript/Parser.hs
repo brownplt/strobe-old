@@ -256,11 +256,14 @@ field :: CharParser st (String, (Type, Access))
 field = do
   let readonly = reservedOp "readonly" >> return (True, False)
       wronly   = reservedOp "writeonly" >> return (False, True)
-  access <- readonly <|> wronly <|> return (True, True)
+  (r,w) <- readonly <|> wronly <|> return (True, True)
   id <- Lexer.identifier
   reservedOp "::"
-  t <- type_' 
-  return (id,(t, access))
+  t <- type_'
+  case t of
+    --slack implies not writable and over-rides the access type:
+    TObject True i f -> return (id, (TObject True i f, (r, False)))
+    _ -> return (id,(t,(r,w)))
   
 parseType :: TypeParser st
 parseType = do
