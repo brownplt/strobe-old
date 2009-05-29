@@ -228,6 +228,16 @@ forceEnvLookup loc env name = case M.lookup name env of
     return (TAny, TAny, False)
   Just (Just t) -> return t
 
+forceUnEnvId :: SourcePos -> Type -> TypeCheck Type
+forceUnEnvId loc (TEnvId id) = do
+  state <- get
+  case M.lookup id (stateTypeEnv state) of
+    Nothing -> do
+      typeError loc $ printf "*%s* is not in the type environment" id
+      return TAny
+    Just t -> return t
+forceUnEnvId loc t = return t
+
 assert :: Monad m => Bool -> String -> m ()
 assert True _ = return ()
 assert False msg = fail ("CATASPROPHIC FAILURE: " ++  msg)
@@ -514,8 +524,9 @@ stmt env ee cs erettype node s = do
           -- Variable is in scope but is yet to be defined.
           typeError p $ printf "can't assign to obj %s; has no type yet" obj
           noop
-        Just (Just (tDec, tAct', isLocal)) -> do
-         tAct <- dotrefContext tAct'
+        Just (Just (tDec, tAct'', isLocal)) -> do
+         tAct' <- dotrefContext tAct''
+         tAct <- forceUnEnvId p tAct'
          
          case unRec tAct of
           TPrototype constrid -> do
@@ -756,7 +767,8 @@ expr env ee cs e = do
      (tDec, tAct, b) <- forceEnvLookup p env id
      return tAct
    DotRef (_, loc) e p -> do
-     t'' <- expr env ee cs e
+     t''' <- expr env ee cs e
+     t'' <- forceUnEnvId loc t'''
      if isConstr t'' && p == "prototype" && isVarRef e then do
        let (VarRef _ cid) = e
        return (TPrototype cid)
@@ -767,7 +779,7 @@ expr env ee cs e = do
          Just t' -> return t'
          Nothing -> do
            typeError loc $ printf
-             "object does not have field %s" p
+             "object does not have field %s, is: %s" p (renderType t'')
            return TAny
    BracketRef (_, loc) e ie -> do
      t'' <- expr env ee cs e

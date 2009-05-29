@@ -88,16 +88,16 @@ function (ptarray) :: (Array< (rec self.{x :: int, y :: int, mag :: ([self] -> d
   return resarray;
 } :: (Array<(rec self.{x :: int, y :: int, mag :: ([self] -> double)})> -> Array<double>);
 
-function (ptarray) :: Array<(rec self. { x :: int, 
-                                         y :: int, 
-                                        mag :: ([self] -> double) })> 
+function (ptarray) :: Array<(rec self. { x :: int,
+                                         y :: int,
+                                        mag :: ([self] -> double) })>
                    -> Array<double> {
-  function map(pt2dub, arry) :: ((rec self . { x :: int, 
-                                              y :: int, 
-                                              mag :: ([self] -> double)}) 
+  function map(pt2dub, arry) :: ((rec self . { x :: int,
+                                              y :: int,
+                                              mag :: ([self] -> double)})
                                                   -> double),
-                                 Array<(rec self. { x :: int, 
-                                                    y :: int, 
+                                 Array<(rec self. { x :: int,
+                                                    y :: int,
                                                     mag :: ([self] -> double)})>
                              -> Array<double> {
     var rezarray :: Array<double> = [1.0];
@@ -107,11 +107,11 @@ function (ptarray) :: Array<(rec self. { x :: int,
     return rezarray;
   }
 
-  return map(function (pt) :: 
-                (rec self. {x :: int, y :: int, mag :: ([self] -> double)}) 
+  return map(function (pt) ::
+                (rec self. {x :: int, y :: int, mag :: ([self] -> double)})
                   -> double { return pt.mag(); },
              ptarray);
-} :: (Array<(rec self. {x :: int, y :: int, mag :: ([self] -> double)})> 
+} :: (Array<(rec self. {x :: int, y :: int, mag :: ([self] -> double)})>
          -> Array<double>);
 
 //array literals
@@ -188,7 +188,7 @@ function () :: (->) {
 
 //arrays as objects:
 function (start, end) :: (int, int -> Array<int>) {
-  var r = [];
+  var r :: Array<int> = [];
   for (var i = start; i < end; i++) {
     r.push(i);
   }

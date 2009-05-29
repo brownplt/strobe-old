@@ -85,7 +85,7 @@ function () :: (-> double) {
 })({x: 4}, {x: "stringy"}) @@ fails;
 
 //apply a series of math functions to a number
-(function (num) :: (double, (double -> double)... -> double) {
+(function (num, funcs) :: (double, (double -> double)... -> double) {
   for (var i = 1; i < arguments.length; ++i) {
     num = funcs[i](num);
   }

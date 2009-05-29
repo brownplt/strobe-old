@@ -70,6 +70,7 @@ asRuntimeType aliases t = case t of
   TId "undefined" ->  injBaseType LT.TUndefined
   TId s -> error $ printf "asRuntimeType aliases: unexpected (TId %s)" s
   TApp "Array" _ ->  injBaseType LT.TObject
+  TPrototype {} -> injBaseType LT.TObject
   TApp _ _ -> error $ "asRuntimeType aliases: unxpected TApp"
   TForall _ _ t' ->  asRuntimeType aliases t'
   TEnvId id -> case M.lookup id aliases of
@@ -77,7 +78,6 @@ asRuntimeType aliases t = case t of
     Nothing -> error $ printf "asRuntimeType: unbound (TEnvId %s)" id
   TIterator {} -> error "asRuntimeType aliases: TIterator NYI"
   TProperty {} -> error "asRuntimeType aliases: TProperty NYI"
-  TPrototype {} -> error "asRuntimeType aliases: TPrototype NYI"
   TUnion ts -> case map (asRuntimeType aliases) ts of
     [] -> error "asRuntimeType aliases: empty union"
     [rt] -> rt
@@ -101,9 +101,13 @@ maybeAsStaticType aliases rt st = case (rt, st) of
       otherwise -> Nothing
     Just st' -> maybeAsStaticType aliases rt st'
     Nothing -> error $ printf "maybeAsStaticType: unbound (TEnvId %s)" id
+<<<<<<< HEAD:src/BrownPLT/TypedJS/LocalTypes.hs
   (_, TIterator{}) -> error "maybeAsStaticType aliases: TIterator NYI"
   (_, TPrototype{}) -> error "maybeAsStaticType aliases: TPrototype NYI"
   (_, TProperty{}) -> error "maybeAsStaticType aliases: TProperty NYI"
+=======
+  (LT.TUnk, st) -> Just st
+>>>>>>> fixes:src/BrownPLT/TypedJS/LocalTypes.hs
   
   (_, TId id) | id `M.member` aliases -> Just (TId id)
   (projBaseType -> Just LT.TString, TId "string") -> Just st
@@ -136,8 +140,32 @@ maybeAsStaticType aliases rt st = case (rt, st) of
       [] -> Nothing
       [t] -> Just t
       ts -> Just (TUnion ts)
+<<<<<<< HEAD:src/BrownPLT/TypedJS/LocalTypes.hs
   
   (LT.TUnk, st) -> Just st
+=======
+  (_, TId id) | id `M.member` aliases -> Just (TId id)
+  (LT.TBasic LT.TString, TId "string") -> Just st
+  (LT.TBasic LT.TBoolean, TId "bool") -> Just st
+  (LT.TBasic LT.TNumber, TId "double") -> Just st
+  (LT.TBasic LT.TNumber, TId "int") -> Just st
+  (LT.TBasic LT.TFunction, TFunc {}) -> Just st
+  (LT.TBasic LT.TUndefined, TId "undefined") -> Just st
+  (LT.TBasic (LT.TFixedString _), TId "string") -> Just st
+  (LT.TBasic LT.TObject, _) -> case st of
+    TObject {} -> Just st
+    TPrototype {} -> Just st --TODO: i think...
+    TSequence {} -> Just st
+    TApp "Array" _ -> Just st
+    otherwise -> Nothing
+
+  --here we have a prototype refined to a non-object. 
+  --I think the declared type is always right, though...
+  (_, TPrototype{}) -> Just st
+
+  (_, TIterator{}) -> error "maybeAsStaticType aliases: TIterator NYI"
+  (_, TProperty{}) -> error "maybeAsStaticType aliases: TProperty NYI"
+>>>>>>> fixes:src/BrownPLT/TypedJS/LocalTypes.hs
     
   otherwise -> Nothing -- at runtime if the type is rt, the static type cannot 
                        -- be st
