@@ -75,7 +75,7 @@ normalizeTForall (TForall ids cs t) = do
       -- trailing list of unconstrained type variables; this is the common
       -- case of unbounded polymorphism.
       check vs [] = return (map defaultConstraint vs)
-      check [] cs = fail $ "dangling constraints"
+      check [] cs = fail $ "duplicate / dangling constraints"
       check (v:vs) ((TCSubtype v' t):cs) = case compare v v' of
         -- Since both are ordered, v is missing a constraint.
         LT -> do rest <- check vs ((TCSubtype v' t):cs)
@@ -135,8 +135,7 @@ type_ = do
         p <- getPosition
         reserved "forall"
         ids <- many1 Lexer.identifier
-        constraints <- (reservedOp ":" >> many1 typeConstraint) <|> 
-                       (return [])
+        constraints <- (reservedOp ":" >> many1 typeConstraint) <|> (return [])
         reservedOp "."
         t <- type_fn
         normalizeTForall (TForall ids constraints t)

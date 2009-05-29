@@ -187,10 +187,11 @@ function (obj1, obj2, b) :: forall Ta Tb : Ta <: Tb . (
 
   writeB(obj2);
 } :: forall Ta Tb : Ta <: Tb . ({x::Ta},{x::Tb},Tb->);
-function (obj1, obj2, b) :: forall Ta Tb : Ta <: Tb . (
-  {x::Ta}, {x::Tb}, Tb ->) {
 
-  function writeB(obj) :: ({x :: Tb} -> ) {
+function (obj1, obj2, b) :: forall dog animal : dog <: animal . (
+  {x::dog}, {x::animal}, animal ->) {
+
+  function writeB(obj) :: ({x :: animal} -> ) {
     obj.x = b;
   }
   //if writeB succeeds, obj1's x field will be oblimerated by something
@@ -204,6 +205,105 @@ function (obj1, obj2, b) :: forall Ta Tb : Ta <: Tb . (
   //   the same way, but writable field subtyping is invariant.
   writeB(obj1);
 } @@ fails;
+
+//if a <: b <: c, and you're given a "b", you can read a "b" or a "c" from
+//it, and you can write an "a" or a "b" to it.
+//FAIL, wolf is not subtype of animal in this thing:
+function (obj1, obj2, obj3) :: forall wolf canine animal :
+    wolf <: canine canine <: animal . ({x::wolf},{x::canine},{x::animal}->) {
+
+  var _lol :: {x::wolf}   = obj1;
+
+  var lol  :: {x::canine} = obj1;
+  var lol2 :: {x::canine} = obj2;
+
+  //var lol3 :: {x::animal} = obj1;
+  var lol4 :: {x::animal} = obj2;
+  var lol5 :: {x::animal} = obj3;
+
+  obj1.x = obj1.x;
+
+  obj2.x = obj2.x;
+  obj2.x = obj1.x;
+
+  obj3.x = obj3.x;
+  obj3.x = obj2.x;
+  //obj3.x = obj1.x;
+} @@ succeeds;
+//a <: b, b <: c
+
+//that was easy, now let's do function calls
+//all these should succeed, given appropriate modifiers.
+function (obj1, obj2, obj3) :: forall wolf canine animal :
+    wolf <: canine canine <: animal . ({x::wolf},{x::canine},{x::animal}->) {
+
+  function readCanine(src) :: ({x::canine} -> canine) {
+    return src.x;
+  }
+  function writeCanine(dest, c) :: ({x::canine}, canine ->) {
+    dest.x = c;
+  }
+  function readWriteCanine(srcdest, c) :: ({x::canine}, canine -> canine) {
+    var res = srcdest.x;
+    srcdest.x = c;
+    return res;
+  }
+  //covariance (read-only)
+  readCanine(obj1);
+  readCanine(obj2);
+
+  //contravariance (write-only)
+  writeCanine(obj2, obj2.x);
+  writeCanine(obj3);
+
+  //invariance (read-write)
+  readWriteCanine(obj2, obj2.x);
+} @@ succeeds;
+
+//the following chain of stuff should fail for various reasons
+//reading from a non-subtype:
+function (obj1, obj2, obj3) :: forall wolf canine animal :
+    wolf <: canine canine <: animal . ({x::wolf},{x::canine},{x::animal}->) {
+
+  function readCanine(src) :: ({x::canine} -> canine) {
+    return src.x;
+  }
+  readCanine(obj3);
+} @@ fails;
+//writing to a non-supertype:
+function (obj1, obj2, obj3) :: forall wolf canine animal :
+    wolf <: canine canine <: animal . ({x::wolf},{x::canine},{x::animal}->) {
+
+  function writeCanine(dest, c) :: ({x::canine}, canine ->) {
+    dest.x = c;
+  }
+  writeCanine(obj1);
+} @@ fails;
+//improper invariance
+function (obj1, obj2, obj3) :: forall wolf canine animal :
+    wolf <: canine canine <: animal . ({x::wolf},{x::canine},{x::animal}->) {
+
+  function readWriteCanine(srcdest, c) :: ({x::canine}, canine -> canine) {
+    var res = srcdest.x;
+    srcdest.x = c;
+    return res;
+  }
+  //invariance (read-write)
+  readWriteCanine(obj1, obj2.x);
+} @@ fails;
+function (obj1, obj2, obj3) :: forall wolf canine animal :
+    wolf <: canine canine <: animal . ({x::wolf},{x::canine},{x::animal}->) {
+
+  function readWriteCanine(srcdest, c) :: ({x::canine}, canine -> canine) {
+    var res = srcdest.x;
+    srcdest.x = c;
+    return res;
+  }
+  //invariance (read-write)
+  readWriteCanine(obj3, obj2.x);
+} @@ fails;
+
+
 
 //declare before use stuff
 function () :: (->) {
