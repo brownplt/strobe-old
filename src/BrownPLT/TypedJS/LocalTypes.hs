@@ -101,13 +101,7 @@ maybeAsStaticType aliases rt st = case (rt, st) of
       otherwise -> Nothing
     Just st' -> maybeAsStaticType aliases rt st'
     Nothing -> error $ printf "maybeAsStaticType: unbound (TEnvId %s)" id
-<<<<<<< HEAD:src/BrownPLT/TypedJS/LocalTypes.hs
-  (_, TIterator{}) -> error "maybeAsStaticType aliases: TIterator NYI"
-  (_, TPrototype{}) -> error "maybeAsStaticType aliases: TPrototype NYI"
-  (_, TProperty{}) -> error "maybeAsStaticType aliases: TProperty NYI"
-=======
   (LT.TUnk, st) -> Just st
->>>>>>> fixes:src/BrownPLT/TypedJS/LocalTypes.hs
   
   (_, TId id) | id `M.member` aliases -> Just (TId id)
   (projBaseType -> Just LT.TString, TId "string") -> Just st
@@ -121,6 +115,7 @@ maybeAsStaticType aliases rt st = case (rt, st) of
     TObject {} -> Just st
     TSequence {} -> Just st
     TApp "Array" _ -> Just st
+    TPrototype {} -> Just st --TODO: i think...
     otherwise -> Nothing
   (projUnionType -> Just rts, TUnion sts) -> do
     let projs = [maybeAsStaticType aliases rt st | rt <- rts, st <- sts]
@@ -128,7 +123,11 @@ maybeAsStaticType aliases rt st = case (rt, st) of
       [] -> Nothing
       [t] -> Just t
       ts -> Just (TUnion ts)
+  
 
+  (_, TIterator{}) -> error "maybeAsStaticType aliases: TIterator NYI"
+  (_, TPrototype{}) -> Just st
+  (_, TProperty{}) -> error "maybeAsStaticType aliases: TProperty NYI"
   
   (projUnionType -> Just rts, _) -> 
     case catMaybes (map (flip (maybeAsStaticType aliases) st) rts) of
@@ -140,32 +139,6 @@ maybeAsStaticType aliases rt st = case (rt, st) of
       [] -> Nothing
       [t] -> Just t
       ts -> Just (TUnion ts)
-<<<<<<< HEAD:src/BrownPLT/TypedJS/LocalTypes.hs
-  
-  (LT.TUnk, st) -> Just st
-=======
-  (_, TId id) | id `M.member` aliases -> Just (TId id)
-  (LT.TBasic LT.TString, TId "string") -> Just st
-  (LT.TBasic LT.TBoolean, TId "bool") -> Just st
-  (LT.TBasic LT.TNumber, TId "double") -> Just st
-  (LT.TBasic LT.TNumber, TId "int") -> Just st
-  (LT.TBasic LT.TFunction, TFunc {}) -> Just st
-  (LT.TBasic LT.TUndefined, TId "undefined") -> Just st
-  (LT.TBasic (LT.TFixedString _), TId "string") -> Just st
-  (LT.TBasic LT.TObject, _) -> case st of
-    TObject {} -> Just st
-    TPrototype {} -> Just st --TODO: i think...
-    TSequence {} -> Just st
-    TApp "Array" _ -> Just st
-    otherwise -> Nothing
-
-  --here we have a prototype refined to a non-object. 
-  --I think the declared type is always right, though...
-  (_, TPrototype{}) -> Just st
-
-  (_, TIterator{}) -> error "maybeAsStaticType aliases: TIterator NYI"
-  (_, TProperty{}) -> error "maybeAsStaticType aliases: TProperty NYI"
->>>>>>> fixes:src/BrownPLT/TypedJS/LocalTypes.hs
     
   otherwise -> Nothing -- at runtime if the type is rt, the static type cannot 
                        -- be st
