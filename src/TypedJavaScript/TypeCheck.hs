@@ -542,14 +542,15 @@ stmt env ee cs erettype node s = do
                             (Just (tDec, 
                                    (TFunc (Just (TObject 
                                                   hs io 
-                                                  ((prop,t_rhs):protprops)))
+                                                  ((prop,(t_rhs,(True,True)))
+                                                   :protprops)))
                                           cargs ctt lp),
                                    loc)) env
                --make sure adding this to the prototype won't violate
                --what we expect the constructed thistype to be.
                case lookup prop cttprops of
                  Nothing -> return $ zip (map fst succs) (repeat env')
-                 Just cttp
+                 Just (cttp, x)
                    | t_rhs <: cttp -> return $ zip (map fst succs) (repeat env')
                    | otherwise  -> (typeError p $ printf "cannot assign type \
                       \ %s to %s.prototype.%s; constructed this type's %s field\
@@ -571,11 +572,15 @@ stmt env ee cs erettype node s = do
                                "can't add %s to this :: %s; field is not in the\
                                \ given constructed this type"
                                prop (renderType t)) >> noop
-                  Just t'
+                  Just (t', (_, write))
+                    | not write -> do
+                        typeError p $ printf "property %s is not writeable" prop
+                        return $ zip (map fst succs) (repeat env)
                     | t_rhs <: t' -> do
                         let env' = M.insert obj
                                      (Just (tDec, TObject hasSlack isOpen
-                                                    ((prop,t_rhs):props),
+                                                    ((prop,(t_rhs,(True,True)))
+                                                     :props),
                                            isLocal))
                                      env
                         return $ zip (map fst succs) (repeat env')
@@ -588,13 +593,17 @@ stmt env ee cs erettype node s = do
                 Right t -> catastrophe p (printf 
                              "'this' is not an object, but %s" (renderType t))
                 
-            Just t' | isUnion t' -> do
+            Just (t', (_, write))
+                    | not write -> do
+                        typeError p $ printf "property %s is not writeable" prop
+                        return $ zip (map fst succs) (repeat env) 
+                    | isUnion t' -> do
                         typeError p $ 
                           printf "cannot mutate to a union field"
                         noop
                     | isSlackObject t' -> do
                         typeError p $
-                          printf "cannot mutate the field %s :: %s"
+                          printf "cannot mutate the field %s :: %s, has slack"
                                  prop (renderType t')
                         noop
                     | t_rhs <: t' -> noop -- TODO: affect VP?
@@ -776,7 +785,11 @@ expr env ee cs e = do
        t' <- dotrefContext (unRec t'')
        let t = unConstraint (unRec t')
        case fieldType env p t of
-         Just t' -> return t'
+         Just (t', (read, _)) -> case read of
+           True -> return t'
+           False -> do
+             typeError loc $ printf "field %s is not readable" p
+             return t'
          Nothing -> do
            typeError loc $ printf
              "object does not have field %s, is: %s" p (renderType t'')
@@ -834,22 +847,24 @@ expr env ee cs e = do
      let resT = (TSequence ts Nothing)
      return resT
 
+   --object literals make readwriteable stuff.
    Lit (ObjectLit (_, loc) props) -> do
-     let prop (Left s, (_, propLoc), e) = do
+     let rw = (True, True)  
+         prop (Left s, (_, propLoc), e) = do
            t <- expr env ee cs e
            case M.lookup propLoc ee of
              Just [t'] 
-               | t <: t' -> return (s, t')
+               | t <: t' -> return (s, (t', rw))
                | otherwise -> do
                    typeError propLoc $ printf
                      "field %s is annotated with type %s, expression has \
                      \type %s" s (renderType t') (renderType t) 
-                   return (s, t')
-             Nothing -> return (s, t)
+                   return (s, (t', rw))
+             Nothing -> return (s, (t, rw))
              Just ts ->
                catastrophe propLoc (printf "erased-env for property is %s" 
                                            (show ts))
-           return (s, t) 
+           return (s, (t, rw)) 
          prop (Right n, (_, propLoc), e) = do
            catastrophe propLoc "object literals with numeric keys NYI"
      propTypes <- mapM prop props

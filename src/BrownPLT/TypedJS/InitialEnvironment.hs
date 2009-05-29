@@ -12,7 +12,7 @@ import qualified BrownPLT.IDL as IDL
 import BrownPLT.IDL.RemoveInheritance
 import TypedJavaScript.Prelude
 import TypedJavaScript.Types
-import TypedJavaScript.Syntax (Type (..), LatentPred (..))
+import TypedJavaScript.Syntax (Type (..), LatentPred (..), Access(..))
 
 
 -- |The order in which these files are specified does not matter.
@@ -54,10 +54,12 @@ objectFromIDL :: String -- ^self id
               -> [IDL.Definition] -- ^methods, attributes, etc.
               -> Type -- ^a TObject with slack
 objectFromIDL self members = TObject True False (map field members)
-  where field (IDL.Const t v _) = (v, parseIDLType t)
-        field (IDL.Attr isReadOnly t v) = (v, parseIDLType t)
+  where field (IDL.Const t v _) = (v, (parseIDLType t, (True, False)))
+        field (IDL.Attr isReadOnly t v) = (v, (parseIDLType t, 
+                                               (True, True)))
         field (IDL.Method ret v args) = 
-          (v, TFunc Nothing (this:arguments:formals) rt LPNone)
+          (v, (TFunc Nothing (this:arguments:formals) rt LPNone, 
+               (True, False)))
             where formals = map parseIDLType (map fst args)
                   arguments = TSequence formals Nothing
                   rt = parseIDLType ret

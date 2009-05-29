@@ -23,6 +23,7 @@ module BrownPLT.TypedJS.Prelude
   , isLeft, isRight, procEither
   , Node
   , trace
+  , car, cdr, cadr, cddr
   ) where
 
 import Data.Tree
@@ -90,3 +91,8 @@ isRight _ = False
 procEither :: (a -> b) -> Either a a -> Either b b
 procEither f (Left t) = Left (f t)
 procEither f (Right t) = Right (f t)
+
+car = fst
+cdr = snd
+cadr = car . cdr
+cddr = cdr . cdr

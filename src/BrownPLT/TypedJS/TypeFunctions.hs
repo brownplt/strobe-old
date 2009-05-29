@@ -20,6 +20,7 @@ import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.JavaScript.Analysis.ANF
 import TypedJavaScript.PrettyPrint
 import TypedJavaScript.Types
+import TypedJavaScript.Syntax (Access (..))
 
 --warning: unsound hack for prototypes so that the correct case
 --works. constructors keep their refined type so that functions can
@@ -39,7 +40,7 @@ freeTypeVariables t = fv t where
   fv (TSequence args Nothing) = M.unions (map fv args)
   fv (TSequence args (Just opt)) = M.unions (map fv (opt:args))
   fv (TId _) = M.empty
-  fv (TObject _ _ props) = M.unions (map (fv.snd) props)
+  fv (TObject _ _ props) = M.unions (map (fv . (fst . snd)) props)
   fv TAny = M.empty
   fv (TRec id t) = M.insert id KindStar (fv t)
   fv (TUnion ts) = M.unions (map fv ts)
@@ -47,28 +48,30 @@ freeTypeVariables t = fv t where
                                  (fv t)
   fv _ = M.empty --prototype, property, iterator, and envid 
 
-fieldType :: Env -> Id -> Type -> Maybe Type
+fieldType :: Env -> Id -> Type -> Maybe (Type, Access)
 fieldType env id (TObject _ _ ts) = lookup id ts
 fieldType env id (TUnion ts) = do
-  types <- mapM (fieldType env id) ts
-  return (flattenUnion (TUnion types))
-fieldType env "length" (TApp "Array" [_]) = return intType
-fieldType env "push" (TApp "Array" [t]) = return $ 
+  tacc <- mapM (fieldType env id) ts    
+  let (types, accesses) = unzip tacc
+  return (flattenUnion (TUnion types), (all fst accesses, all snd accesses))
+fieldType env "length" (TApp "Array" [_]) = return (intType, (True, True))
+fieldType env "push" (TApp "Array" [t]) = return ( 
   TFunc Nothing [TApp "Array" [t], TSequence [t] Nothing, t] 
-        undefType LPNone
+        undefType LPNone, (True, True))
 --splice and concat are vararg, but ignore that for now.
-fieldType env "splice" (TApp "Array" [t]) = return $ 
+fieldType env "splice" (TApp "Array" [t]) = return (
   TFunc Nothing [TApp "Array" [t], TSequence [TId "int", TId "int"] Nothing, 
                  TId "int", TId "int"] 
-        (TApp "Array" [t]) LPNone
-fieldType env "concat" (TApp "Array" [t]) = return $ 
+        (TApp "Array" [t]) LPNone, (True, True))
+fieldType env "concat" (TApp "Array" [t]) = return ( 
   TFunc Nothing [TApp "Array" [t], TSequence [t'] Nothing, t']
-        (TApp "Array" [t]) LPNone
+        (TApp "Array" [t]) LPNone, (True, True))
     where t' = TUnion [t, TApp "Array" [t]]
 
 --shift really returns U(t, undefined)
-fieldType env "shift" (TApp "Array" [t]) = return $ 
-  TFunc Nothing [TApp "Array" [t], TSequence [] Nothing] t LPNone
+fieldType env "shift" (TApp "Array" [t]) = return (
+  TFunc Nothing [TApp "Array" [t], TSequence [] Nothing] t LPNone,
+  (True, True))
   
 fieldType env f (TPrototype c) = case M.lookup c env of
   Just (Just (_, TFunc (Just (TObject _ _ protprops)) _ _ _, _)) ->

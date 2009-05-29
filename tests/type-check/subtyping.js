@@ -46,7 +46,9 @@ function (b,a) :: ({x::int,y::int}, {x::double}->) {
 {point :: {x::int,y::int} : {z:13, y:3}} @@ fails;
 {point :: {x::int,y::int ... } : {z:5.3, y:3, x: 334}} @@ succeeds;
 
-{point :: { ... } : {a: '4', b: '3', c: '1gg', d: '55t'}} :: {point :: { ... }};
+function () :: (->) {
+  var p :: {point :: { ... } } = {a: '4', b: '3', c: '1gg', d: '55t'};
+} :: (->);
 
 function (b,a) :: ({x::int,y::int}, {x::int, ... }->) {
     a = b;
@@ -78,7 +80,9 @@ function (b, a) :: ({x :: int, y :: int}, {x :: int, ... } ->) {
   a.x = 3;
 } @@ succeeds;
 
-function (b, a) :: ({p :: {x :: int, y :: int}}, {p :: {x :: int, ... }} ->) {
+//the readonly here is redundant for the moment, since slack implies readonly
+function (b, a) :: ({p :: {x :: int, y :: int}},
+                    {readonly p :: {x :: int, ... }} ->) {
   a = b;
   a.p.x = 3;
 } @@ succeeds;
@@ -149,4 +153,74 @@ function (b) :: (bool -> int) {
   else
     foo = {x: 10, y:12};
   return foo.z;
+} @@ fails;
+
+//field subtyping...
+//you can pass in sub-types as things to read from
+function (reader, obj) :: forall a. (({readonly x :: a} -> a), {x::a} -> a) {
+  return reader(obj);
+} @@ succeeds;
+function (reader, obj) :: forall animal dog : dog <: animal .
+  (({readonly x :: animal} -> animal), {x::dog} -> animal) {
+  return reader(obj);
+} @@ succeeds;
+function (reader, obj) :: forall dog animal : dog <: animal .
+  (({readonly x :: dog} -> dog), {x::animal} -> dog) {
+  return reader(obj);
+} @@ fails;
+
+function (reader, obj) :: forall a b : b <: a .
+  (({readonly x :: a} -> a), {readonly x::b} -> a) {
+  return reader(obj);
+} @@ succeeds;
+function (reader, obj) :: forall a b : b <: a .
+  (({readonly x :: a} -> a), {writeonly x::b} -> a) {
+  return reader(obj);
+} @@ fails;
+
+//super-types as things to write to
+function (writer, obj) :: forall a. (({writeonly x :: a} -> ), {x::a} -> ) {
+  writer(obj);
+} @@ succeeds;
+function (writer, obj) :: forall animal dog : dog <: animal .
+  (({writeonly x :: animal} -> ), {x::dog} -> ) {
+  writer(obj);
+} @@ fails;
+//the next one succeeds because you can write dogs into something that contains
+//animals. you just can't *read* dogs because there might be animals there
+//which aren't dogs.
+function (writer, obj) :: forall dog animal : dog <: animal .
+  (({writeonly x :: dog} -> ), {x::animal} -> ) {
+  writer(obj);
+} @@ succeeds;
+
+function (writer, obj) :: forall a b : a <: b .
+  (({writeonly x :: a} -> ), {writeonly x::b} -> ) {
+  writer(obj);
+} @@ succeeds;
+function (writer, obj) :: forall a b : a <: b .
+  (({writeonly x :: a} -> ), {readonly x::b} -> ) {
+  writer(obj);
+} @@ fails;
+
+//and invariants as read-writable things
+function (readwriter, obj) :: forall a . (({x :: a} -> a), {x :: a} -> a) {
+  return readwriter(obj);
+} @@ succeeds;
+function (readwriter, obj) :: forall a b : b <: a .
+  (({x :: a} -> a), {x::b} -> a) {
+  return readwriter(obj);
+} @@ fails;
+function (readwriter, obj) :: forall a b : a <: b .
+  (({x :: a} -> a), {x::b} -> a) {
+  return readwriter(obj);
+} @@ fails;
+
+function (readwriter, obj) :: forall a .
+  (({x :: a} -> a), {readonly x :: a} -> a) {
+  return readwriter(obj);
+} @@ fails;
+function (readwriter, obj) :: forall a .
+  (({x :: a} -> a), {writeonly x :: a} -> a) {
+  return readwriter(obj);
 } @@ fails;

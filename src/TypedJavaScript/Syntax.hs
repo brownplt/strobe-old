@@ -5,7 +5,7 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          ForInit(..),ForInInit(..),Type(..), LatentPred(..),         
          ToplevelStatement(..),
          showSp, propToString, unId, eqLit,
-         TypeConstraint (..)) where
+         TypeConstraint (..), Access(..)) where
 
 import TypedJavaScript.Prelude
 import qualified Data.Foldable as F
@@ -30,10 +30,12 @@ data TypeConstraint
   = TCSubtype String Type
   deriving (Show, Eq,Ord, Data, Typeable)
 
+type Access = (Bool, Bool) --Access canRead? canWrite?
+
 data Type
   = TObject Bool --hasSlack
             Bool --isOpenObject ('this' inside a constructor, and f.prototype)
-            [(String, Type)]
+            [(String, (Type, Access))]
   | TAny
   | TRec String Type
   | TSequence [Type] (Maybe Type) -- sequence of types (e.g. arguments array)

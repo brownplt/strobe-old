@@ -92,7 +92,7 @@ function () :: (->) {
 } @@ fails;
 
 function () :: (->) {
-  function oomra(y) :: ({x :: {field :: int, ... }} ->) {
+  function oomra(y) :: ({readonly x :: {field :: int, ... }} ->) {
     y.x.field = 30;
   }
 
@@ -109,7 +109,7 @@ function() :: (->) {
   // z <: y
   var z :: {x :: { field :: int, field2 :: int }} =
     {x : {field: 50, field2: 9000 } };
-  var y :: {x :: { field :: int, ... }} =
+  var y :: {readonly x :: { field :: int, ... }} =
            {x : {field: 50 }};
 
   var t :: int = y.x.field;
@@ -133,7 +133,7 @@ function () :: (-> Array<int>) {
   return z;
 } @@ fails;
 
-//the only way to solve these next two might be to make subtyping immutable!
+//TODO: make readonly/writeonly work with arrays.
 function () :: (-> ) {
   function inner(x) :: (Array<double> ->) {
     x[0] = 3.1;
@@ -160,18 +160,50 @@ function () :: (-> ) {
 
   var z :: {foo :: int} = {foo: 1};
   var y :: {foo :: double} = {foo: 2.0};
+  y = z; //this fails because y is writable
+  inner(y);
+} @@ fails;
+function () :: (-> ) {
+  //now this fails because y is still an int, but it is writable here:
+  function inner(x) :: ({foo :: double} ->) {
+    x.foo = 3.1;
+  };
+
+  var z :: {foo :: int} = {foo: 1};
+  var y :: {readonly foo :: double} = {foo: 2.0};
   y = z;
   inner(y);
 } @@ fails;
+function () :: (-> ) {
+  //now this fails because y is still an int, but it is writable here:
+  function inner(x) :: ({readonly foo :: double} ->) {
+    x.foo = 3.1;
+  };
+
+  var z :: {foo :: int} = {foo: 1};
+  var y :: {readonly foo :: double} = {foo: 2.0};
+  y = z;
+  inner(y);
+} @@ fails;
+//now this finally works
+function () :: (-> ) {
+  function inner(x) :: ({readonly foo :: double} ->) {
+  };
+
+  var z :: {foo :: int} = {foo: 1};
+  var y :: {readonly foo :: double} = {foo: 2.0};
+  y = z;
+  inner(y);
+} @@ succeeds;
 
 function () :: (-> ) {
-  function inner(x) :: ({foo :: {broohah :: int, ... }} ->) {
+  function inner(x) :: ({readonly foo :: {broohah :: int, ... }} ->) {
     x.foo.broohah = 4;
   };
 
   var z :: {foo :: {broohah :: int, foohah :: int}} =
     {foo: {broohah: 1, foohah: 2}};
-  var y :: {foo :: {broohah :: int, ... }} =
+  var y :: {readonly foo :: {broohah :: int, ... }} =
     {foo: {broohah: 3}};
   y = z;
   inner(y);
@@ -208,17 +240,18 @@ function (obj1, obj2, b) :: forall dog animal : dog <: animal . (
 
 //if a <: b <: c, and you're given a "b", you can read a "b" or a "c" from
 //it, and you can write an "a" or a "b" to it.
-//FAIL, wolf is not subtype of animal in this thing:
+//some lines are commented out because wolf is not subtype of animal in
+//this thing:
 function (obj1, obj2, obj3) :: forall wolf canine animal :
     wolf <: canine canine <: animal . ({x::wolf},{x::canine},{x::animal}->) {
 
   var _lol :: {x::wolf}   = obj1;
 
-  var lol  :: {x::canine} = obj1;
+  var lol  :: {readonly x::canine} = obj1;
   var lol2 :: {x::canine} = obj2;
 
   //var lol3 :: {x::animal} = obj1;
-  var lol4 :: {x::animal} = obj2;
+  var lol4 :: {readonly x::animal} = obj2;
   var lol5 :: {x::animal} = obj3;
 
   obj1.x = obj1.x;
@@ -234,13 +267,14 @@ function (obj1, obj2, obj3) :: forall wolf canine animal :
 
 //that was easy, now let's do function calls
 //all these should succeed, given appropriate modifiers.
+//this fails cause of ANF fail atm where an assignment still results in a read
 function (obj1, obj2, obj3) :: forall wolf canine animal :
     wolf <: canine canine <: animal . ({x::wolf},{x::canine},{x::animal}->) {
 
-  function readCanine(src) :: ({x::canine} -> canine) {
+  function readCanine(src) :: ({readonly x::canine} -> canine) {
     return src.x;
   }
-  function writeCanine(dest, c) :: ({x::canine}, canine ->) {
+  function writeCanine(dest, c) :: ({writeonly x::canine}, canine ->) {
     dest.x = c;
   }
   function readWriteCanine(srcdest, c) :: ({x::canine}, canine -> canine) {
@@ -254,7 +288,7 @@ function (obj1, obj2, obj3) :: forall wolf canine animal :
 
   //contravariance (write-only)
   writeCanine(obj2, obj2.x);
-  writeCanine(obj3);
+  writeCanine(obj3, obj2.x);
 
   //invariance (read-write)
   readWriteCanine(obj2, obj2.x);

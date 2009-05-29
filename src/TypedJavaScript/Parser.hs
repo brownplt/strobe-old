@@ -252,12 +252,15 @@ constrOrId = do
         return (TApp id args)
   constr <|> (return (TId id))
 
-field :: CharParser st (String, Type)
+field :: CharParser st (String, (Type, Access))
 field = do
+  let readonly = reservedOp "readonly" >> return (True, False)
+      wronly   = reservedOp "writeonly" >> return (False, True)
+  access <- readonly <|> wronly <|> return (True, True)
   id <- Lexer.identifier
   reservedOp "::"
   t <- type_' 
-  return (id,t)
+  return (id,(t, access))
   
 parseType :: TypeParser st
 parseType = do
@@ -931,9 +934,11 @@ typeStmt = do
   t <- case (isSealed, t') of
     (False, _) -> return t'
     (True, TRec v (TObject p opn ps)) -> 
-      return $ TRec v (TObject p opn (("@sealed_"++idn, TObject True False []):ps))
+      return $ TRec v (TObject p opn 
+        (("@sealed_"++idn, (TObject True False [], (False, False))):ps))
     (True, TObject p opn ps) -> 
-      return $ TObject p opn (("@sealed_"++idn, TObject True False []):ps)
+      return $ TObject p opn 
+        (("@sealed_"++idn, (TObject True False [], (False, False))):ps)
     (True, t) -> fail "can only seal object types"
   semi
   return (TypeStmt pos id t)

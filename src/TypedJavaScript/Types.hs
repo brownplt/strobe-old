@@ -32,7 +32,8 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 
 -- we don't want TJS expressions here
-import TypedJavaScript.Syntax (Type (..), TypeConstraint(..), LatentPred(..))
+import TypedJavaScript.Syntax (Type (..), TypeConstraint(..), LatentPred(..),
+  Access(..))
 import qualified TypedJavaScript.Syntax as TJS
 
 
@@ -88,7 +89,7 @@ checkKinds kinds t = case t of
     Just k -> return k
     Nothing -> fail $ printf "undeclared type %s" v
   TObject _ _ props -> do
-    mapM_ (assertKinds kinds) (zip (map snd props) (repeat KindStar))
+    mapM_ (assertKinds kinds) (zip (map cadr props)(repeat KindStar))
     return KindStar
   TAny -> return KindStar
   TRec id t -> do
@@ -135,7 +136,7 @@ unaliasType kinds types type_ = case type_ of
   TRec v t -> TRec v (unaliasType kinds (M.insert v (TId v) types) t)
   TAny -> TAny
   TObject hasSlack isOp props -> TObject hasSlack isOp (map unaliasProp props)
-    where unaliasProp (v, t) = (v, unaliasType kinds types t)
+    where unaliasProp (v, (t, x)) = (v, (unaliasType kinds types t, x))
   TSequence args vararg -> TSequence args' vararg' 
     where args' = map (unaliasType kinds types) args
           vararg' = case vararg of
@@ -239,7 +240,8 @@ substType var sub (TFunc isC args ret latentP) =
         (substType var sub ret)
         latentP
 substType var sub (TObject hasSlack isOpen fields) =
-  TObject hasSlack isOpen (map (\(v,t) -> (v,substType var sub t)) fields)
+  TObject hasSlack isOpen (map (\(v,(t,x)) -> (v,(substType var sub t,x))) 
+                               fields)
 substType var sub (TEnvId x) = TEnvId x -- this is most certainly wrong.
 
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
@@ -283,7 +285,7 @@ st env rel (t1, t2)
     --titerator is actually a string!
     (TIterator _, TId "string") -> return rel
     (TId "string", TIterator _) -> return rel
-    (TApp "Array" _, TObject True _ [("length", TId "int")]) -> return rel
+    (TApp "Array" _, TObject True _ [("length", (TId "int", _))]) -> return rel
     -- If x == y, then (env ! x) == (env ! y), so t1 <: t2
     (TEnvId x, TEnvId y) | x == y -> return rel
     -- However, if x != y, they may still be structurally equivalent.
@@ -359,29 +361,51 @@ st env rel (t1, t2)
 
     --open objects are subtypes of closed or open objects, but thats
     --it for sub-typing open objects.    
-    (TObject True False props1, TObject _ _ props2) -> do
-      -- All of props2 must be in props1
-      let prop rel (id2, t2) = do
-            t1 <- lookup id2 props1
-            st env rel (t1, t2)
-      foldM prop (S.insert (t1, t2) rel) props2
-
-    (TObject False False props1, TObject False _ props2) -> do
-      let fields1 = S.fromList (map fst props1)
-      let fields2 = S.fromList (map fst props2)
-      let prop rel (id2, t2) = do
-            t1 <- lookup id2 props1
-            st env rel (t1, t2)
-      case S.null (S.difference fields1 fields2) of
-        True -> foldM prop (S.insert (t1, t2) rel) props2
-        False -> fail "subtyping: invariant objects"
-    
-    (TObject False False props1, TObject True _ props2) -> do
-      let prop rel (id2, t2) = case lookup id2 props1 of
-            Nothing -> return rel
-            Just t1 -> st env rel (t1, t2)
-      foldM prop (S.insert (t1, t2) rel) props2
+    (TObject slack1 open1 props1, TObject slack2 open2 props2) -> do    
+      -- if prop2 is readable, prop1 must be readable and a subtype
+      -- if prop2 is writable, prop1 must be writable and a supertype
+      let prop2prop rel (id1, (t1, (r1, w1))) (id2, (t2, (r2, w2))) = do
+            rel' <- doRead rel (t1, r1) (t2, r2)
+            doWrite rel' (t1, w1) (t2, w2)            
+          doRead rel (t1, r1) (t2, r2) = if r2 
+            then if not r1
+              then fail "readability mismatch"  
+              else st env rel (t1, t2)
+            else return rel
+          doWrite rel (t1, w1) (t2, w2) = if w2 
+            then if not w1
+              then fail "writability mismatch"
+              else st env rel (t2, t1)
+            else return rel
       
+            
+      case ((slack1, open1, props1), (slack2, open2, props2)) of 
+        --if there's slack in the first object, all of props2 must be
+        --in props1
+        ((True, False, props1), (_, _, props2)) -> do
+          let prop rel (id2, (t2, (r2, w2))) = do
+                (t1,(r1, w1)) <- lookup id2 props1
+                prop2prop rel (id2, (t1, (r1, w1))) (id2, (t2, (r2, w2)))
+          foldM prop (S.insert (t1, t2) rel) props2
+        
+        --if there's slack in the second object... it doesn't have to have
+        --all of props2, as those will be accounted for in the slack.
+        ((False, False, props1), (True, _, props2)) -> do
+          let prop rel (id2, (t2,x2)) = case lookup id2 props1 of
+                Nothing -> return rel
+                Just (t1,x1) -> prop2prop rel (id2, (t1, x1)) (id2, (t2, x2))
+          foldM prop (S.insert (t1, t2) rel) props2
+
+        --if there's no slack on either one, we must be invariant:          
+        ((False, False, props1), (False, _, props2)) -> do
+          let fields1 = S.fromList (map fst props1)
+          let fields2 = S.fromList (map fst props2)
+          let prop rel (id2, (t2, (r2, w2))) = do
+                (t1,(r1, w1)) <- lookup id2 props1
+                prop2prop rel (id2, (t1, (r1, w1))) (id2, (t2, (r2, w2)))
+          case S.null (S.difference fields1 fields2) of
+            True -> foldM prop (S.insert (t1, t2) rel) props2
+            False -> fail "subtyping: invariant objects"
 
     (t1, TRec v t2') -> do
       rez <- st env (S.insert (t1, t2) rel) (t1, substType v t2 t2')
@@ -425,14 +449,14 @@ unionType t1 t2
 --treat 'this' as if t1 and t2 were environments
 unionThisType (TObject s o p1) (TObject _ _ p2) = TObject s o $ 
   map (\(id,ma) -> case ma of
-         Nothing -> (id,undefType)
-         Just t  -> (id,t)) $
+         Nothing -> (id,(undefType, (True, True))) --TODO: access??
+         Just t  -> (id,(t, (True, True)))) $
     M.toList (M.unionWith (\ma mb -> do
       a <- ma
       b <- mb
       return $ unionType a b) 
-      (M.fromList (map (\(a,b) -> (a, Just b)) p1))
-      (M.fromList (map (\(a,b) -> (a, Just b)) p2)))
+      (M.fromList (map (\(a,(b,x)) -> (a, Just b)) p1))
+      (M.fromList (map (\(a,(b,x)) -> (a, Just b)) p2)))
 unionThisType a b = unionType a b --if we're not in a constructor
 
 unionTypeVP :: Maybe (Type, Type, Bool)

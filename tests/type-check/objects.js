@@ -19,7 +19,7 @@ function (point) :: ({x::int, y::int} -> double) {
 
 //more nested objects
 function() :: (->) {
-  var gadget = { 
+  var gadget = {
     debug : { error: function(s) :: (string ->) { return; },
               trace: function(s) :: (string ->) { return; },
               warning: function(s) :: (string ->) { return; } },
@@ -57,3 +57,28 @@ function() :: (->) {
   var z :: {name :: int, name :: int};
 } @@ fails;
 */
+
+//read-only fieldses
+function (obj) :: ({readonly x :: int} -> int) {
+  return obj.x;
+} :: ({readonly x :: int} -> int);
+function (obj) :: ({readonly x :: int} -> int) {
+  obj.x = 3;
+  return obj.x;
+} @@ fails;
+
+//write-only fields
+function (obj) :: ({writeonly x :: int} -> int) {
+  return obj.x;
+} @@ fails;
+function (obj) :: ({writeonly x :: int} -> int) {
+  obj.x = 3;
+  return obj.x;
+} @@ fails;
+//ANF fail:
+function (obj) :: ({writeonly x :: int} -> int) {
+  obj.x = 3;
+  return 3;
+} :: ({writeonly x :: int} -> int);
+
+//see sub-typing for how these sub-type w/ each other.

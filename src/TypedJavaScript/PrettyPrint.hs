@@ -69,16 +69,15 @@ type_ t = case t of
   TRec id t -> hang (text "rec" <+> text id <+> text ".") 2 (type_ t)
   TObject hasSlack isOpen fields -> 
    braces $ open <> nest 2 (commas (map field fields) <> s)
-    where fieldFull (id, t') = text id <+> text "::" <+> type_ t'
-          fieldShrt (id, x)  = text id <+> text "::" <+> text x <> text "***"
-          field (id, t') = let tfield = render $ type_ t' in
-            if length tfield > 40 
-               then fieldShrt (id, filter ((/=) '\n') $ take 40 tfield)
-               else fieldFull (id, t')
+    where field (id, (t', x)) = access x <> text id <+> text "::" <+> type_ t'
           open = text $ if isOpen then "(open)" else ""                  
           s = case hasSlack of
                 True -> text ", ..."
                 False -> empty
+          access (False, False) = text "noaccess "
+          access (True, False) =  text "readonly "
+          access (False, True) = text "writeonly "
+          access (True, True) = text ""
   TUnion ts -> text "U" <+> parens (commas (map type_ ts'))
                  where ts' = if elem undefType ts
                                then (undefType:(delete undefType ts))
