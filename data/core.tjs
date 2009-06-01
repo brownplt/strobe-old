@@ -36,6 +36,7 @@ external Number_ :: {
 
 external Math :: {
   floor :: (double -> int),
+  random :: (-> double),
 };
 
 type String :: rec String . {

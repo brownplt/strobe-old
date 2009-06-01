@@ -366,6 +366,7 @@ st env rel (t1, t2)
     (TObject slack1 open1 props1, TObject slack2 open2 props2) -> do    
       -- if prop2 is readable, prop1 must be readable and a subtype
       -- if prop2 is writable, prop1 must be writable and a supertype
+      -- if it's neither, then it really doesn't matter.
       let prop2prop rel (id1, (t1, (r1, w1))) (id2, (t2, (r2, w2))) = do
             rel' <- doRead rel (t1, r1) (t2, r2)
             doWrite rel' (t1, w1) (t2, w2)            
@@ -390,7 +391,7 @@ st env rel (t1, t2)
                 prop2prop rel (id2, (t1, (r1, w1))) (id2, (t2, (r2, w2)))
           foldM prop (S.insert (t1, t2) rel) props2
         
-        --if there's slack in the second object... it doesn't have to have
+        --if there's slack in the second object... obj1 doesn't have to have
         --all of props2, as those will be accounted for in the slack.
         ((False, False, props1), (True, _, props2)) -> do
           let prop rel (id2, (t2,x2)) = case lookup id2 props1 of

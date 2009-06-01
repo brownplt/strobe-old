@@ -257,7 +257,11 @@ field = do
   let readonly = reservedOp "readonly" >> return (True, False)
       wronly   = reservedOp "writeonly" >> return (False, True)
   (r,w) <- readonly <|> wronly <|> return (True, True)
-  id <- Lexer.identifier
+  --handle the case where a field is called "readonly"
+  id <- case (r,w) of
+          (True, False) -> Lexer.identifier <|> return "readonly"
+          (False,True)  -> Lexer.identifier <|> return "writeonly"
+          _ -> Lexer.identifier
   reservedOp "::"
   t <- type_'
   case t of
