@@ -2,17 +2,6 @@
    http://code.google.com/apis/desktop/docs/gadget_apiref.html
 */
 
-/*TODO: Introduce enums somehow?
-  audioclip.onstatechange , as a second argument, takes
-  something which is one of:
-    gddSoundStateError,
-    gddSoundStateStopped,
-    gddSoundStatePlaying,
-    gddSoundStatePaused
-  it doesn't specify the type.
-
-  For now I'll make it number. */
-
 /*TODO: You can do this:
     gadget.debug.error("Hello");
   but the following gives an error:
@@ -111,7 +100,7 @@ type view :: {
     //this seems to be a result of the way google desktop interprets
     //its javascript... not sure what to do, yet
     readonly  alert :: (string ->),
-    readonly  appendElement :: (string -> element),
+    readonly  appendElement :: (forall a : a <: element . (string -> a)),
     //beginAnimation actually returns an identifier
     //that can be used to stop the animation, but it is
     //specified to be an integer.
@@ -128,8 +117,8 @@ type view :: {
     readonly removeAllElements :: (->),
     readonly removeElement :: (element ->),
     readonly resizeBy :: (int, int ->),
-    readonly setTimeout :: (string, int -> int),
-    readonly setInterval :: (string, int -> int),
+    readonly setTimeout :: ((->), int -> int),
+    readonly setInterval :: ((->), int -> int),
 
     //'events':
     //I believe these can be strings, too, but any string
@@ -209,9 +198,9 @@ type basicElement :: {
     //width :: (U int string),
     //x :: (U int string),
     //y :: (U int string),
-    height :: int,
-    width :: int,
-    x :: int, y :: int,               /**/
+    height :: double,
+    width :: double,
+    x :: double, y :: double,               /**/
     hitTest :: string,                /**/
     mask :: string,                   /**/
     readonly name :: string,             /**/
@@ -229,7 +218,7 @@ type basicElement :: {
 
     //note: this "-> element" return type has the same problem
     //as event.srcElement.
-    readonly appendElement :: (string -> element),
+    readonly appendElement :: (forall a : a <: element . (string -> a)),
     readonly focus :: (->),              /**/
     readonly insertElement :: (string, element -> element),
     readonly killFocus :: (->),          /**/
@@ -254,6 +243,7 @@ type basicElement :: {
     onrclick :: (->),
     onrdblclick :: (->),
     onsize :: (->),
+    ... //might have extra stuff
 };
 
 
@@ -293,7 +283,7 @@ type contentitem :: {
 //all these are related to their xml representation.
 type img :: { //(basicElement <- {
     visible :: bool, //from basicElement
-    width :: int, height::int, x::int,y::int,
+    width :: double, height:: double, x:: double,y:: double,
 
 
     colorMultiply :: string,
@@ -322,12 +312,12 @@ type _label :: { //(basicElement <- {
 };
 
 type label :: { //(basicElement <- _label <- {
-    width :: int, height::int, x::int,y::int, visible::bool,
+    width :: double, height:: double, x:: double,y:: double, visible::bool,
     innerText :: string,
 };
 
 type button :: { //(basicElement <- _label <- {
-    width :: int, height::int, x::int,y::int, visible::bool,
+    width :: double, height:: double, x:: double,y:: double, visible::bool,
 
     disabledImage :: string,
     downImage :: string,
@@ -350,11 +340,14 @@ type checkbox :: { //(basicElement <- _label <- {
 type radio :: checkbox;
 
 type item :: { //(basicElement <- {
+    enabled :: bool,
+
     background :: string,
     selected :: bool,
 };
 
 type combobox :: { //(basicElement <- {
+    focus :: (->),
     background :: string,
     droplistVisible :: bool,
     //itemHeight :: (U int string),
@@ -381,7 +374,9 @@ type combobox :: { //(basicElement <- {
 
 type listbox :: { //(basicElement <- {
     visible :: bool, //from basicelement
-    width :: int, height::int, x::int,y::int,
+    width :: double, height:: double, x:: double,y:: double,
+    focus :: (->), enabled :: bool,
+    readonly children :: elements,
 
     autoscroll :: bool,
     background :: string,
@@ -449,7 +444,9 @@ type contentarea :: { //(basicElement <- {
 
 type div :: { //(basicElement <- {
     visible :: bool, //basicel
-    width :: int, height::int, x::int,y::int,
+    width :: double, height:: double, x:: double,y:: double,
+    readonly appendElement :: (forall a : a <: element . (string -> a)),
+    onclick :: (->), focus :: (->),
 
     autoscroll :: bool,
     background :: string,
@@ -457,7 +454,7 @@ type div :: { //(basicElement <- {
 
 type edit :: { //(basicElement <- {
     //from basicElement:
-    width :: int, height::int, x::int,y::int,
+    width :: double, height:: double, x:: double,y:: double,
     focus :: (->),
 
     background :: string,
@@ -661,20 +658,40 @@ external DetailsView :: (~~> DetailsView);
 
 //TYPE ALIASES / EXTERNALS
 //---------------------------------------
-type Resources :: {
-  cache :: {},
-  getText :: ([Resources] string -> string),
-  getImage :: ([Resources] string -> string),
-  makePlaceholder :: (string -> string),
-  getDetailsHtml :: ([Resources] -> string),
-  getComposeHtml :: ([Resources] -> string),
+type DetailsViewController :: {
+  isOpen :: ([DetailsViewController] string -> bool),
+  close :: (->),
+  open :: ([DetailsViewController] string, DetailsView, string, int ->),
 };
 
 //---------------------------------------
-//the parts of gmailgadget that loginview uses
+type ErrorMessage :: {
+  removeTimer :: int,
+  messageAndErrorDiv :: div,
+  messageAndErrorCenter :: div,
+  messageAndErrorRight :: div,
+  messageAndErrorLabel :: label,
+  displayMessage :: ([ErrorMessage] string ->),
+  removeMessage :: ([{messageAndErrorDiv :: div,...}] ->),
+};
+
+//---------------------------------------
+external g_httpRequest :: HTTPRequest; //only exists once httpRequest.js runs
+type HTTPRequest :: {
+  packet :: XMLHTTPRequest,
+  connectToGmailServer :: (
+    [HTTPRequest] string, (ResponseData ->)?, (->)?, bool,
+        GmailGadget?, bool?, {}? ->),
+};
+
+external HTTPRequest_available :: bool; //global
+
+//---------------------------------------
+//the parts of gmailgadget that loginView and login() and mailView use
 type GGPartial :: {
   login :: ([GGPartial] ->),
   keyboardShortcutsEnabled :: bool,
+  mailView :: MailView,
   ...
 };
 
@@ -688,31 +705,59 @@ type LoginView :: {
 
 //---------------------------------------
 type MailView :: {
+  threads :: Array<Thread>,
+  viewOffset :: int,
+  folder :: string,
+  actionToken :: string,
+  mailsInView :: int,
+  failedCount :: int,
   uiMailView :: UiMailView,
+
   refreshView :: ([MailView] ->),
   destroyMailView :: ([MailView] ->),
+  requestInbox :: ([MailView]int->),
+
+  onSwitchComboChange :: ([MailView] ->),
+  browseOlderMails :: ([MailView] ->),
+  browseNewerMails :: ([MailView] ->),
+  actionsMenuOptionChosen :: ([MailView] ->),
+};
+
+//leave the constructor untyped:
+external MailView :: ([{...}] GGPartial ~~> MailView);
+
+//---------------------------------------
+//message goes here
+
+//---------------------------------------
+type Resources :: {
+  cache :: {},
+  getText :: ([Resources] string -> string),
+  getImage :: ([Resources] string -> string),
+  makePlaceholder :: (string -> string),
+  getDetailsHtml :: ([Resources] -> string),
+  getComposeHtml :: ([Resources] -> string),
+};
+
+//---------------------------------------
+type ResponseData :: {
+  getNextLine :: ([ResponseData] -> string),
+};
+
+//---------------------------------------
+type Thread :: {
+  actionExecute :: ([Thread] int ->),
+  toggleStar :: ([Thread] ->),
+  open :: ([Thread] ->),
 };
 
 //---------------------------------------
 type UiMailView :: {
+  selectLast :: bool,
+
   toggleSearchVisibility :: ([UiMailView] ->),
   resizeView :: ([UiMailView] ->),
-};
-
-//---------------------------------------
-type DetailsViewController :: {
-  isOpen :: ([DetailsViewController] string -> bool),
-  close :: (->),
-  open :: ([DetailsViewController] string, DetailsView, string, int ->),
-};
-
-//---------------------------------------
-external g_httpRequest :: HTTPRequest; //only exists once httpRequest.js runs
-type HTTPRequest :: {
-  packet :: XMLHTTPRequest,
-  connectToGmailServer :: (
-    [HTTPRequest] string, (string ->)?, (->)?, bool, undefined, bool, {} ->),
-
+  popupActionsMenu :: ([UiMailView] Thread, double, double ->),
 };
 
 //---------------------------------------
@@ -745,6 +790,8 @@ type GmailGadget :: {
 
     onResize :: ([GmailGadget] bool ->),
     removeActionsMenu :: (->),
+
+    sentSuccessfully :: ([GmailGadget] (->), (->), ResponseData ->),
 };
 
 //---------------------------------------
@@ -899,20 +946,16 @@ external mnuMarkRead :: label;
 external imgLoading :: img;
 
 external $mv :: MailView; //xxx uber hax uber hax XXX
+
 //---------------------------------------
 //leaving bind in untyped code:
 //it must be instantiated with what the return type is spected to be
 external bind :: forall aa b c : b <: ([aa] -> any) c <: ( -> any)
   . (aa, b -> c);
-
+external COMBO_POSITION :: Array<int>;
 //=======================================
 //CODE:
 //Constants:
-// Copyright 2007 Google Inc.
-// All Rights Reserved.
-
-// @fileoverview Constants used throughout the plugin
-
 var TIME_BETWEEN_HTTP_REQUESTS = 1000; // in ms
 var SWITCH_COMBO_SCROLL_DELAY = 100;
 var BLANK_LINE = 'b';
@@ -943,7 +986,7 @@ var FILTERS = {
 
 // JS compiler does not like assignment to CONSTANTS.
 // Declaring with a regular variable first.
-/*var tempComboPosition = {};
+/*var tempComboPosition = {}; //pending dicts
 tempComboPosition['INBOX'] = 0;
 tempComboPosition[FILTERS.STARRED] = 1;
 tempComboPosition[FILTERS.ALL_MAIL] = 4;
@@ -1106,86 +1149,169 @@ var OPTION_NAMES = {
 var BASE_TEN = 10;
 
 //---------------------------------------
-//mailview
-function MailView(gadget) :: ([{...}] any ~~> {}) {
+//errorMessage.js
+
+function ErrorMessage() :: ([{removeMessage :: (
+                                [{messageAndErrorDiv::div,...}] ->), ...}] ~~>
+                            { removeTimer :: int,
+                              messageAndErrorDiv :: div,
+                              messageAndErrorCenter :: div,
+                              messageAndErrorRight :: div,
+                              messageAndErrorLabel :: label }) {
+  this.removeTimer = -1; //null;
+
+  this.messageAndErrorDiv = view.appendElement@[(div)](
+      '<div name="messageAndErrorDiv" x="10" height="44" enabled="true" />');
+  this.messageAndErrorDiv.onclick = (
+    function(refThis) ::
+      ({removeMessage :: ([{messageAndErrorDiv::div,...}] ->)} -> (->)) {
+        return function() :: (->) {
+          refThis.removeMessage();
+        };
+      })(this);
+  this.messageAndErrorDiv.appendElement@[(div)](
+    '<div name="messageAndErrorLeft" ' +
+      'x="0" y="0" width="7" height="44" background="' +
+      IMAGE_PATHS.ERROR_LEFT + '" />');
+  this.messageAndErrorCenter = this.messageAndErrorDiv.appendElement@[(div)](
+      '<div name="messageAndErrorCenter" x="7" y="0" height="44" background="' +
+      IMAGE_PATHS.ERROR_CENTER + '" />');
+  this.messageAndErrorRight = this.messageAndErrorDiv.appendElement@[(div)](
+      '<div name="messageAndErrorRight" y="0" width="7" height="44" ' +
+      'background="' + IMAGE_PATHS.ERROR_RIGHT + '" />');
+  this.messageAndErrorLabel=this.messageAndErrorCenter.appendElement@[(label)](
+      '<label name="messageAndErrorLabel" ' +
+      'x="0" y="0" width="100%" height="100%" align="center" valign="middle" ' +
+      'font="arial" bold="true" size="7" trimming="character-ellipsis" ' +
+      'wordWrap="true" />');
 }
 
-//---------------------------------------
-//URL Builder
-//just a namespace
-var _urlFromKeyValue = function(key, value) :: (string, string -> string){
-    return '&' + key + '=' + encodeURIComponent(value);
-  };
+ErrorMessage.prototype.displayMessage = function(message) ::
+  ([ErrorMessage] string ->) {
+  //try {
+    this.messageAndErrorDiv.y =
+        (view.height - this.messageAndErrorDiv.height) / 2;
+    this.messageAndErrorDiv.width =
+        view.width - 2 * this.messageAndErrorDiv.x - 4;
+    this.messageAndErrorRight.x = this.messageAndErrorDiv.width -
+        this.messageAndErrorRight.width;
+    this.messageAndErrorCenter.width = this.messageAndErrorRight.x -
+        this.messageAndErrorCenter.x;
 
-var UrlBuilder = {
-  urlFromKeyValue: _urlFromKeyValue,
-  buildLogoutUrl: function() :: (-> string) {
-    return CONNECTION_DATA.COMMON_POST_PARAMETERS +
-      _urlFromKeyValue(URL.LOGOUT_PARAM, ""+true);
-  },
+    this.messageAndErrorLabel.innerText = message;
+    this.messageAndErrorDiv.visible = true;
 
+    if (this.removeTimer != -1) {
+      view.clearTimeout(this.removeTimer);
+    }
+    this.removeTimer = view.setTimeout(
+      (function(refThis) :: (ErrorMessage -> (->)) {
+
+       return function() :: (->) {
+        refThis.removeMessage();
+      };
+    })(this), UIDATA.ERROR_MESSAGE_MAX_DISPLAY_TIME);
+
+    this.messageAndErrorDiv.focus();
+  //} catch(e) {}
 };
 
+ErrorMessage.prototype.removeMessage = function() ::
+  ([{messageAndErrorDiv :: div,...}] ->) {
+  //try {
+    this.messageAndErrorDiv.visible = false;
+  //} catch(e) {}
+};
+
+var g_errorMessage = new ErrorMessage();
 
 //---------------------------------------
-//Utils:
-var nullFunction = function() :: (->) {};
+//LoginView
+// Copyright 2007 Google Inc.
+// All Rights Reserved.
 
-/*function bind(self, method, var_args) {
-  var args = Array.prototype.slice.call(arguments, 2);
+// @fileoverview Functions for handling the login view of the gadget
 
-  return function(var_args) {
-    return method.apply(self,
-        args.concat(Array.prototype.slice.call(arguments)));
-  };
-}*/
-
-function sanitizeXml(string) :: (string -> string) {
-  string += '';
-  /*string = string.replace(/&/g, "&amp;");
-  string = string.replace(/</g, "&lt;");
-  string = string.replace(/>/g, "&gt;");
-  string = string.replace(/\u0027/g, "&apos;");
-  string = string.replace(/\u0022/g, "&quot;");*/
-  return string;
+function LoginView(gadget) :: ([{...}] GGPartial ~~> {gadget::GGPartial}) {
+  this.gadget = gadget;
 }
 
-var _Utils_getDomain = function(email) :: (string -> string) {
-      if (true) { //if (email.indexOf('@') == -1) {
-        return '';
-      }
-
-      return "no substr fail"; //return email.substr(email.indexOf('@') + 1);
-    };
-
-var Utils = {
-  getMessage: function(key) :: (string -> string?) {
-      //return strings[key];
-      return "LACK OF DICT FAIL";
-    },
-  escapeRegexp: function(str) :: (string -> string){
-      //var re = new RegExp("([\(\)\.\*\\\?\+\[\^\$])", "gi");
-      //return str.replace(re, "\\$1");
-      return "regexp parse fail";
-    },
-  isGmailAccount: function(email) :: (string -> bool) {
-      var domain = _Utils_getDomain(email);
-
-      return !domain || domain == 'gmail.com';
-    },
-  getDomain: _Utils_getDomain,
-  isWindows: function() :: (-> bool) {
-      //return framework.runtime.osName.match(/windows/i) !== null;
-      return false; //regexp nyi fail.
-    },
+// This function is called onkeypress of the username editbox. accepts tab and
+// enter key.
+LoginView.prototype.onUsernameKeyPress = function() :: ([LoginView] ->) {
+  if (view.event.keyCode == KEYS.ENTER) {
+    if (pass.value === '') {
+      pass.focus();
+    } else {
+      this.gadget.login();
+    }
+    //view.event.returnValue = false; //ANF fail w/ readable
+  }
 };
+
+// This function is called onkeydown of the password editbox. accepts enter key.
+LoginView.prototype.onPasswordKeyPress = function() :: ([LoginView] ->) {
+  if (view.event.keyCode == KEYS.ENTER) {
+    if (user.value.length === 0) {
+      user.focus(); // Put focus on user field.
+    } else {
+      this.gadget.login();
+    }
+    //view.event.returnValue = false;
+  }
+};
+
+// This function is called onkeydown of the remember checkbox.
+LoginView.prototype.onRememberKeyPress = function() :: ([LoginView] ->) {
+  if (view.event.keyCode == KEYS.ENTER ||
+      view.event.keyCode == KEYS.SPACE) {
+    remember.value = !remember.value;
+    this.onRememberFocus(true);
+  }
+};
+
+LoginView.prototype.onLoginKeyPress = function() :: ([LoginView] ->) {
+  if (view.event.keyCode == KEYS.ENTER ||
+      view.event.keyCode == KEYS.SPACE) {
+    // Put focus on user field if its empty.
+    if (user.value.length === 0) {
+      user.focus();
+    } else {
+      this.gadget.login();
+    }
+  }
+};
+
+// This function is called onfocusin/out of the search editbox.
+LoginView.prototype.onUsernameFocus = function(got) :: ([LoginView] bool ->) {
+  this.gadget.keyboardShortcutsEnabled = !got;
+};
+
+// This function is called onfocusin/out of the search editbox.
+LoginView.prototype.onPasswordFocus = function(got) :: ([LoginView] bool ->) {
+  this.gadget.keyboardShortcutsEnabled = !got;
+};
+
+// This function is called when the remember checkbox gets or looses focus
+LoginView.prototype.onRememberFocus = function(got) :: ([LoginView] bool ->) {
+  this.gadget.keyboardShortcutsEnabled = !got;
+  rememberFocus.visible = got;
+};
+
+// This function is called when the action combo gets or looses focus
+LoginView.prototype.onLoginFocus = function(got) :: ([LoginView] bool ->) {
+  this.gadget.keyboardShortcutsEnabled = !got;
+  login.image = got ? 'images/action_hover.png' : 'images/action_default.png';
+};
+
+//---------------------------------------
+//mailview is left untyped.
 
 //---------------------------------------
 //Resources:
 function Resources() :: ([{...}] ~~> {cache :: {}}) {
   this.cache = {};
 }
-
 
 // Returns the contents of a script file.
 Resources.prototype.getText = function(filename) ::
@@ -1303,86 +1429,93 @@ Resources.prototype.getComposeHtml = function() :: (-> string) {
 };
 
 //---------------------------------------
-//LoginView
-// Copyright 2007 Google Inc.
-// All Rights Reserved.
+//URL Builder
+//just a namespace
+var _urlFromKeyValue = function(key, value) :: (string, string -> string){
+    return '&' + key + '=' + encodeURIComponent(value);
+  };
 
-// @fileoverview Functions for handling the login view of the gadget
+var UrlBuilder = {
+  urlFromKeyValue: _urlFromKeyValue,
+  buildLogoutUrl: function() :: (-> string) {
+    return CONNECTION_DATA.COMMON_POST_PARAMETERS +
+      _urlFromKeyValue(URL.LOGOUT_PARAM, ""+true);
+  },
+  buildComposeUrl: function(actionToken, inboxOffset,
+    numberOfMailsInView, to, cc, bcc, subject, body) :: (
+      string, string, string, string, string, string, string, string -> string){
+  return CONNECTION_DATA.COMMON_POST_PARAMETERS +
+      _urlFromKeyValue(URL.ACTION_TOKEN_PARAM, actionToken) +
+      _urlFromKeyValue(URL.OFFSET_PARAM, inboxOffset) +
+      _urlFromKeyValue(URL.NUM_MAILS_PARAM, numberOfMailsInView) +
+      _urlFromKeyValue(URL.TO_PARAM, to) +
+      _urlFromKeyValue(URL.CC_PARAM, cc) +
+      _urlFromKeyValue(URL.BCC_PARAM, bcc) +
+      _urlFromKeyValue(URL.SUBJECT_PARAM, subject) +
+      _urlFromKeyValue(URL.BODY_PARAM, body) +
+      _urlFromKeyValue(URL.BU_PARAM, URL.SEND_OPERATION);
+  },
+};
 
-function LoginView(gadget) :: ([{...}] GGPartial ~~> {gadget::GGPartial}) {
-  this.gadget = gadget;
+
+//---------------------------------------
+//Utils:
+var nullFunction = function() :: (->) {};
+
+/*function bind(self, method, var_args) {
+  var args = Array.prototype.slice.call(arguments, 2);
+
+  return function(var_args) {
+    return method.apply(self,
+        args.concat(Array.prototype.slice.call(arguments)));
+  };
+}*/
+
+function sanitizeXml(string) :: (string -> string) {
+  string += '';
+  /*string = string.replace(/&/g, "&amp;");
+  string = string.replace(/</g, "&lt;");
+  string = string.replace(/>/g, "&gt;");
+  string = string.replace(/\u0027/g, "&apos;");
+  string = string.replace(/\u0022/g, "&quot;");*/
+  return string;
 }
 
-// This function is called onkeypress of the username editbox. accepts tab and
-// enter key.
-LoginView.prototype.onUsernameKeyPress = function() :: ([LoginView] ->) {
-  if (view.event.keyCode == KEYS.ENTER) {
-    if (pass.value === '') {
-      pass.focus();
-    } else {
-      this.gadget.login();
-    }
-    //view.event.returnValue = false; //ANF fail w/ readable
-  }
-};
+var _Utils_getDomain = function(email) :: (string -> string) {
+      if (true) { //if (email.indexOf('@') == -1) {
+        return '';
+      }
 
-// This function is called onkeydown of the password editbox. accepts enter key.
-LoginView.prototype.onPasswordKeyPress = function() :: ([LoginView] ->) {
-  if (view.event.keyCode == KEYS.ENTER) {
-    if (user.value.length === 0) {
-      user.focus(); // Put focus on user field.
-    } else {
-      this.gadget.login();
-    }
-    //view.event.returnValue = false;
-  }
-};
+      return "no substr fail"; //return email.substr(email.indexOf('@') + 1);
+    };
 
-// This function is called onkeydown of the remember checkbox.
-LoginView.prototype.onRememberKeyPress = function() :: ([LoginView] ->) {
-  if (view.event.keyCode == KEYS.ENTER ||
-      view.event.keyCode == KEYS.SPACE) {
-    remember.value = !remember.value;
-    this.onRememberFocus(true);
-  }
-};
+var Utils = {
+  getMessage: function(key) :: (string -> string?) {
+      //return strings[key];
+      return "LACK OF DICT FAIL";
+    },
+  escapeRegexp: function(str) :: (string -> string){
+      //var re = new RegExp("([\(\)\.\*\\\?\+\[\^\$])", "gi");
+      //return str.replace(re, "\\$1");
+      return "regexp parse fail";
+    },
+  isGmailAccount: function(email) :: (string -> bool) {
+      var domain = _Utils_getDomain(email);
 
-LoginView.prototype.onLoginKeyPress = function() :: ([LoginView] ->) {
-  if (view.event.keyCode == KEYS.ENTER ||
-      view.event.keyCode == KEYS.SPACE) {
-    // Put focus on user field if its empty.
-    if (user.value.length === 0) {
-      user.focus();
-    } else {
-      this.gadget.login();
-    }
-  }
-};
-
-// This function is called onfocusin/out of the search editbox.
-LoginView.prototype.onUsernameFocus = function(got) :: ([LoginView] bool ->) {
-  this.gadget.keyboardShortcutsEnabled = !got;
-};
-
-// This function is called onfocusin/out of the search editbox.
-LoginView.prototype.onPasswordFocus = function(got) :: ([LoginView] bool ->) {
-  this.gadget.keyboardShortcutsEnabled = !got;
-};
-
-// This function is called when the remember checkbox gets or looses focus
-LoginView.prototype.onRememberFocus = function(got) :: ([LoginView] bool ->) {
-  this.gadget.keyboardShortcutsEnabled = !got;
-  rememberFocus.visible = got;
-};
-
-// This function is called when the action combo gets or looses focus
-LoginView.prototype.onLoginFocus = function(got) :: ([LoginView] bool ->) {
-  this.gadget.keyboardShortcutsEnabled = !got;
-  login.image = got ? 'images/action_hover.png' : 'images/action_default.png';
+      return !domain || domain == 'gmail.com';
+    },
+  getDomain: _Utils_getDomain,
+  isWindows: function() :: (-> bool) {
+      //return framework.runtime.osName.match(/windows/i) !== null;
+      return false; //regexp nyi fail.
+    },
 };
 
 //---------------------------------------
 //main.js:
+g_resources = new Resources();
+//g_detailsView = new DetailsViewController();
+
 function GmailGadget() :: ([{login :: ([GGPartial] ->), ...}] ~~>
                            {loginView :: LoginView,
                             mailView :: MailView,
@@ -1486,7 +1619,7 @@ GmailGadget.prototype.login = function() :: ([GGPartial] ->) {
     options.putValue@[(string)](OPTION_NAMES.USER, '');
     options.putValue@[(string)](OPTION_NAMES.PASS, '');
   }
-  //this.mailView = new MailView(this); //xxx deal with this later
+  this.mailView = new MailView(this);
 };
 
 GmailGadget.prototype.logout = function() :: ([GmailGadget]->) {
@@ -1542,11 +1675,46 @@ GmailGadget.prototype.compose = function() :: ([GmailGadget] ->) {
       gddDetailsViewFlagDisableAutoClose);
 };
 
-//sendMessage
+GmailGadget.prototype.sendMessage = function(callback, onFail,
+    isForward, to, subject, body, cc, bcc) :: (
+      [GmailGadget] (ResponseData ->), (->), bool, string, string,
+                    string, string, string -> ) {
+  var data = UrlBuilder.buildComposeUrl(
+      ""+this.mailView.actionToken,
+      ""+this.mailView.viewOffset,
+      ""+this.mailView.mailsInView,
+      to, cc, bcc, subject, body);
 
-//discardMessage
+  /*g_httpRequest.connectToGmailServer(data,
+      bind(this, this.sentSuccessfully, callback, onFail),
+      onFail, false, this);*/
+  var refThis = this;
+  g_httpRequest.connectToGmailServer(data,
+    function (rd) :: (ResponseData ->) {
+      refThis.sentSuccessfully(callback,onFail,rd); }, onFail, false, this);
+};
 
-//sentSuccessfully
+GmailGadget.prototype.discardMessage = function() :: (->) {
+  g_detailsView.close();
+  g_errorMessage.displayMessage(strings.MESSAGE_DISCARDED);
+};
+
+GmailGadget.prototype.sentSuccessfully = function(callback, onFail,
+    responseData) :: (
+      [GmailGadget] (ResponseData ->), (->), ResponseData ->){
+  // Check for a valid response start.
+  var firstLine = responseData.getNextLine();
+  if (firstLine == THREAD_LIST_DATA_INFO.LEGAL_CONVERSATION ||
+      firstLine == THREAD_LIST_DATA_INFO.TRUE) {
+    if (this.mailView.folder == FILTERS.INBOX) {
+      this.mailView.requestInbox(0);
+    }
+    g_detailsView.close();
+    g_errorMessage.displayMessage(strings.MESSAGE_SENT);
+  } else {
+    onFail();
+  }
+};
 
 GmailGadget.prototype.onResize = function(forceAll) :: (
     [GmailGadget]bool ->) {
@@ -1627,6 +1795,273 @@ GmailGadget.prototype.removeActionsMenu = function() :: (->) {
       actionMenuCloser.visible = false;
 };
 
-//rest of file (from line 302 on...)
+GmailGadget.prototype.keyPressed = function() :: ([GmailGadget] ->){
+  if (!this.keyboardShortcutsEnabled || !this.isMailView() ||
+      switchComboBorder.visible) {
+    return;
+  }
 
-(new GmailGadget()).onResize(false);
+  // Report spam
+  if (view.event.keyCode == KEYS.EXCLAMATION_MARK) {
+    if (mailList.selectedIndex > -1 &&
+        this.mailView.folder != FILTERS.SPAM) {
+      this.mailView.threads[mailList.selectedIndex].actionExecute(
+          ACTION.REPORT_SPAM);
+    }
+  // Delete
+  } else if (view.event.keyCode == KEYS.POUND_SIGN) {
+    if (mailList.selectedIndex > -1 &&
+        this.mailView.folder != FILTERS.TRASH) {
+      this.mailView.threads[mailList.selectedIndex].actionExecute(ACTION.TRASH);
+    }
+  }
+  //view.event.returnValue = false;
+};
+
+GmailGadget.prototype.keyUp = function() :: ([GmailGadget] ->) {
+  var event = view.event; //shortcut
+  if (event.keyCode != KEYS.UP && event.keyCode != KEYS.DOWN &&
+      event.keyCode != KEYS.SPACE && event.keyCode != KEYS.ENTER) {
+    this.removeActionsMenu();
+  }
+  if (event.keyCode == KEYS.ESCAPE) {
+    switchComboBorder.visible = false;
+    mailList.focus();
+  }
+  if (!this.keyboardShortcutsEnabled || !this.isMailView() ||
+      switchComboBorder.visible) {
+    return;
+  }
+  g_errorMessage.removeMessage();
+  // Search
+  if (event.keyCode == KEYS.SLASH) {
+    if (!searchTextBorder.visible) {
+      this.mailView.uiMailView.toggleSearchVisibility();
+    }
+    searchText.focus();
+  // Open menu
+  } else if (event.keyCode == KEYS.MENU) {
+    if (mailList.selectedIndex > -1) {
+      this.mailView.uiMailView.popupActionsMenu(
+          this.mailView.threads[mailList.selectedIndex], 0.2 * mainDiv.width,
+          0.3 * mailList.itemHeight);
+    }
+  // Move to newer conversation
+  } else if (event.keyCode == KEYS.DOWN || event.keyCode == KEYS.J) {
+    if (mailList.enabled) {
+      if (actionsMenuBorder.visible) {
+        do {
+          actionsMenu.selectedIndex = actionsMenu.selectedIndex ==
+                                      actionsMenu.children.count - 1 ?
+                                      0 : actionsMenu.selectedIndex + 1;
+        } while (!actionsMenu.selectedItem.enabled);
+      } else if (mailList.selectedIndex == mailList.children.count - 1) {
+        if (HTTPRequest_available) {
+          this.mailView.browseOlderMails();
+        }
+      } else {
+        mailList.selectedIndex += 1;
+      }
+    }
+  // Move to older conversation
+  } else if (event.keyCode == KEYS.UP || event.keyCode == KEYS.K) {
+    if (mailList.enabled) {
+      if (actionsMenuBorder.visible) {
+        do {
+          actionsMenu.selectedIndex = actionsMenu.selectedIndex === 0 ?
+                                      actionsMenu.children.count - 1 :
+                                      actionsMenu.selectedIndex - 1;
+        } while (!actionsMenu.selectedItem.enabled);
+      } else if (mailList.selectedIndex < 1) {
+        if (HTTPRequest_available) {
+          this.mailView.uiMailView.selectLast = true;
+          this.mailView.browseNewerMails();
+        }
+      } else {
+        mailList.selectedIndex -= 1;
+      }
+    }
+  // Open
+  } else if (event.keyCode == KEYS.ENTER || event.keyCode == KEYS.SPACE ||
+             event.keyCode == KEYS.O) {
+    if (actionsMenuBorder.visible) {
+      this.mailView.actionsMenuOptionChosen();
+    } else {
+      this.mailView.threads[mailList.selectedIndex].open();
+    }
+  // Compose
+  } else if (event.keyCode == KEYS.C) {
+    this.compose();
+  // G pressed - first part of key combo
+  } else if (event.keyCode == KEYS.G) {
+    //for some reason, the following function causes our type checker
+    //to loop forever, as it is placed here:
+    /*var tmpfunc = (function(refThis) :: (GmailGadget -> (->)) {
+      return function() :: (->) {
+        refThis.lastKeyPressed = -1;
+      };
+    });*/
+    //var res = tmpfunc(this);
+    //res should be used here, not the fake func i just made up:
+    view.setTimeout(function()::(->){}, UIDATA.DOUBLE_KEY_SHORTCUTS_MAX_DELAY);
+  // Star/Unstar
+  } else if (event.keyCode == KEYS.S && this.lastKeyPressed != KEYS.G) {
+    if (mailList.selectedIndex > -1) {
+      this.mailView.threads[mailList.selectedIndex].toggleStar();
+    }
+  // Refresh
+  } else if (event.keyCode == KEYS.U || event.keyCode == KEYS.F5) {
+    this.mailView.refreshView();
+  // Archive/Unstar
+  } else if (event.keyCode == KEYS.Y) {
+    // Arhive if current folder is Inbox
+    if (this.mailView.folder == FILTERS.INBOX) {
+      if (mailList.selectedIndex > -1) {
+        this.mailView.threads[mailList.selectedIndex].actionExecute(
+            ACTION.ARCHIVE);
+      }
+    // Unstar if current folder is Starred
+    } else if (this.mailView.folder == FILTERS.STARRED) {
+      if (mailList.selectedIndex > -1) {
+        this.mailView.threads[mailList.selectedIndex].toggleStar();
+      }
+    }
+  // Go to
+  } else if (this.lastKeyPressed == KEYS.G) {
+    // Go to All mail
+    if (event.keyCode == KEYS.A) {
+      if (COMBO_POSITION[switchCombo.selectedIndex] != FILTERS.ALL_MAIL) {
+        //switchCombo.selectedIndex = COMBO_POSITION[FILTERS.ALL_MAIL];
+        this.mailView.onSwitchComboChange();
+      }
+    // Go to Inbox
+    } else if (event.keyCode == KEYS.I) {
+      //if (switchCombo.selectedIndex != COMBO_POSITION['INBOX']) {
+        //switchCombo.selectedIndex = COMBO_POSITION['INBOX'];
+      //  this.mailView.onSwitchComboChange();
+      //}
+    // Go to Starred
+    } else if (event.keyCode == KEYS.S) {
+      if (COMBO_POSITION[switchCombo.selectedIndex] != FILTERS.STARRED) {
+        //switchCombo.selectedIndex = COMBO_POSITION[FILTERS.STARRED];
+        this.mailView.onSwitchComboChange();
+      }
+    }
+  }
+  this.lastKeyPressed = event.keyCode;
+  //event.returnValue = false;
+};
+
+//
+// Event handlers for view elements.
+//
+
+g_gmailGadget = new GmailGadget();
+
+function _onOpen() :: (->) {
+  g_gmailGadget.onOpen();
+}
+
+function _onOptionChanged() :: (->) {
+  g_gmailGadget.onOptionChanged();
+}
+
+function _onResize(bool) :: (bool ->) {
+  g_gmailGadget.onResize(bool);
+}
+
+function _keyPressed() :: (->) {
+  g_gmailGadget.keyPressed();
+}
+
+function _keyUp() :: (->) {
+  g_gmailGadget.keyUp();
+}
+
+function _loginView_onUsernameKeyPress() :: (->) {
+  g_gmailGadget.loginView.onUsernameKeyPress();
+}
+
+function _loginView_onUsernameFocus(bool) :: (bool ->) {
+  g_gmailGadget.loginView.onUsernameFocus(bool);
+}
+
+function _loginView_onPasswordKeyPress() :: (->) {
+  g_gmailGadget.loginView.onPasswordKeyPress();
+}
+
+function _loginView_onPasswordFocus(bool) :: (bool ->) {
+  g_gmailGadget.loginView.onPasswordFocus(bool);
+}
+
+function _loginView_onRememberKeyPress() :: (->) {
+  g_gmailGadget.loginView.onRememberKeyPress();
+}
+
+function _loginView_onRememberFocus(bool) :: (bool ->) {
+  g_gmailGadget.loginView.onRememberFocus(bool);
+}
+
+function _loginView_onLoginKeyPress() :: (->) {
+  g_gmailGadget.loginView.onLoginKeyPress();
+}
+
+function _loginView_onLoginFocus(bool) :: (bool ->) {
+  g_gmailGadget.loginView.onLoginFocus(bool);
+}
+
+function _login() :: (->) {
+  g_gmailGadget.login();
+}
+
+function _mailView_uiMailView_toggleSwitchComboVisibility() :: (->) {
+  g_gmailGadget.mailView.uiMailView.toggleSwitchComboVisibility();
+}
+
+function _mailView_uiMailView_onSearchKeyDown() :: (->) {
+  g_gmailGadget.mailView.uiMailView.onSearchKeyDown();
+}
+
+function _mailView_uiMailView_onSearchFocus(bool) :: (bool ->) {
+  g_gmailGadget.mailView.uiMailView.onSearchFocus(bool);
+}
+
+function _mailView_uiMailView_toggleSearchVisibility() :: (->) {
+  g_gmailGadget.mailView.uiMailView.toggleSearchVisibility();
+}
+
+function _mailView_browseNewerMails() :: (->) {
+  g_gmailGadget.mailView.browseNewerMails();
+}
+
+function _mailView_browseOlderMails() :: (->) {
+  g_gmailGadget.mailView.browseOlderMails();
+}
+
+function _compose() :: (->) {
+  g_gmailGadget.compose();
+}
+
+function _logout() :: (->) {
+  g_gmailGadget.logout();
+}
+
+function _removeActionsMenu() :: (->) {
+  g_gmailGadget.removeActionsMenu();
+}
+
+function _mailView_uiMailView_switchComboStartScroll(bool) :: (bool ->) {
+  g_gmailGadget.mailView.uiMailView.switchComboStartScroll(bool);
+}
+
+function _mailView_uiMailView_switchComboStopScroll(bool) :: (bool ->) {
+  g_gmailGadget.mailView.uiMailView.switchComboStopScroll(bool);
+}
+
+function _mailView_onSwitchComboChange() :: (->) {
+  g_gmailGadget.mailView.onSwitchComboChange();
+}
+
+function _mailView_actionsMenuOptionChosen() :: (->) {
+  g_gmailGadget.mailView.actionsMenuOptionChosen();
+}

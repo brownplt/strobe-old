@@ -465,19 +465,21 @@ st env rel (t1, t2)
       rez <- st env (S.insert (t1, t2) rel) (substType v t1 t1', t2)
       return rez
     (TUnion ts1, t2) -> do
-      let do_t1 rel t1 = let zomk :: Either String (Set (Type, Type))
-                             zomk = st env rel (t1, t2) in case zomk of
+      let do_t1 rel t1 =
+           case (st env rel (t1, t2)) :: Either String (Set (Type, Type)) of
             Left msg -> fail $ printf"type %s in the union '%s' isn't a subtype\
-                               \ of the rhs, %s:\n%s" (renderType t1)
-                               (renderType (TUnion ts1)) (renderType t2) msg
+                           \ of the rhs, %s:\n%s" (renderType t1)
+                           (renderType (TUnion ts1)) (renderType t2) msg
             Right rel -> return rel
       case foldM do_t1 rel ts1 of
         Left msg -> fail msg
         Right rel -> return rel
     (t1, TUnion ts2) -> do
       case anyM (\rel t2 -> st env rel (t1, t2)) rel ts2 of
+        Nothing  -> fail $ printf "No type in the lhs '%s' was a subtype of\
+                      \ anything in the union '%s'" (renderType t1)
+                      (renderType $ TUnion ts2)
         Just rel -> return rel
-        Nothing -> fail "rhs tunion st fail"
  
     --temporary hack: if the TId is in the env, then look it up
     (TId x, _) -> case M.lookup x env of
