@@ -265,9 +265,9 @@ x <: y = case isSubType M.empty [] x y of
   Right _ -> True
 
 
-assert :: Monad m => Bool -> m ()
-assert False = fail ""
-assert True = return ()
+assert :: Monad m => String -> Bool -> m ()
+assert s False = fail s
+assert s True = return ()
 
 anyM :: (a -> b -> Maybe a) -> a -> [b] -> Maybe a
 anyM _ a [] = Nothing
@@ -311,8 +311,8 @@ st env rel (t1, t2)
          
           
     (TApp c1 args1, TApp c2 args2) -> do
-      assert (length args1 == length args2)
-      assert (c1 == c2)
+      assert "typearg length mismatch in TApp" (length args1 == length args2)
+      assert "type name in TApp is not the same" (c1 == c2)
       foldM (st env) rel (zip args1 args2) 
     
     (TSequence args1 vararg, TSequence args2 Nothing) -> do
@@ -350,18 +350,26 @@ st env rel (t1, t2)
     (TFunc pt2 args2 ret2 lp2, TFunc pt1 args1 ret1 lp1) -> do
       
       --when (isJust pt2 || isJust pt1) (fail "constr subtype NYI")
-      assert (lp1 == lp2 || lp1 == LPNone)
-      rel <- st env (S.insert (t1, t2) rel) (ret2, ret1)
-      rez <- foldM (st env) rel (zip args1 args2)
-      case (isJust pt2, isJust pt1) of
-        (True, True) -> st env rez (fromJust pt2, fromJust pt1)
-        (False, True) -> fail "func is not subtype of constructor"
-        (True, False) -> fail "constructor is not subtype of funtcion"
-        (False, False) -> return rez
+      assert "LPs are wrong" (lp1 == lp2 || lp1 == LPNone)
+      case st env (S.insert (t1, t2) rel) (ret2, ret1) of
+        Left msg -> fail $ "contravariance of return types:\n" ++ msg
+        Right rel -> do
+          let argst rel (num, (a1, a2)) = case st env rel (a1, a2) of
+                Left msg -> fail$"covariance of arg " ++ (show num) ++ ":\n" ++
+                              msg
+                Right rel -> return rel
+          rez <- foldM argst rel (zip ([1..]) (zip args1 args2))
+          case (isJust pt2, isJust pt1) of
+            (True, True) -> case st env rez (fromJust pt2, fromJust pt1) of
+              Left msg -> fail $ "covariance of prototpes:\n" ++ msg
+              Right rel -> return rel
+            (False, True) -> fail "func is not subtype of constructor"
+            (True, False) -> fail "constructor is not subtype of funtcion"
+            (False, False) -> return rez
       
     (TForall ids1 tcs1 t1, TForall ids2 tcs2 t2) -> do
-      assert (ids1 == ids2)
-      assert (tcs1 == tcs2)
+      assert "ids in foralls are different" (ids1 == ids2)
+      assert "type constraints in foralls are different" (tcs1 == tcs2)
       st env (S.insert (t1, t2) rel) (t1, t2)
 
     --open objects are subtypes of closed or open objects, but thats
@@ -440,7 +448,7 @@ st env rel (t1, t2)
               Left msg -> fail $ "non-slack objects:\n" ++ msg
               Right rel -> return rel
             False -> fail "subtyping: non-slack objects do not have equivalent\
-                       \fields"
+                       \ fields"
 
     (t1, TRec v t2') -> do
       rez <- st env (S.insert (t1, t2) rel) (t1, substType v t2 t2')

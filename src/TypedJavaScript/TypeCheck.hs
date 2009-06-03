@@ -306,6 +306,7 @@ doAssignment (<:) (<:$) p env v te
        return env
 
 doFuncConstr :: (Type -> Type -> Bool) -- ^local subtype relation
+             -> (Type -> Type -> String) -- ^error reporting
              -> SourcePos -- ^for type errors
              -> Env -- ^current environment
              -> ErasedEnv -- ^erased environment
@@ -315,7 +316,7 @@ doFuncConstr :: (Type -> Type -> Bool) -- ^local subtype relation
              -> [Id] -- ^arguments
              -> Bool -- ^True if NewStmt, False if CallStmt
              -> TypeCheck Env -- ^resulting environment
-doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt = 
+doFuncConstr (<:) (<:$) p env ee cs r_v f_v args_v isNewStmt = 
   let noop = return env 
    in do
   state <- get
@@ -358,12 +359,20 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
         typeError p (printf "expected %d type argument(s) for %s, received %d"
                             (length vs) f_v (length insts))
 
+      let a <:: b = isSubType tenv' cs a b 
+            where tenv' = M.union (stateTypeEnv state) 
+                                  (M.fromList (zip vs insts))
+          a <::$ b = case a <:: b of
+            Left msg -> msg
+            Right _ -> "success"
+            
       let checkInst (t, v, TCSubtype _ t')
-            | t <: t' = return (TCSubtype v t)
+            | isRight (t <:: t') = return (TCSubtype v t)
             | otherwise = do
                 typeError p $ printf
-                  "supplied type %s for %s does not satisfy the %s <: %s"
-                  (renderType t) v v (renderType t')
+                  "supplied type %s for %s does not satisfy constraint %s <: %s\
+                  \\nreason: %s"
+                  (renderType t) v v (renderType t') (t <::$ t')
                 return (TCSubtype v t)
 
       instConstraints <- mapM checkInst (zip3 insts vs cs')
@@ -673,11 +682,11 @@ stmt env ee cs erettype node s = do
     DeleteStmt _ r del -> fail "delete NYI"
 
     NewStmt (_,p) r_v f_v args_v -> do
-      env' <- doFuncConstr (<:) p env ee cs r_v f_v args_v True
+      env' <- doFuncConstr (<:) (<:$) p env ee cs r_v f_v args_v True
       return $ zip (map fst succs) (repeat env')
 
     CallStmt (_,p) r_v f_v args_v -> do
-      env' <- doFuncConstr (<:) p env ee cs r_v f_v args_v False
+      env' <- doFuncConstr (<:) (<:$) p env ee cs r_v f_v args_v False
       when (f_v == "$printtype$") $ do
         liftIO $ putStrLn $ printf "$printtype$ at %s: %s has type %s" (show p)
           (args_v !! 2) 

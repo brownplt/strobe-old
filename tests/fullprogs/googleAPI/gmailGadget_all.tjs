@@ -26,7 +26,10 @@ external gddDetailsViewFlagNone :: int;
 external gddDetailsViewFlagToolbarOpen :: int;
 external gddDetailsViewFlagNegativeFeedback :: int;
 external gddDetailsViewFlagRemoveButton :: int;
+external gddDetailsViewFlagDisableAutoClose :: int;
+
 //...95 more constants...
+external gddMenuItemFlagGrayed :: int;
 external gddElementMinOpacity :: int;
 
 //------TYPES------
@@ -161,13 +164,13 @@ type view :: {
     onundock :: (->),
 };
 
-type plugin :: {
+external plugin :: {
     writeonly plugin_flags :: int,
-
-    readonly RemoveMe :: (bool ->),
-    readonly ShowDetailsView :: (any, string, (int ->) ->),
-    readonly CloseDetailsView :: (->),
-    readonly ShowOptionsDialog :: (->),
+    //in the API, first letters are uppercase, but in usage, they are lower
+    readonly removeMe :: (bool ->),
+    readonly showDetailsView :: (DetailsView, string, int, (int ->) ->),
+    readonly closeDetailsView :: (->),
+    readonly showOptionsDialog :: (->),
 
     //events
     //onShowOptionsDlg :: (IGoogleDesktopDisplayWindow -> bool),
@@ -371,6 +374,7 @@ type combobox :: { //(basicElement <- {
 };
 
 type listbox :: { //(basicElement <- {
+    visible :: bool, //from basicelement
     autoscroll :: bool,
     background :: string,
     //itemHeight :: (U int string),
@@ -435,6 +439,7 @@ type contentarea :: { //(basicElement <- {
 };
 
 type div :: { //(basicElement <- {
+    visible :: bool, //basicel
     autoscroll :: bool,
     background :: string,
 };
@@ -632,7 +637,8 @@ external readonly srcElementToView        :: (viewXelement -> view);
 */
 
 //detailsView (undocumented)
-type DetailsView :: {};
+type DetailsView :: {setContent :: ([DetailsView] string?, undefined,
+                                    string, bool, int ->)};
 external DetailsView :: (~~> DetailsView);
 
 //==================================================
@@ -648,6 +654,7 @@ type Resources :: {
   getImage :: ([Resources] string -> string),
   makePlaceholder :: (string -> string),
   getDetailsHtml :: ([Resources] -> string),
+  getComposeHtml :: ([Resources] -> string),
 };
 
 //LoginView
@@ -671,6 +678,14 @@ type MailView :: rec MailView . {
 
 //main.js
 external g_resources :: Resources; //only exists once main.js executes!
+external g_detailsView :: DetailsViewController;
+
+type DetailsViewController :: {
+  isOpen :: ([DetailsViewController] string -> bool),
+  close :: (->),
+  open :: ([DetailsViewController] string, DetailsView, string, int ->),
+
+};
 
 type GmailGadget :: {
     loginView :: LoginView,
@@ -688,6 +703,9 @@ type GmailGadget :: {
     isUpgradeView :: ([GmailGadget] -> bool),
     isLoginView :: ([GmailGadget] -> bool),
     isNotCompatibleView :: ([GmailGadget] -> bool),
+
+    isComposeOpen :: (-> bool), //the 'this type can really be anything.
+    compose :: ([GmailGadget] ->),
 };
 
 //strings.xml (auto gen)
@@ -837,6 +855,12 @@ external lblSpam :: label;
 external mnuStar :: label;
 external mnuMarkRead :: label;
 external imgLoading :: img;
+
+//leaving bind in untyped code:
+//it must be instantiated with what the return type is spected to be
+external bind :: forall a b c : b <: ([a] -> any) c <: ( -> any)
+  . (a, b -> c);
+/*function bind(self, method, var_args) {
 
 //CODE:
 //Constants:
@@ -1311,14 +1335,81 @@ function GmailGadget() :: ([{login :: ([GGPartial] ->), ...}] ~~>
 
 GmailGadget.prototype.sizeDetailsView = function() :: ([GmailGadget] ->) {
   var details = new DetailsView();
-  details.SetContent('', undefined, 'size_details_view.xml', false, 0);
+  details.setContent('', undefined, 'size_details_view.xml', false, 0);
   //try { try/catch NYI
-    gadget.plugin.showDetailsView(details, '', 0, nullFunction);
-    gadget.plugin.closeDetailsView();
+    plugin.showDetailsView(details, '', 0, nullFunction);
+    plugin.closeDetailsView();
   //} catch (ex) {
     gadget.debug.warning('Could not size details view');
     //debug.warning(ex.message);
   //}
+};
+
+//stuff is out of order:
+// ID used to distinguise the compose details view.
+var GmailGadget_COMPOSE_DETAILS_ID = 'COMPOSE';
+
+GmailGadget.prototype.compose = function() :: ([GmailGadget] ->) {
+  if (this.isComposeOpen()) {
+    g_detailsView.close();
+    return;
+  }
+
+  var detailsView = new DetailsView();
+  //detailsView.html_content = true;
+  detailsView.setContent('', undefined, g_resources.getComposeHtml(),
+      false, 0);
+  /*detailsView.external = {}; //what does 'external' do??
+  detailsView.external.gmailGadget = this;
+  detailsView.external.getMessage = Utils.getMessage;
+  detailsView.external.getContacts =
+      bind(this.mailView, this.mailView.getContacts);*/
+
+  g_detailsView.open(GmailGadget_COMPOSE_DETAILS_ID,
+      detailsView,
+      strings.COMPOSE,
+      gddDetailsViewFlagDisableAutoClose);
+};
+
+GmailGadget.prototype.isComposeOpen = function() :: (-> bool) {
+  return g_detailsView.isOpen(GmailGadget_COMPOSE_DETAILS_ID);
+};
+
+GmailGadget.prototype.isMailView = function() :: (-> bool) {
+  return mainDiv.visible;
+};
+
+GmailGadget.prototype.onAddCustomMenuItems = function(menu) ::
+  ([GmailGadget] menu ->) {
+  if (this.isMailView()) {
+    menu.AddItem(strings.COMPOSE,
+        this.isComposeOpen() ?
+        gddMenuItemFlagGrayed : 0,
+        bind@[(GmailGadget),([GmailGadget]->),
+              (->)](this, this.compose));
+    menu.AddItem(searchTextBorder.visible ? strings.HIDE_SEARCH :
+                 strings.SHOW_SEARCH, 0,
+        bind(this.mailView.uiMailView,
+             this.mailView.uiMailView.toggleSearchVisibility));
+    menu.AddItem(strings.REFRESH, 0,
+        bind(this.mailView, this.mailView.refreshView));
+    menu.AddItem(strings.LOGOUT, 0,
+        bind(this, this.logout));
+  }
+
+  menu.AddItem(strings.TERMS, 0, bind(this, this.openTermsPage));
+};
+
+GmailGadget.prototype.onOpen = function() :: ([GmailGadget] ->) {
+  this.sizeDetailsView();
+  plugin.OnAddCustomMenuItems = bind(this, this.onAddCustomMenuItems);
+  this.onResize(false);
+  user.value = options.getValue(OPTION_NAMES.USER);
+  pass.value = options.getValue(OPTION_NAMES.PASS);
+  if (user.value !== '' && pass.value !== ''){
+    remember.value = true;
+    this.login();
+  }
 };
 
 

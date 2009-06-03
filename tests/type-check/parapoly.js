@@ -70,9 +70,17 @@ function() :: (->) {
 function map(f, arr) :: forall a b . (a -> b), Array<a> -> Array<b> {
  var r :: Array<b> = [ ];
  for (var i = 0; i < arr.length; i++) {
-   r[i] = f(arr[i]); 
+   r[i] = f(arr[i]);
  }
  return r; }
 
 } @@ succeeds;
 
+function (bind) :: ((forall a b : b <: ([a] -> int) . (a, b -> (-> int)))
+                   -> (-> int)) {
+  function retX() :: ([{x::int}] -> int) {
+    return this.x
+  }
+
+  return bind@[({x::int}), ([{x::int}] -> int)]({x: 10}, retX);
+} @@ succeeds;
