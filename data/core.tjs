@@ -107,6 +107,7 @@ external isNaN :: double -> bool;
 
 
 external decodeURI :: (string -> string);
+external encodeURIComponent :: (string -> string);
 
 external undefined :: undefined;
 
@@ -135,11 +136,8 @@ external window :: {
   clearInterval :: (IntervalID ->),
 };
 
-
-
-
-
 //AJAX
+type XMLHTTPRequest :: {};
 
 //Prototype
 external String_prototype_evalJSON :: (string, bool -> {}); //TODO: blah eval!!!

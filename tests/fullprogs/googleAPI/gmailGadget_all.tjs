@@ -293,6 +293,9 @@ type contentitem :: {
 //all these are related to their xml representation.
 type img :: { //(basicElement <- {
     visible :: bool, //from basicElement
+    width :: int, height::int, x::int,y::int,
+
+
     colorMultiply :: string,
     cropMaintainAspect :: string,
     src :: string,
@@ -319,10 +322,13 @@ type _label :: { //(basicElement <- {
 };
 
 type label :: { //(basicElement <- _label <- {
+    width :: int, height::int, x::int,y::int, visible::bool,
     innerText :: string,
 };
 
 type button :: { //(basicElement <- _label <- {
+    width :: int, height::int, x::int,y::int, visible::bool,
+
     disabledImage :: string,
     downImage :: string,
     image :: string,
@@ -375,6 +381,8 @@ type combobox :: { //(basicElement <- {
 
 type listbox :: { //(basicElement <- {
     visible :: bool, //from basicelement
+    width :: int, height::int, x::int,y::int,
+
     autoscroll :: bool,
     background :: string,
     //itemHeight :: (U int string),
@@ -402,6 +410,7 @@ type listbox :: { //(basicElement <- {
 //all the properties of one, and we
 //have a structural type system.
 type a :: { //(basicElement <- label <- {
+    visible :: bool,
     href :: string,
     overColor :: string,
 };
@@ -440,12 +449,15 @@ type contentarea :: { //(basicElement <- {
 
 type div :: { //(basicElement <- {
     visible :: bool, //basicel
+    width :: int, height::int, x::int,y::int,
+
     autoscroll :: bool,
     background :: string,
 };
 
 type edit :: { //(basicElement <- {
     //from basicElement:
+    width :: int, height::int, x::int,y::int,
     focus :: (->),
 
     background :: string,
@@ -522,9 +534,9 @@ external options :: {
     readonly encryptValue :: (forall T . (string, T ->)),
     readonly exists :: (string -> bool),
     readonly getDefaultValue :: (string -> string),
-    readonly getValue :: (forall T : T <: {} . (string -> T)),
+    readonly getValue :: (forall T . (string -> T)),
     readonly putDefaultValue :: (string, string ->),
-    readonly putValue :: (forall T : T <: {} . (string, T ->)),
+    readonly putValue :: (forall T . (string, T ->)),
     readonly remove :: (string->),
     readonly removeAll :: (->),
 };
@@ -543,9 +555,10 @@ external options :: {
 //this acts as a namespace. all the internal objects
 //act as namespaces as well.
 external framework :: {
+    openUrl :: (string ->), //wasn't documented omg.
     //next 2 are windows only
     readonly BrowseForFile :: (string -> string),
-    readonly BrowseForFiles :: (string -> collection), //TODO: define collection
+    readonly BrowseForFiles :: (string -> Array<string>),//was:collection
     readonly audio :: {
         //readonly open :: (string, audioclip.onstatechange? -> audioclip),
         //readonly play :: (string, audioclip.onstatechange? -> audioclip),
@@ -644,10 +657,10 @@ external DetailsView :: (~~> DetailsView);
 //==================================================
 //==================================================
 //==================================================
-//gmail gadget specifics:
+//GMAIL GADGET
 
 //TYPE ALIASES / EXTERNALS
-//Resources:
+//---------------------------------------
 type Resources :: {
   cache :: {},
   getText :: ([Resources] string -> string),
@@ -657,7 +670,7 @@ type Resources :: {
   getComposeHtml :: ([Resources] -> string),
 };
 
-//LoginView
+//---------------------------------------
 //the parts of gmailgadget that loginview uses
 type GGPartial :: {
   login :: ([GGPartial] ->),
@@ -673,19 +686,39 @@ type LoginView :: {
   ...
 };
 
-type MailView :: rec MailView . {
+//---------------------------------------
+type MailView :: {
+  uiMailView :: UiMailView,
+  refreshView :: ([MailView] ->),
+  destroyMailView :: ([MailView] ->),
 };
 
-//main.js
-external g_resources :: Resources; //only exists once main.js executes!
-external g_detailsView :: DetailsViewController;
+//---------------------------------------
+type UiMailView :: {
+  toggleSearchVisibility :: ([UiMailView] ->),
+  resizeView :: ([UiMailView] ->),
+};
 
+//---------------------------------------
 type DetailsViewController :: {
   isOpen :: ([DetailsViewController] string -> bool),
   close :: (->),
   open :: ([DetailsViewController] string, DetailsView, string, int ->),
+};
+
+//---------------------------------------
+external g_httpRequest :: HTTPRequest; //only exists once httpRequest.js runs
+type HTTPRequest :: {
+  packet :: XMLHTTPRequest,
+  connectToGmailServer :: (
+    [HTTPRequest] string, (string ->)?, (->)?, bool, undefined, bool, {} ->),
 
 };
+
+//---------------------------------------
+//from main.js
+external g_resources :: Resources; //only exists once main.js executes!
+external g_detailsView :: DetailsViewController;
 
 type GmailGadget :: {
     loginView :: LoginView,
@@ -696,6 +729,7 @@ type GmailGadget :: {
 
     //prototype methods:
     login :: ([GGPartial] ->),
+    logout :: ([GmailGadget] ->),
     sizeDetailsView :: ([GmailGadget] ->),
     onOpen :: ([GmailGadget] ->),
     openTermsPage :: ([GmailGadget] ->),
@@ -706,8 +740,14 @@ type GmailGadget :: {
 
     isComposeOpen :: (-> bool), //the 'this type can really be anything.
     compose :: ([GmailGadget] ->),
+
+    onAddCustomMenuItems :: ([GmailGadget] menu ->),
+
+    onResize :: ([GmailGadget] bool ->),
+    removeActionsMenu :: (->),
 };
 
+//---------------------------------------
 //strings.xml (auto gen)
 external strings :: {
     VERSION_STRING :: string,
@@ -790,6 +830,8 @@ external strings :: {
     MESSAGE_ATTACHMENTS :: string,
     NOT_COMPATIBLE :: string,
 };
+
+//---------------------------------------
 //Main.xml: (automatically generated)
 external label :: label;
 external bottomRightMainBg :: div;
@@ -856,12 +898,13 @@ external mnuStar :: label;
 external mnuMarkRead :: label;
 external imgLoading :: img;
 
+//---------------------------------------
 //leaving bind in untyped code:
 //it must be instantiated with what the return type is spected to be
 external bind :: forall aa b c : b <: ([aa] -> any) c <: ( -> any)
   . (aa, b -> c);
-/*function bind(self, method, var_args) {
 
+//=======================================
 //CODE:
 //Constants:
 // Copyright 2007 Google Inc.
@@ -1061,6 +1104,24 @@ var OPTION_NAMES = {
 
 var BASE_TEN = 10;
 
+//---------------------------------------
+//URL Builder
+//just a namespace
+var _urlFromKeyValue = function(key, value) :: (string, string -> string){
+    return '&' + key + '=' + encodeURIComponent(value);
+  };
+
+var UrlBuilder = {
+  urlFromKeyValue: _urlFromKeyValue,
+  buildLogoutUrl: function() :: (-> string) {
+    return CONNECTION_DATA.COMMON_POST_PARAMETERS +
+      _urlFromKeyValue(URL.LOGOUT_PARAM, ""+true);
+  },
+
+};
+
+
+//---------------------------------------
 //Utils:
 var nullFunction = function() :: (->) {};
 
@@ -1113,6 +1174,7 @@ var Utils = {
     },
 };
 
+//---------------------------------------
 //Resources:
 function Resources() :: ([{...}] ~~> {cache :: {}}) {
   this.cache = {};
@@ -1234,6 +1296,7 @@ Resources.prototype.getComposeHtml = function() :: (-> string) {
   return "same as previous function!";
 };
 
+//---------------------------------------
 //LoginView
 // Copyright 2007 Google Inc.
 // All Rights Reserved.
@@ -1312,6 +1375,7 @@ LoginView.prototype.onLoginFocus = function(got) :: ([LoginView] bool ->) {
   login.image = got ? 'images/action_hover.png' : 'images/action_default.png';
 };
 
+//---------------------------------------
 //main.js:
 function GmailGadget() :: ([{login :: ([GGPartial] ->), ...}] ~~>
                            {loginView :: LoginView,
@@ -1375,8 +1439,109 @@ GmailGadget.prototype.isComposeOpen = function() :: (-> bool) {
   return g_detailsView.isOpen(GmailGadget_COMPOSE_DETAILS_ID);
 };
 
+var GmailGadget_TERMS_URL = 'http://mail.google.com/mail/help/terms.html';
+
+GmailGadget.prototype.openTermsPage = function() :: (->) {
+  framework.openUrl(GmailGadget_TERMS_URL);
+};
+
 GmailGadget.prototype.isMailView = function() :: (-> bool) {
   return mainDiv.visible;
+};
+
+GmailGadget.prototype.logout = function() :: ([GmailGadget]->) {
+  var data = UrlBuilder.buildLogoutUrl();
+
+  // Necessary auth headers. can't do until we have dicts.
+  var headers = {};
+  /*headers[CONNECTION_DATA.MOBILE_AUTH_HEADER] =
+      CONNECTION_DATA.MOBILE_AUTH_HEADER_VALUE;*/
+
+  g_httpRequest.connectToGmailServer(data, undefined, undefined, false,
+                                     undefined, false, headers);
+
+  if (!this.isMailView()) {
+    return;
+  }
+  if (searchTextBorder.visible) {
+    this.mailView.uiMailView.toggleSearchVisibility();
+  }
+  g_detailsView.close();
+  this.mailView.destroyMailView();
+};
+
+GmailGadget.prototype.onResize = function(forceAll) :: (
+    [GmailGadget]bool ->) {
+  topRightMainBg.x = middleRightMainBg.x = bottomRightMainBg.x =
+      view.width - topRightMainBg.width;
+  topCenterMainBg.width = middleCenterMainBg.width = bottomCenterMainBg.width =
+      topRightMainBg.x - topCenterMainBg.x;
+  bottomRightMainBg.y = bottomCenterMainBg.y = bottomLeftMainBg.y =
+      view.height - bottomLeftMainBg.height;
+  middleLeftMainBg.height = middleCenterMainBg.height =
+      middleRightMainBg.height = bottomRightMainBg.y - middleLeftMainBg.y;
+  // Adjust the positions of a images to move to the top right corner
+  imgLoading.x = view.width - UIDATA.LOADING_LABEL_X_OFFSET;
+
+  if (this.isLoginView() || forceAll) {
+    loginDiv.width = view.width - 24;
+    loginDiv.height = view.height - 50;
+    user.width = pass.width = loginDiv.width - user.x - user.x;
+    login.x = loginDiv.width - login.width;
+  }
+  if (this.isUpgradeView() || forceAll) {
+    upgradeDiv.width = view.width - 24;
+    upgradeDiv.height = view.height - 50;
+  }
+  if (this.isNotCompatibleView() || forceAll) {
+    notCompatibleDiv.width = view.width - 24;
+    notCompatibleDiv.height = view.height - 50;
+  }
+  if (this.isMailView() || forceAll) {
+    mainDiv.width = view.width - 16;
+    mainDiv.height = view.height - mainDiv.y;
+    footerDiv.y = mainDiv.height - footerDiv.height;
+    searchTextBorder.y = footerDiv.y + (searchTextBorder.visible ? -20 : 5);
+    mailList.width = mainDiv.width - 4;
+    searchTextBorder.width = mainDiv.width - 2;
+    searchText.width = searchTextBorder.width - 2;
+    searchTextClose.x = searchText.width - searchTextClose.width + 1;
+
+    topRightContentBg.x = middleRightContentBg.x = bottomRightContentBg.x =
+        mainDiv.width - topRightContentBg.width;
+    topCenterContentBg.width = middleCenterContentBg.width =
+        bottomCenterContentBg.width =
+        topRightContentBg.x - topCenterContentBg.x;
+    bottomRightContentBg.y = bottomCenterContentBg.y = bottomLeftContentBg.y =
+        searchTextBorder.y - bottomRightContentBg.height - 3;
+    middleLeftContentBg.height = middleCenterContentBg.height =
+        middleRightContentBg.height =
+        bottomRightContentBg.y - middleLeftContentBg.y;
+
+    mailList.height = searchTextBorder.y - mailList.y - 5;
+    browseLabel.width = mainDiv.width - 3 * newer.width;
+    older.x = mainDiv.width - 20;
+    newer.x = older.x - older.width;
+
+    this.removeActionsMenu();
+
+    logoutLabel.visible = view.width >= 153;
+    searchToggleLabel.visible = view.width >= 107;
+    composeLabel.visible = view.width >= 68;
+  }
+  if (this.resizeToken) {
+    view.clearTimeout(this.resizeToken);
+  }
+  if (this.isMailView()) {
+    this.resizeToken = window.setTimeout(
+      (function(refThis) :: (GmailGadget->(->)) {
+      return function() :: (->) {
+        if (refThis.mailView !== undefined) {
+          refThis.mailView.uiMailView.resizeView();
+        }
+      };
+    })(this), UIDATA.RESIZE_TIMEOUT);
+  }
 };
 
 GmailGadget.prototype.onAddCustomMenuItems = function(menu) ::
@@ -1389,23 +1554,33 @@ GmailGadget.prototype.onAddCustomMenuItems = function(menu) ::
               (->)](this, this.compose));
     menu.AddItem(searchTextBorder.visible ? strings.HIDE_SEARCH :
                  strings.SHOW_SEARCH, 0,
-        bind(this.mailView.uiMailView,
+        bind@[(UiMailView), ([UiMailView]->),(->)](this.mailView.uiMailView,
              this.mailView.uiMailView.toggleSearchVisibility));
     menu.AddItem(strings.REFRESH, 0,
-        bind(this.mailView, this.mailView.refreshView));
+        bind@[(MailView),([MailView]->),(->)](this.mailView,
+                                              this.mailView.refreshView));
     menu.AddItem(strings.LOGOUT, 0,
-        bind(this, this.logout));
+        bind@[(GmailGadget),([GmailGadget]->),(->)](this, this.logout));
   }
 
-  menu.AddItem(strings.TERMS, 0, bind(this, this.openTermsPage));
+  menu.AddItem(strings.TERMS, 0,
+               bind@[(GmailGadget),([GmailGadget]->),(->)](
+                 this, this.openTermsPage));
+};
+
+GmailGadget.prototype.removeActionsMenu = function() :: (->) {
+  actionsMenuBorder.visible = switchComboBorder.visible =
+      actionMenuCloser.visible = false;
 };
 
 GmailGadget.prototype.onOpen = function() :: ([GmailGadget] ->) {
   this.sizeDetailsView();
-  plugin.OnAddCustomMenuItems = bind(this, this.onAddCustomMenuItems);
+  plugin.onAddCustomMenuItems = bind@[(GmailGadget),([GmailGadget]->),(->)](
+    this, this.onAddCustomMenuItems);
+
   this.onResize(false);
-  user.value = options.getValue(OPTION_NAMES.USER);
-  pass.value = options.getValue(OPTION_NAMES.PASS);
+  user.value = options.getValue@[(string)](OPTION_NAMES.USER);
+  pass.value = options.getValue@[(string)](OPTION_NAMES.PASS);
   if (user.value !== '' && pass.value !== ''){
     remember.value = true;
     this.login();
