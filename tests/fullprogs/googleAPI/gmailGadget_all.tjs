@@ -1272,13 +1272,13 @@ LoginView.prototype.onRememberFocus = function(got) :: ([LoginView] bool ->) {
   this.gadget.keyboardShortcutsEnabled = !got;
   rememberFocus.visible = got;
 };
-/*
+
 // This function is called when the action combo gets or looses focus
 LoginView.prototype.onLoginFocus = function(got) :: ([LoginView] bool ->) {
   this.gadget.keyboardShortcutsEnabled = !got;
   login.image = got ? 'images/action_hover.png' : 'images/action_default.png';
 };
-*/
+
 //main.js:
 function GmailGadget() :: ([{login :: ([GGPartial] ->), ...}] ~~>
                            {loginView :: LoginView,

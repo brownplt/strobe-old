@@ -382,10 +382,19 @@ st env rel (t1, t2)
             else return rel
           doWrite rel id (t1, w1') (t2, w2') = doit w1 w2 where
             --union fields are by another guarantee, not writeable!
+            unEnvId t@(TEnvId id) = case M.lookup id env of
+              Nothing -> t
+              Just t' -> t'
+            unEnvId t = t
             isUnion (TUnion _) = True
             isUnion _ = False
-            w1 = if isUnion t1 then False else w1'
-            w2 = if isUnion t2 then False else w2' 
+            hasSlack (TObject True _ _) = True
+            hasSlack _ = False
+
+            w1 = if isUnion (unEnvId t1) || hasSlack (unEnvId t1) 
+                   then False else w1'
+            w2 = if isUnion (unEnvId t2) || hasSlack (unEnvId t2) 
+                   then False else w2' 
             doit w1 w2 = if w2 
               then if not w1
                 then fail $ printf "writability mismatch for field %s" id
@@ -394,8 +403,7 @@ st env rel (t1, t2)
                      Left msg -> fail $ printf "while supertyping field %s:\
                                   \\n%s" id msg
                      Right rel -> return rel
-              else return rel
-      
+              else return rel      
             
       case ((slack1, open1, props1), (slack2, open2, props2)) of 
         --if there's slack in the first object, all of props2 must be

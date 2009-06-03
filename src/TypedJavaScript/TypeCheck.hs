@@ -493,7 +493,7 @@ stmt env ee cs erettype node s = do
           Just (Just (tDec, tAct, _))
             | (closeObject tAct) <: ttype -> return ()
             | otherwise  -> typeError p $ printf 
-                "'this' has type %s at constructor exit, expected %s.\n\
+                "'this' has type %s at constructor exit, expected st of %s.\n\
                 \reason: %s" 
                 (renderType (closeObject tAct)) (renderType ttype)
                   ((closeObject tAct) <:$ ttype)
@@ -596,9 +596,9 @@ stmt env ee cs erettype node s = do
                         return $ zip (map fst succs) (repeat env')
                     | otherwise -> do
                         typeError p $ printf
-                          "property %s has type %s in finalThis, \
-                          \but it is being assigned a type of %s" 
-                          prop (renderType t') (renderType t_rhs)
+                          "property %s is being assigned %s, which is not\
+                           \ a subtype of its type in finalThis, %s\nreason: %s"
+                             prop (renderType t_rhs) (renderType t')(t_rhs<:$t')
                         noop
                 Right t -> catastrophe p (printf 
                              "'this' is not an object, but %s" (renderType t))
