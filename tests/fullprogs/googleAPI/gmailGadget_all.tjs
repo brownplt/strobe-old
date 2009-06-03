@@ -732,11 +732,11 @@ type GmailGadget :: {
     logout :: ([GmailGadget] ->),
     sizeDetailsView :: ([GmailGadget] ->),
     onOpen :: ([GmailGadget] ->),
-    openTermsPage :: ([GmailGadget] ->),
-    isMailView :: ([GmailGadget] -> bool),
-    isUpgradeView :: ([GmailGadget] -> bool),
-    isLoginView :: ([GmailGadget] -> bool),
-    isNotCompatibleView :: ([GmailGadget] -> bool),
+    openTermsPage :: ( ->),
+    isMailView :: ( -> bool),
+    isUpgradeView :: ( -> bool),
+    isLoginView :: ( -> bool),
+    isNotCompatibleView :: ( -> bool),
 
     isComposeOpen :: (-> bool), //the 'this type can really be anything.
     compose :: ([GmailGadget] ->),
@@ -898,6 +898,7 @@ external mnuStar :: label;
 external mnuMarkRead :: label;
 external imgLoading :: img;
 
+external $mv :: MailView; //xxx uber hax uber hax XXX
 //---------------------------------------
 //leaving bind in untyped code:
 //it must be instantiated with what the return type is spected to be
@@ -1384,18 +1385,18 @@ LoginView.prototype.onLoginFocus = function(got) :: ([LoginView] bool ->) {
 //main.js:
 function GmailGadget() :: ([{login :: ([GGPartial] ->), ...}] ~~>
                            {loginView :: LoginView,
-                            mailView :: MailView?,
-                            lastKeyPressed :: int?,
+                            mailView :: MailView,
+                            lastKeyPressed :: int,
                             keyboardShortcutsEnabled :: bool,
                             resizeToken :: int, ...}) {
   switchComboUpLbl.innerText = '\u25B2';
   switchComboDownLbl.innerText = '\u25BC';
-  this.mailView = undefined; //null
+  this.mailView = $mv; //undefined; //null //xxx
 
-  this.lastKeyPressed = undefined;
+  this.lastKeyPressed = -1; //undefined; xxx
   this.keyboardShortcutsEnabled = true;
 
-  this.resizeToken = -1;  // Timeout token used in onResize //-1 instead of null
+  this.resizeToken = -1; //null xxx // Timeout token used in onResize
   this.loginView = new LoginView(this);
 
   gadget.debug.trace('Curent gadget version is: ' + strings.VERSION_STRING);
@@ -1438,7 +1439,17 @@ GmailGadget.prototype.isMailView = function() :: (-> bool) {
   return mainDiv.visible;
 };
 
-//---
+GmailGadget.prototype.isUpgradeView = function() :: (-> bool) {
+  return upgradeDiv.visible;
+};
+
+GmailGadget.prototype.isLoginView = function() :: (-> bool) {
+  return loginDiv.visible;
+};
+
+GmailGadget.prototype.isNotCompatibleView = function() :: (-> bool) {
+  return notCompatibleDiv.visible;
+};
 
 GmailGadget.prototype.onAddCustomMenuItems = function(menu) ::
   ([GmailGadget] menu ->) {
@@ -1618,4 +1629,4 @@ GmailGadget.prototype.removeActionsMenu = function() :: (->) {
 
 //rest of file (from line 302 on...)
 
-//(new GmailGadget()).onResize(false);
+(new GmailGadget()).onResize(false);
