@@ -243,12 +243,13 @@ assert True _ = return ()
 assert False msg = fail ("CATASPROPHIC FAILURE: " ++  msg)
 
 doAssignment :: (Type -> Type -> Bool) -- ^local subtype relation
+             -> (Type -> Type -> String) -- ^error reporting
              -> SourcePos -- ^for type errors
              -> Env -- ^current environment
              -> Id -- ^LHS of assignment
              -> Type -- ^type of the RHS of assignment
              -> TypeCheck Env -- ^resulting environment
-doAssignment (<:) p env v te 
+doAssignment (<:) (<:$) p env v te 
  | v == "this" = typeError p "Cannot assign to 'this'!" >> return env
  | head v /= '@' && isPrototype te = typeError p "Cannot assign .prototype to\
      \ anything" >> return env
@@ -274,8 +275,8 @@ doAssignment (<:) p env v te
         return env'
    | otherwise -> do
        typeError p $
-         printf "error assigning to %s :: %s; given an expression of type %s"
-                v (renderType tDec) (renderType te)
+         printf "error assigning to %s :: %s; given an expression of type %s\
+            \\nreason: %s" v (renderType tDec) (renderType te) (te <:$ tDec)
        return env
   -- Variable in an enclosing scope.  If its type is a union, it is possible
   -- that a function in the dynamic calling context has locally refined tDec to
@@ -300,8 +301,8 @@ doAssignment (<:) p env v te
         return env'
    | otherwise -> do
        typeError p $
-         printf "assigning to %s :: %s; given an expression of type %s"
-                v (renderType tDec) (renderType te)
+         printf "error assigning to %s :: %s; given an expression of type %s\
+            \\nreason: %s" v (renderType tDec) (renderType te) (te <:$ tDec)
        return env
 
 doFuncConstr :: (Type -> Type -> Bool) -- ^local subtype relation
@@ -370,6 +371,10 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
       let t1 <: t2 = isRight $ isSubType (stateTypeEnv state) 
                                (instConstraints ++ cs' ++ cs) 
                                 t1 t2
+          t1 <:$ t2 = case isSubType (stateTypeEnv state)
+                             (instConstraints ++ cs' ++ cs) t1 t2 of
+                        Left msg -> msg
+                        Right _ -> "success"
       
       let substVar (v, t) t' = substType v t t'
       let apply t = foldr substVar t (zip vs insts)
@@ -423,7 +428,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
       -- a subtype of the named result.
       -- this works for constructors, too.
       env' <- case (procEither unRec er) of
-                Left r   -> doAssignment (<:) p env r_v r 
+                Left r   -> doAssignment (<:) (<:$) p env r_v r 
                 Right tt@(TObject _ _ ttprops) -> do
                   let (Just (TObject _ _ ptprops)) = ptype
                   --the assumption is that there is no conflict
@@ -431,7 +436,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
                   --guaranteed whenever assignments are done to the
                   --prototype.
                   let ttype = TObject True False $ nub $ ttprops++ptprops
-                  doAssignment (<:) p env r_v ttype
+                  doAssignment (<:) (<:$) p env r_v ttype
                 Right tt -> do
                   typeError p $ printf "'this' is not an object in the \
                     \constructor, but %s" (renderType tt)
@@ -516,7 +521,7 @@ stmt env ee cs erettype node s = do
 
     AssignStmt (_,p) v e -> do
       te <- expr env ee cs e
-      env' <- doAssignment (<:) p env v te 
+      env' <- doAssignment (<:) (<:$)  p env v te 
       return $ zip (map fst succs) (repeat env')
 
     DirectPropAssignStmt (_,p) obj prop e -> do

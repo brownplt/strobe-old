@@ -375,20 +375,26 @@ st env rel (t1, t2)
             doWrite rel' id1 (t1, w1) (t2, w2)            
           doRead rel id (t1, r1) (t2, r2) = if r2 
             then if not r1
-              then fail "readability mismatch"  
+              then fail $ printf "readability mismatch for field %s" id
               else case st env rel (t1, t2) of
                 Nothing -> fail $ printf "while subtyping field %s: %s" id "___"
                 Just rel -> return rel
             else return rel
-          doWrite rel id (t1, w1) (t2, w2) = if w2 
-            then if not w1
-              then fail "writability mismatch"
-              else let zomk :: Either String (Set (Type, Type))
-                       zomk = st env rel (t2, t1) in case zomk of
-                   Left msg -> fail$printf "while supertyping field %s: %s" id
-                                     msg
-                   Right rel -> return rel
-            else return rel
+          doWrite rel id (t1, w1') (t2, w2') = doit w1 w2 where
+            --union fields are by another guarantee, not writeable!
+            isUnion (TUnion _) = True
+            isUnion _ = False
+            w1 = if isUnion t1 then False else w1'
+            w2 = if isUnion t2 then False else w2' 
+            doit w1 w2 = if w2 
+              then if not w1
+                then fail $ printf "writability mismatch for field %s" id
+                else let zomk :: Either String (Set (Type, Type))
+                         zomk = st env rel (t2, t1) in case zomk of
+                     Left msg -> fail $ printf "while supertyping field %s:\
+                                  \\n%s" id msg
+                     Right rel -> return rel
+              else return rel
       
             
       case ((slack1, open1, props1), (slack2, open2, props2)) of 
@@ -417,13 +423,16 @@ st env rel (t1, t2)
           let fields1 = S.fromList (map fst props1)
           let fields2 = S.fromList (map fst props2)
           let prop rel (id2, (t2, (r2, w2))) = do
-                (t1,(r1, w1)) <- lookup id2 props1
-                prop2prop rel (id2, (t1, (r1, w1))) (id2, (t2, (r2, w2)))
+                case lookup id2 props1 of
+                  Nothing -> fail $ printf "lhs does not have property %s" id2
+                  Just (t1,(r1, w1)) -> 
+                    prop2prop rel (id2, (t1, (r1, w1))) (id2, (t2, (r2, w2)))
           case S.null (S.difference fields1 fields2) of
             True -> case foldM prop (S.insert (t1, t2) rel) props2 of
-              Just rel -> return rel
-              Nothing -> fail "object subtyping invariant fail"
-            False -> fail "subtyping: invariant objects"
+              Left msg -> fail $ "non-slack objects:\n" ++ msg
+              Right rel -> return rel
+            False -> fail "subtyping: non-slack objects do not have equivalent\
+                       \fields"
 
     (t1, TRec v t2') -> do
       rez <- st env (S.insert (t1, t2) rel) (t1, substType v t2 t2')
@@ -435,26 +444,29 @@ st env rel (t1, t2)
       let do_t1 rel t1 = let zomk :: Either String (Set (Type, Type))
                              zomk = st env rel (t1, t2) in case zomk of
             Left msg -> fail $ printf"type %s in the union '%s' isn't a subtype\
-                               \ of the rhs, %s, because: %s" (renderType t1)
+                               \ of the rhs, %s:\n%s" (renderType t1)
                                (renderType (TUnion ts1)) (renderType t2) msg
             Right rel -> return rel
       case foldM do_t1 rel ts1 of
-        Left msg -> fail $ "lhs union st fail: " ++ msg
+        Left msg -> fail msg
         Right rel -> return rel
     (t1, TUnion ts2) -> do
       case anyM (\rel t2 -> st env rel (t1, t2)) rel ts2 of
         Just rel -> return rel
         Nothing -> fail "rhs tunion st fail"
  
-    --temporary hack: if the TId is in the env, then look it up -}
+    --temporary hack: if the TId is in the env, then look it up
     (TId x, _) -> case M.lookup x env of
       Just t1' -> st env rel (t1', t2)
-      Nothing -> fail $ printf "TId %s not in the type env" x
+      Nothing -> fail $ printf "case fall-through. %s is not a subtype of %s" 
+                   (show t1) (show t2)
     (_, TId y) -> case M.lookup y env of
       Just t2' -> st env rel (t1, t2')
-      Nothing -> fail $ printf "TId %s not in the type env" y
+      Nothing -> fail $ printf "case fall-through. %s is not a subtype of %s" 
+                   (show t1) (show t2)
 
-    otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
+    otherwise -> fail $ printf "case fall-through. %s is not a subtype of %s" 
+                   (show t1) (show t2)
 
 
 
