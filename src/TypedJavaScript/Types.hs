@@ -30,6 +30,7 @@ import TypedJavaScript.Prelude
 import TypedJavaScript.PrettyPrint(renderType)
 import qualified Data.Set as S
 import qualified Data.Map as M
+import qualified Data.List as L
 
 -- we don't want TJS expressions here
 import TypedJavaScript.Syntax (Type (..), TypeConstraint(..), LatentPred(..),
@@ -234,15 +235,17 @@ substType var sub (TId var')
 substType var sub (TSequence args vararg) = 
   TSequence (map (substType var sub) args)
             (liftM (substType var sub) vararg)
-substType var sub (TFunc isC args ret latentP) =
-  TFunc isC
+substType var sub (TFunc mpt args ret latentP) =
+  TFunc (maybe Nothing (Just . substType var sub) mpt)
         (map (substType var sub) args)
         (substType var sub ret)
         latentP
 substType var sub (TObject hasSlack isOpen fields) =
   TObject hasSlack isOpen (map (\(v,(t,x)) -> (v,(substType var sub t,x))) 
                                fields)
-substType var sub (TEnvId x) = TEnvId x -- this is most certainly wrong.
+substType var sub (TEnvId x) --this is most certainly wronger than before...
+ | var == x = sub
+ | otherwise = TEnvId x
 
 -- |Infers the type of a literal value.  Used by the parser to parse 'literal
 -- expressions in types
@@ -294,12 +297,10 @@ st env rel (t1, t2)
     -- However, if x != y, they may still be structurally equivalent.
     (TEnvId x, _) -> case M.lookup x env of
       Just t1' -> st env rel (t1', t2)
-      Nothing -> fail $ printf "BrownPLT.TypedJS.Subtypes.st: TEnvId %s is \
-                                \not in the environment. TEnvId x <: t2" x
+      Nothing -> fail $ printf "TEnvId %s (on lhs) is not in the environment" x
     (_, TEnvId y) -> case M.lookup y env of
       Just t2' -> st env rel (t1, t2')
-      Nothing -> fail $ printf "BrownPLT.TypedJS.Subtypes.st: TEnvId %s is \
-                                \not in the environment. t1 <: TEnvId y" y
+      Nothing -> fail $ printf "TEnvId %s (on rhs) is not in the environment" y
     -- int <: double because it makes sense, and also they are
     -- represented the same in javascript.
     (TId "int", TId "double") -> return rel
@@ -308,7 +309,6 @@ st env rel (t1, t2)
       | x == y   -> return rel
 {-      | otherwise -> --fail $ printf "%s is not a subtype of %s" x y
       --temporary hack: if the TId is in the env, then look it up -}
-         
           
     (TApp c1 args1, TApp c2 args2) -> do
       assert "typearg length mismatch in TApp" (length args1 == length args2)
@@ -355,8 +355,9 @@ st env rel (t1, t2)
         Left msg -> fail $ "contravariance of return types:\n" ++ msg
         Right rel -> do
           let argst rel (num, (a1, a2)) = case st env rel (a1, a2) of
-                Left msg -> fail$"covariance of arg " ++ (show num) ++ ":\n" ++
-                              msg
+                Left msg -> fail$"covariance of " ++ bk ++ ":\n" ++ msg
+                              where bk = if num == 1 then "this arg" else
+                                            "arg " ++ (show num)
                 Right rel -> return rel
           rez <- foldM argst rel (zip ([1..]) (zip args1 args2))
           case (isJust pt2, isJust pt1) of
@@ -447,8 +448,9 @@ st env rel (t1, t2)
             True -> case foldM prop (S.insert (t1, t2) rel) props2 of
               Left msg -> fail $ "non-slack objects:\n" ++ msg
               Right rel -> return rel
-            False -> fail "subtyping: non-slack objects do not have equivalent\
-                       \ fields"
+            False -> fail $ "non-slack objects: lhs has extra fields: " ++ 
+                       (concat $ L.intersperse ", " $ 
+                                S.toList (S.difference fields1 fields2))
 
     (t1, TRec v t2') -> do
       rez <- st env (S.insert (t1, t2) rel) (t1, substType v t2 t2')

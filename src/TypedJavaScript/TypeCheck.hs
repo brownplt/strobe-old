@@ -360,8 +360,9 @@ doFuncConstr (<:) (<:$) p env ee cs r_v f_v args_v isNewStmt =
                             (length vs) f_v (length insts))
 
       let a <:: b = isSubType tenv' cs a b 
-            where tenv' = M.union (stateTypeEnv state) 
-                                  (M.fromList (zip vs insts))
+            where tenv' = M.union (M.fromList (zip vs insts)) --constraints take
+                                  (stateTypeEnv state)        --precedence
+                                  
           a <::$ b = case a <:: b of
             Left msg -> msg
             Right _ -> "success"
@@ -404,17 +405,18 @@ doFuncConstr (<:) (<:$) p env ee cs r_v f_v args_v isNewStmt =
         typeError p (printf "function :: %s expects %d arguments, but %d \
                             \were supplied" (renderType f) (length formals)
                             (length actuals))
-      let checkArg (actual,formal) = do
+      let checkArg (num, (actual,formal)) = do
             unless (actual <: formal) $ do
               typeError p $ printf 
-                "expected argument of type %s, received %s"
-                (renderType formal) (renderType actual)
+                "for %s, expected subtype of %s, received %s.\nreason: %s"
+                (if num==1 then "this arg" else "arg " ++ (show num))
+                (renderType formal) (renderType actual) (actual <:$ formal)
       --check everything except the arguments array
       rez <- case isNewStmt of
                True -> do
                  let areals = actuals
                  let sreals = suppliedFormals 
-                 mapM_ checkArg (zip areals sreals)
+                 mapM_ checkArg (zip [1..] $ zip areals sreals)
                  --also check that the prototype is a subtype of the
                  --expected this type
                  unless (fromJust ptype <: head formals'') $ do
@@ -425,7 +427,7 @@ doFuncConstr (<:) (<:$) p env ee cs r_v f_v args_v isNewStmt =
                False -> do 
                  let (athis:aargs:areals) = actuals
                  let (sthis:sargs:sreals) = suppliedFormals
-                 mapM_ checkArg (zip (athis:areals) (sthis:sreals))
+                 mapM_ checkArg (zip [1..] $ zip (athis:areals) (sthis:sreals))
                
       let checkMissingArg actual = do
             unless (undefType <: actual) $

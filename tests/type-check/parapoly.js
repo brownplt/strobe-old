@@ -76,6 +76,10 @@ function map(f, arr) :: forall a b . (a -> b), Array<a> -> Array<b> {
 
 } @@ succeeds;
 
+function (funcit) :: ((forall a b : a <: b . (a -> b)) -> {x::int}) {
+  return funcit@[({x::int,y::int}),({x::int,...})]({x:5,y:6});
+} @@ succeeds;
+
 function (bind) :: ((forall a b : b <: ([a] -> int) . (a, b -> (-> int)))
                    -> (-> int)) {
   function retX() :: ([{x::int}] -> int) {

@@ -858,8 +858,8 @@ external imgLoading :: img;
 
 //leaving bind in untyped code:
 //it must be instantiated with what the return type is spected to be
-external bind :: forall a b c : b <: ([a] -> any) c <: ( -> any)
-  . (a, b -> c);
+external bind :: forall aa b c : b <: ([aa] -> any) c <: ( -> any)
+  . (aa, b -> c);
 /*function bind(self, method, var_args) {
 
 //CODE:
@@ -1411,5 +1411,4 @@ GmailGadget.prototype.onOpen = function() :: ([GmailGadget] ->) {
     this.login();
   }
 };
-
 
