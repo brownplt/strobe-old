@@ -631,6 +631,15 @@ external readonly srcElementToView        :: (viewXelement -> view);
 
 */
 
+//detailsView (undocumented)
+type DetailsView :: {};
+external DetailsView :: (~~> DetailsView);
+
+//==================================================
+//==================================================
+//==================================================
+//gmail gadget specifics:
+
 //TYPE ALIASES / EXTERNALS
 //Resources:
 type Resources :: {
@@ -1223,7 +1232,7 @@ LoginView.prototype.onUsernameKeyPress = function() :: ([LoginView] ->) {
     //view.event.returnValue = false; //ANF fail w/ readable
   }
 };
-/*
+
 // This function is called onkeydown of the password editbox. accepts enter key.
 LoginView.prototype.onPasswordKeyPress = function() :: ([LoginView] ->) {
   if (view.event.keyCode == KEYS.ENTER) {
@@ -1266,7 +1275,7 @@ LoginView.prototype.onUsernameFocus = function(got) :: ([LoginView] bool ->) {
 LoginView.prototype.onPasswordFocus = function(got) :: ([LoginView] bool ->) {
   this.gadget.keyboardShortcutsEnabled = !got;
 };
-*/
+
 // This function is called when the remember checkbox gets or looses focus
 LoginView.prototype.onRememberFocus = function(got) :: ([LoginView] bool ->) {
   this.gadget.keyboardShortcutsEnabled = !got;
@@ -1300,5 +1309,16 @@ function GmailGadget() :: ([{login :: ([GGPartial] ->), ...}] ~~>
   //options.putValue(OPTION_NAMES.VERSION_NUM, strings.VERSION_STRING); //bug!
 }
 
+GmailGadget.prototype.sizeDetailsView = function() :: ([GmailGadget] ->) {
+  var details = new DetailsView();
+  details.SetContent('', undefined, 'size_details_view.xml', false, 0);
+  //try { try/catch NYI
+    gadget.plugin.showDetailsView(details, '', 0, nullFunction);
+    gadget.plugin.closeDetailsView();
+  //} catch (ex) {
+    gadget.debug.warning('Could not size details view');
+    //debug.warning(ex.message);
+  //}
+};
 
 

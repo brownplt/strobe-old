@@ -429,18 +429,21 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
       -- this works for constructors, too.
       env' <- case (procEither unRec er) of
                 Left r   -> doAssignment (<:) (<:$) p env r_v r 
-                Right tt@(TObject _ _ ttprops) -> do
-                  let (Just (TObject _ _ ptprops)) = ptype
-                  --the assumption is that there is no conflict
-                  --between prototype and thistype. this'll be
-                  --guaranteed whenever assignments are done to the
-                  --prototype.
-                  let ttype = TObject True False $ nub $ ttprops++ptprops
-                  doAssignment (<:) (<:$) p env r_v ttype
-                Right tt -> do
-                  typeError p $ printf "'this' is not an object in the \
-                    \constructor, but %s" (renderType tt)
-                  return env
+                Right tt' -> do
+                  tt <- forceUnEnvId p tt'
+                  case tt of 
+                    TObject _ _ ttprops -> do
+                      let (Just (TObject _ _ ptprops)) = ptype
+                      --the assumption is that there is no conflict
+                      --between prototype and thistype. this'll be
+                      --guaranteed whenever assignments are done to the
+                      --prototype.
+                      let ttype = TObject True False $ nub $ ttprops++ptprops
+                      doAssignment (<:) (<:$) p env r_v ttype
+                    _ -> do 
+                      typeError p $ printf "finalThis is not an object in \
+                        \the constructor, but %s" (renderType tt)
+                      return env
       return env'
 
 
