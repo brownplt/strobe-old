@@ -699,7 +699,13 @@ type LoginView :: {
   gadget :: GGPartial,
 
   onUsernameKeyPress :: ([LoginView] ->),
+  onPasswordKeyPress :: ([LoginView] ->),
+  onRememberKeyPress :: ([LoginView] ->),
+  onLoginKeyPress :: ([LoginView] ->),
+  onUsernameFocus :: ([LoginView] bool ->),
+  onPasswordFocus :: ([LoginView] bool ->),
   onRememberFocus :: ([LoginView] bool ->),
+  onLoginFocus :: ([LoginView] bool ->),
   ...
 };
 
@@ -756,8 +762,16 @@ type UiMailView :: {
   selectLast :: bool,
 
   toggleSearchVisibility :: ([UiMailView] ->),
+  toggleSwitchComboVisibility :: ([UiMailView] ->),
   resizeView :: ([UiMailView] ->),
   popupActionsMenu :: ([UiMailView] Thread, double, double ->),
+  onSearchFocus :: ([UiMailView] bool ->),
+  onSearchClicked :: ([UiMailView] ->),
+  onSearchKeyDown :: ([UiMailView] ->),
+
+  switchComboScroll :: ([UiMailView] bool ->),
+  switchComboStartScroll :: ([UiMailView] bool ->),
+  switchComboStopScroll :: ([UiMailView] bool ->),
 };
 
 //---------------------------------------
@@ -1400,7 +1414,7 @@ Resources.prototype.getDetailsHtml = function() :: (
   return detailsHtml;
 };
 
-Resources.prototype.getComposeHtml = function() :: (-> string) {
+Resources.prototype.getComposeHtml = function() :: ([Resources] -> string) {
 /*  if (this.cache[Resources.COMPOSE_HTML_FILE]) {
     return this.cache[Resources.COMPOSE_HTML_FILE];
   }
@@ -1956,7 +1970,7 @@ GmailGadget.prototype.keyUp = function() :: ([GmailGadget] ->) {
 // Event handlers for view elements.
 //
 
-g_gmailGadget = new GmailGadget();
+var g_gmailGadget = new GmailGadget();
 
 function _onOpen() :: (->) {
   g_gmailGadget.onOpen();
