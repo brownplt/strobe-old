@@ -275,8 +275,9 @@ doAssignment (<:) (<:$) p env v te
         return env'
    | otherwise -> do
        typeError p $
-         printf "error assigning to %s :: %s; given an expression of type %s\
-            \\nreason: %s" v (renderType tDec) (renderType te) (te <:$ tDec)
+         printf "error assigning to local %s :: %s; given an expression of \
+            \type %s\nreason: %s" v (renderType tDec) (renderType te) 
+            (te <:$ tDec)
        return env
   -- Variable in an enclosing scope.  If its type is a union, it is possible
   -- that a function in the dynamic calling context has locally refined tDec to
@@ -301,8 +302,9 @@ doAssignment (<:) (<:$) p env v te
         return env'
    | otherwise -> do
        typeError p $
-         printf "error assigning to %s :: %s; given an expression of type %s\
-            \\nreason: %s" v (renderType tDec) (renderType te) (te <:$ tDec)
+         printf "error assigning to non-local %s :: %s; given an expression of\
+           \ type %s\nreason: %s" v (renderType tDec) (renderType te) 
+           (te <:$ tDec)
        return env
 
 doFuncConstr :: (Type -> Type -> Bool) -- ^local subtype relation
@@ -409,7 +411,7 @@ doFuncConstr (<:) (<:$) p env ee cs r_v f_v args_v isNewStmt =
             unless (actual <: formal) $ do
               typeError p $ printf 
                 "for %s, expected subtype of %s, received %s.\nreason: %s"
-                (if num==1 then "this arg" else "arg " ++ (show num))
+                (if num==1 then "'this' type" else "arg " ++ (show num))
                 (renderType formal) (renderType actual) (actual <:$ formal)
       --check everything except the arguments array
       rez <- case isNewStmt of
@@ -422,8 +424,10 @@ doFuncConstr (<:) (<:$) p env ee cs r_v f_v args_v isNewStmt =
                  unless (fromJust ptype <: head formals'') $ do
                    typeError p $ printf
                      "expected prototype to be subtype of the expected this\
-                     \ type, %s; received %s." (renderType $ head formals'')
-                     (renderType $ fromJust ptype)
+                     \ type, %s. given: %s\nreason: %s." 
+                       (renderType $ head formals'') 
+                       (renderType $ fromJust ptype)
+                       (fromJust ptype <:$ head formals'')
                False -> do 
                  let (athis:aargs:areals) = actuals
                  let (sthis:sargs:sreals) = suppliedFormals

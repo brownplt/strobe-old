@@ -227,3 +227,22 @@ function (readwriter, obj) :: forall a .
   (({x :: a} -> a), {writeonly x :: a} -> a) {
   return readwriter(obj);
 } @@ fails;
+
+//exploratory example for 'this' types.
+//this explains why you can't have a type alias where a function takes in
+//a partial version of the type, but then in the .prototype you annotate
+//the function as taking the full version.
+function () :: (->) {
+  var partialObject = {};
+  var fullObject = {x: 10};
+
+  function partialFunc() :: ([{...}] -> int) {
+    return 5;
+  }
+  function fullFunc() :: ([{x::int}] -> int) {
+    return this.x;
+  }
+
+  //partialFunc can be called from something without an 'x', so this fails:
+  partialFunc = fullFunc;
+} @@ fails;

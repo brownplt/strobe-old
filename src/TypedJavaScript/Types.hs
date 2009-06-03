@@ -350,13 +350,15 @@ st env rel (t1, t2)
     (TFunc pt2 args2 ret2 lp2, TFunc pt1 args1 ret1 lp1) -> do
       
       --when (isJust pt2 || isJust pt1) (fail "constr subtype NYI")
-      assert "LPs are wrong" (lp1 == lp2 || lp1 == LPNone)
+      assert "in function: LPs are wrong" (lp1 == lp2 || lp1 == LPNone)
       case st env (S.insert (t1, t2) rel) (ret2, ret1) of
-        Left msg -> fail $ "contravariance of return types:\n" ++ msg
+        Left msg -> fail $ 
+          "in function: covariance of return types:\n" ++ msg
         Right rel -> do
           let argst rel (num, (a1, a2)) = case st env rel (a1, a2) of
-                Left msg -> fail$"covariance of " ++ bk ++ ":\n" ++ msg
-                              where bk = if num == 1 then "this arg" else
+                Left msg -> fail$
+                  "in function: CONTRAvariance of " ++ bk ++ ":\n" ++ msg
+                              where bk = if num == 1 then "'this' type" else
                                             "arg " ++ (show num)
                 Right rel -> return rel
           rez <- foldM argst rel (zip ([1..]) (zip args1 args2))
@@ -386,8 +388,9 @@ st env rel (t1, t2)
             then if not r1
               then fail $ printf "readability mismatch for field %s" id
               else case st env rel (t1, t2) of
-                Nothing -> fail $ printf "while subtyping field %s: %s" id "___"
-                Just rel -> return rel
+                Left msg -> fail $ "while subtyping field " ++ id ++ ":\n" ++
+                              msg
+                Right rel -> return rel
             else return rel
           doWrite rel id (t1, w1') (t2, w2') = doit w1 w2 where
             unEnvId t@(TEnvId id) = case M.lookup id env of
@@ -416,11 +419,13 @@ st env rel (t1, t2)
             
       case ((slack1, open1, props1), (slack2, open2, props2)) of 
         --if there's slack in the first object, all of props2 must be
-        --in props1
+        --in props1, and we don't care about extra ones.
         ((True, False, props1), (_, _, props2)) -> do
           let prop rel (id2, (t2, (r2, w2))) = do
                 case lookup id2 props1 of
-                  Nothing -> fail $ printf "lhs does not have property %s" id2
+                  Nothing -> fail $ printf "lhs has slack, does not have \
+                               \property %s (has fields %s)" id2 
+                               (concat $ L.intersperse ", " $ map fst props1)
                   Just (t1,(r1,w1)) -> do
                     prop2prop rel (id2, (t1, (r1, w1))) (id2, (t2, (r2, w2)))
           case foldM prop (S.insert (t1, t2) rel) props2 of
@@ -441,7 +446,8 @@ st env rel (t1, t2)
           let fields2 = S.fromList (map fst props2)
           let prop rel (id2, (t2, (r2, w2))) = do
                 case lookup id2 props1 of
-                  Nothing -> fail $ printf "lhs does not have property %s" id2
+                  Nothing -> fail $ printf "no-slack, lhs does not have \
+                                    \property %s" id2
                   Just (t1,(r1, w1)) -> 
                     prop2prop rel (id2, (t1, (r1, w1))) (id2, (t2, (r2, w2)))
           case S.null (S.difference fields1 fields2) of
@@ -477,14 +483,14 @@ st env rel (t1, t2)
     (TId x, _) -> case M.lookup x env of
       Just t1' -> st env rel (t1', t2)
       Nothing -> fail $ printf "case fall-through. %s is not a subtype of %s" 
-                   (show t1) (show t2)
+                   (renderType t1) (renderType t2)
     (_, TId y) -> case M.lookup y env of
       Just t2' -> st env rel (t1, t2')
       Nothing -> fail $ printf "case fall-through. %s is not a subtype of %s" 
-                   (show t1) (show t2)
+                   (renderType t1) (renderType t2)
 
     otherwise -> fail $ printf "case fall-through. %s is not a subtype of %s" 
-                   (show t1) (show t2)
+                   (renderType t1) (renderType t2)
 
 
 

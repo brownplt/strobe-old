@@ -531,7 +531,7 @@ external options :: {
     readonly count :: int,
 
     readonly add :: (forall T . (string, T ->)),
-    readonly encryptValue :: (forall T . (string, T ->)),
+    readonly encryptValue :: (forall T . (string, T? ->)),
     readonly exists :: (string -> bool),
     readonly getDefaultValue :: (string -> string),
     readonly getValue :: (forall T . (string -> T)),
@@ -1105,6 +1105,11 @@ var OPTION_NAMES = {
 var BASE_TEN = 10;
 
 //---------------------------------------
+//mailview
+function MailView(gadget) :: ([{...}] any ~~> {}) {
+}
+
+//---------------------------------------
 //URL Builder
 //just a namespace
 var _urlFromKeyValue = function(key, value) :: (string, string -> string){
@@ -1409,9 +1414,100 @@ GmailGadget.prototype.sizeDetailsView = function() :: ([GmailGadget] ->) {
   //}
 };
 
-//stuff is out of order:
+GmailGadget.prototype.onOpen = function() :: ([GmailGadget] ->) {
+  this.sizeDetailsView();
+  plugin.onAddCustomMenuItems = bind@[(GmailGadget),([GmailGadget]->),(->)](
+    this, this.onAddCustomMenuItems);
+
+  this.onResize(false);
+  user.value = options.getValue@[(string)](OPTION_NAMES.USER);
+  pass.value = options.getValue@[(string)](OPTION_NAMES.PASS);
+  if (user.value !== '' && pass.value !== ''){
+    remember.value = true;
+    this.login();
+  }
+};
+
+var GmailGadget_TERMS_URL = 'http://mail.google.com/mail/help/terms.html';
+
+GmailGadget.prototype.openTermsPage = function() :: (->) {
+  framework.openUrl(GmailGadget_TERMS_URL);
+};
+
+GmailGadget.prototype.isMailView = function() :: (-> bool) {
+  return mainDiv.visible;
+};
+
+//---
+
+GmailGadget.prototype.onAddCustomMenuItems = function(menu) ::
+  ([GmailGadget] menu ->) {
+  if (this.isMailView()) {
+    menu.AddItem(strings.COMPOSE,
+        this.isComposeOpen() ?
+        gddMenuItemFlagGrayed : 0,
+        bind@[(GmailGadget),([GmailGadget]->),
+              (->)](this, this.compose));
+    menu.AddItem(searchTextBorder.visible ? strings.HIDE_SEARCH :
+                 strings.SHOW_SEARCH, 0,
+        bind@[(UiMailView), ([UiMailView]->),(->)](this.mailView.uiMailView,
+             this.mailView.uiMailView.toggleSearchVisibility));
+    menu.AddItem(strings.REFRESH, 0,
+        bind@[(MailView),([MailView]->),(->)](this.mailView,
+                                              this.mailView.refreshView));
+    menu.AddItem(strings.LOGOUT, 0,
+        bind@[(GmailGadget),([GmailGadget]->),(->)](this, this.logout));
+  }
+
+  menu.AddItem(strings.TERMS, 0,
+               bind@[(GmailGadget),([GmailGadget]->),(->)](
+                 this, this.openTermsPage));
+};
+
+//this fails if login is declared to take a GmailGadget
+GmailGadget.prototype.login = function() :: ([GGPartial] ->) {
+  if (remember.value) {
+    options.putValue@[(string)](OPTION_NAMES.USER, user.value);
+    options.encryptValue@[(string)](OPTION_NAMES.USER);
+    options.putValue@[(string)](OPTION_NAMES.PASS, pass.value);
+    options.encryptValue@[(string)](OPTION_NAMES.PASS);
+  } else {
+    options.putValue@[(string)](OPTION_NAMES.USER, '');
+    options.putValue@[(string)](OPTION_NAMES.PASS, '');
+  }
+  //this.mailView = new MailView(this); //xxx deal with this later
+};
+
+GmailGadget.prototype.logout = function() :: ([GmailGadget]->) {
+  var data = UrlBuilder.buildLogoutUrl();
+
+  // Necessary auth headers. can't do until we have dicts.
+  var headers = {};
+  /*headers[CONNECTION_DATA.MOBILE_AUTH_HEADER] =
+      CONNECTION_DATA.MOBILE_AUTH_HEADER_VALUE;*/
+
+  g_httpRequest.connectToGmailServer(data, undefined, undefined, false,
+                                     undefined, false, headers);
+
+  if (!this.isMailView()) {
+    return;
+  }
+  if (searchTextBorder.visible) {
+    this.mailView.uiMailView.toggleSearchVisibility();
+  }
+  g_detailsView.close();
+  this.mailView.destroyMailView();
+};
+
+GmailGadget.prototype.onOptionChanged = function() :: (->) {
+};
+
 // ID used to distinguise the compose details view.
 var GmailGadget_COMPOSE_DETAILS_ID = 'COMPOSE';
+
+GmailGadget.prototype.isComposeOpen = function() :: (-> bool) {
+  return g_detailsView.isOpen(GmailGadget_COMPOSE_DETAILS_ID);
+};
 
 GmailGadget.prototype.compose = function() :: ([GmailGadget] ->) {
   if (this.isComposeOpen()) {
@@ -1435,40 +1531,11 @@ GmailGadget.prototype.compose = function() :: ([GmailGadget] ->) {
       gddDetailsViewFlagDisableAutoClose);
 };
 
-GmailGadget.prototype.isComposeOpen = function() :: (-> bool) {
-  return g_detailsView.isOpen(GmailGadget_COMPOSE_DETAILS_ID);
-};
+//sendMessage
 
-var GmailGadget_TERMS_URL = 'http://mail.google.com/mail/help/terms.html';
+//discardMessage
 
-GmailGadget.prototype.openTermsPage = function() :: (->) {
-  framework.openUrl(GmailGadget_TERMS_URL);
-};
-
-GmailGadget.prototype.isMailView = function() :: (-> bool) {
-  return mainDiv.visible;
-};
-
-GmailGadget.prototype.logout = function() :: ([GmailGadget]->) {
-  var data = UrlBuilder.buildLogoutUrl();
-
-  // Necessary auth headers. can't do until we have dicts.
-  var headers = {};
-  /*headers[CONNECTION_DATA.MOBILE_AUTH_HEADER] =
-      CONNECTION_DATA.MOBILE_AUTH_HEADER_VALUE;*/
-
-  g_httpRequest.connectToGmailServer(data, undefined, undefined, false,
-                                     undefined, false, headers);
-
-  if (!this.isMailView()) {
-    return;
-  }
-  if (searchTextBorder.visible) {
-    this.mailView.uiMailView.toggleSearchVisibility();
-  }
-  g_detailsView.close();
-  this.mailView.destroyMailView();
-};
+//sentSuccessfully
 
 GmailGadget.prototype.onResize = function(forceAll) :: (
     [GmailGadget]bool ->) {
@@ -1544,46 +1611,11 @@ GmailGadget.prototype.onResize = function(forceAll) :: (
   }
 };
 
-GmailGadget.prototype.onAddCustomMenuItems = function(menu) ::
-  ([GmailGadget] menu ->) {
-  if (this.isMailView()) {
-    menu.AddItem(strings.COMPOSE,
-        this.isComposeOpen() ?
-        gddMenuItemFlagGrayed : 0,
-        bind@[(GmailGadget),([GmailGadget]->),
-              (->)](this, this.compose));
-    menu.AddItem(searchTextBorder.visible ? strings.HIDE_SEARCH :
-                 strings.SHOW_SEARCH, 0,
-        bind@[(UiMailView), ([UiMailView]->),(->)](this.mailView.uiMailView,
-             this.mailView.uiMailView.toggleSearchVisibility));
-    menu.AddItem(strings.REFRESH, 0,
-        bind@[(MailView),([MailView]->),(->)](this.mailView,
-                                              this.mailView.refreshView));
-    menu.AddItem(strings.LOGOUT, 0,
-        bind@[(GmailGadget),([GmailGadget]->),(->)](this, this.logout));
-  }
-
-  menu.AddItem(strings.TERMS, 0,
-               bind@[(GmailGadget),([GmailGadget]->),(->)](
-                 this, this.openTermsPage));
-};
-
 GmailGadget.prototype.removeActionsMenu = function() :: (->) {
   actionsMenuBorder.visible = switchComboBorder.visible =
       actionMenuCloser.visible = false;
 };
 
-GmailGadget.prototype.onOpen = function() :: ([GmailGadget] ->) {
-  this.sizeDetailsView();
-  plugin.onAddCustomMenuItems = bind@[(GmailGadget),([GmailGadget]->),(->)](
-    this, this.onAddCustomMenuItems);
+//rest of file (from line 302 on...)
 
-  this.onResize(false);
-  user.value = options.getValue@[(string)](OPTION_NAMES.USER);
-  pass.value = options.getValue@[(string)](OPTION_NAMES.PASS);
-  if (user.value !== '' && pass.value !== ''){
-    remember.value = true;
-    this.login();
-  }
-};
-
+//(new GmailGadget()).onResize(false);
