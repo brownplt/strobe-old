@@ -381,16 +381,16 @@ st env rel (t1, t2)
                 Just rel -> return rel
             else return rel
           doWrite rel id (t1, w1') (t2, w2') = doit w1 w2 where
-            --union fields are by another guarantee, not writeable!
             unEnvId t@(TEnvId id) = case M.lookup id env of
               Nothing -> t
               Just t' -> t'
             unEnvId t = t
             isUnion (TUnion _) = True
-            isUnion _ = False
+            isUnion _ = False            
             hasSlack (TObject True _ _) = True
             hasSlack _ = False
-
+            --the non-writability adjustments here are assumptions that are
+            --guaranteed in DirectPropAssignStmt.           
             w1 = if isUnion (unEnvId t1) || hasSlack (unEnvId t1) 
                    then False else w1'
             w2 = if isUnion (unEnvId t2) || hasSlack (unEnvId t2) 

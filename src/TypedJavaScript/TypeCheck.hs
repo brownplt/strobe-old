@@ -603,8 +603,10 @@ stmt env ee cs erettype node s = do
                 Right t -> catastrophe p (printf 
                              "'this' is not an object, but %s" (renderType t))
                 
-            Just (t', (_, write))
-                    | not write -> do
+            Just (t'', (_, write)) -> do
+              t' <- forceUnEnvId p t''
+              case () of
+                  _ | not write -> do
                         typeError p $ printf "property %s is not writeable" prop
                         return $ zip (map fst succs) (repeat env) 
                     | isUnion t' -> do
@@ -614,13 +616,13 @@ stmt env ee cs erettype node s = do
                     | isSlackObject t' -> do
                         typeError p $
                           printf "cannot mutate the field %s :: %s, has slack"
-                                 prop (renderType t')
+                                 prop (renderType t'')
                         noop
                     | t_rhs <: t' -> noop -- TODO: affect VP?
                     | otherwise -> do
                         typeError p $ printf
                           "property %s has type %s, received %s" prop
-                          (renderType t') (renderType t_rhs)
+                          (renderType t'') (renderType t_rhs)
                         noop
           TFunc (Just pt) _ _ _ 
             | prop == "prototype" -> do
