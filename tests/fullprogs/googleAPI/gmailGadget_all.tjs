@@ -1,0 +1,1304 @@
+/* API typed based on this reference:
+   http://code.google.com/apis/desktop/docs/gadget_apiref.html
+*/
+
+/*TODO: Introduce enums somehow?
+  audioclip.onstatechange , as a second argument, takes
+  something which is one of:
+    gddSoundStateError,
+    gddSoundStateStopped,
+    gddSoundStatePlaying,
+    gddSoundStatePaused
+  it doesn't specify the type.
+
+  For now I'll make it number. */
+
+/*TODO: You can do this:
+    gadget.debug.error("Hello");
+  but the following gives an error:
+    var nl = gadget.debug.error;
+
+  Strange... */
+
+//----CONSTANTS----
+//about 100 constants go here:
+external gddDetailsViewFlagNone :: int;
+external gddDetailsViewFlagToolbarOpen :: int;
+external gddDetailsViewFlagNegativeFeedback :: int;
+external gddDetailsViewFlagRemoveButton :: int;
+//...95 more constants...
+external gddElementMinOpacity :: int;
+
+//------TYPES------
+type audioclip :: rec audioclip . {
+    balance :: int,
+    currentPosition :: int,
+    readonly duration :: int,
+    readonly error :: int,
+    src :: string,
+    readonly  state :: int,
+    volume :: int,
+
+    readonly  play :: (->),
+    readonly  pause :: (->),
+    readonly  stop :: (->),
+
+    onstatechange :: (audioclip, int ->),
+};
+
+type point :: {
+    x :: int,
+    y :: int
+};
+
+//TODO: not sure if this is a type or an external
+type processInfo :: {
+    readonly processId :: int,
+    readonly executablePath :: string,
+};
+
+type size :: {
+    height :: int,
+    width :: int,
+};
+
+type event :: {
+    //apparently we have a write-only value, here...
+    writeonly returnValue :: bool,
+
+    readonly  srcElement :: U(view, element),
+    readonly  type :: string,
+
+    readonly button :: int,
+    readonly wheelDelta :: int,
+    readonly x :: int, readonly y :: int,
+
+    //readonly dragFiles :: collection,
+
+    readonly keyCode :: int,
+
+    height :: int, width :: int,
+
+    readonly propertyName :: string,
+    readonly cookie :: int,
+    readonly value :: any,
+};
+
+type menu :: rec menu . {
+    readonly  AddItem :: (string, int, (string -> ) -> ),
+    readonly  SetItemStyle :: (string, int -> ),
+    readonly  AddPopup :: (string -> menu),
+};
+
+//-----VIEW-----
+type view :: {
+    //properties
+    caption :: string,
+    readonly  children :: elements,
+    readonly event :: event,
+    height :: int,
+    width :: int,
+    resizable :: string,
+    showCaptionAlways :: bool,
+
+    //methods.
+    //these have no toString... can't be enumerated
+    //they also can't be assigned to anything
+    //  (that is, var z = view.alert fails.)
+    //this seems to be a result of the way google desktop interprets
+    //its javascript... not sure what to do, yet
+    readonly  alert :: (string ->),
+    readonly  appendElement :: (string -> element),
+    //beginAnimation actually returns an identifier
+    //that can be used to stop the animation, but it is
+    //specified to be an integer.
+    //API specifies a string for 1st arg, but it can also be a function
+    //since it's easier to convert a string into a function, I've typed
+    //it as function.
+    readonly beginAnimation :: ((->), int, int, int -> int),
+    readonly cancelAnimation :: (int ->),
+    readonly clearInterval :: (int ->),
+    readonly clearTimeout :: (int ->),
+    readonly confirm :: (string -> bool),
+    readonly insertElement :: (string, element -> element),
+    readonly prompt :: (string, string -> string),
+    readonly removeAllElements :: (->),
+    readonly removeElement :: (element ->),
+    readonly resizeBy :: (int, int ->),
+    readonly setTimeout :: (string, int -> int),
+    readonly setInterval :: (string, int -> int),
+
+    //'events':
+    //I believe these can be strings, too, but any string
+    //can be replaced by a function with the string as its
+    //body.
+    //or, it might be a union type, we'll see what code does
+    //with it.
+    oncancel :: (->),
+    onclick :: (->),
+    onclose :: (->),
+    ondblclick :: (->),
+    ondock :: (->),
+    onkeydown :: (->),
+    onkeypress :: (->),
+    onkeyup :: (->),
+    onminimize :: (->),
+    onmousedown :: (->),
+    onmousemove :: (->),
+    onmouseout :: (->),
+    onouseover :: (->),
+    onouseup :: (->),
+    onok :: (->),
+    onopen :: (->),
+    onoptionschanged :: (->),
+    onpopin :: (->),
+    onpopout :: (->),
+    onrclick :: (->),
+    onrdblclick :: (->),
+    onrestore :: (->),
+    onsize :: (->),
+    onsizing :: (->),
+    onundock :: (->),
+};
+
+type plugin :: {
+    writeonly plugin_flags :: int,
+
+    readonly RemoveMe :: (bool ->),
+    readonly ShowDetailsView :: (any, string, (int ->) ->),
+    readonly CloseDetailsView :: (->),
+    readonly ShowOptionsDialog :: (->),
+
+    //events
+    //onShowOptionsDlg :: (IGoogleDesktopDisplayWindow -> bool),
+    onAddCustomMenuItems :: (menu ->),
+    onCommand :: (int ->),
+    onDisplayStateChange :: (int ->),
+    onDisplayTargetChange :: (int->),
+};
+
+
+//-----ELEMENTS-----
+type elements :: {
+    readonly count :: int,
+    readonly item :: (string -> element),
+};
+
+//this has two names because of the API reference.
+type element :: basicElement;
+type basicElement :: {
+    //the /**/ means this isn't found in a view
+
+    readonly children :: elements,
+    cursor :: string,                 /**/
+    dropTarget :: bool,               /**/
+    enabled :: bool,                  /**/
+    //darn it... height can be an int OR a string.
+    //arbitrarily restrict it, for now...
+    //google gadget code seems to assume these are ints, and
+    //adds and multiplies them freely with no concern that they
+    //might be a string. once in a while, code does assign
+    //one of these properties to be "100%". given this behavior,
+    //i'm inclined to add an untyped function to set and get
+    //percentages from these fields, and leave the type as 'int'
+
+    //height :: (U int string),
+    //width :: (U int string),
+    //x :: (U int string),
+    //y :: (U int string),
+    height :: int,
+    width :: int,
+    x :: int, y :: int,               /**/
+    hitTest :: string,                /**/
+    mask :: string,                   /**/
+    readonly name :: string,             /**/
+    readonly offsetHeight :: int,        /**/
+    readonly offsetWidth :: int,         /**/
+    readonly offsetX :: int,             /**/
+    readonly offsetY :: int,             /**/
+    opacity :: int,                   /**/
+    readonly parentElement :: element,   /**/
+    pinX :: int, pinY :: int,         /**/
+    rotation :: double,               /**/
+    readonly tagName :: string,          /**/
+    toolTip :: string,                /**/
+    visible :: bool,                  /**/
+
+    //note: this "-> element" return type has the same problem
+    //as event.srcElement.
+    readonly appendElement :: (string -> element),
+    readonly focus :: (->),              /**/
+    readonly insertElement :: (string, element -> element),
+    readonly killFocus :: (->),          /**/
+    readonly removeAllElements :: (->),
+    readonly removeElement :: (element ->),
+
+    onclick :: (->),
+    ondblclick :: (->),
+    ondragdrop :: (->), /**/
+    ondragout :: (->),  /**/
+    ondragover :: (->), /**/
+    onfocusin :: (->),  /**/
+    onfocusout :: (->), /**/
+    onkeydown :: (->),
+    onkeypress :: (->),
+    onkeyup :: (->),
+    onmousedown :: (->),
+    onmousemove :: (->),
+    onmouseout :: (->),
+    onouseover :: (->),
+    onouseup :: (->),
+    onrclick :: (->),
+    onrdblclick :: (->),
+    onsize :: (->),
+};
+
+
+//tJS is particularly good at typing this thing:
+sealed type display_target :: {}; //fill in once we know what it is
+sealed type graphics :: {};
+sealed type activeXcontrol :: {};
+type contentitem :: {
+    image :: img,
+    notifier_image :: img,
+    time_created :: Date,
+    heading :: string,
+    source :: string,
+    snippet :: string,
+    open_command :: string,
+    layout :: int,
+    writeonly flags :: int,
+    writeonly tooltip :: string,
+
+    readonly SetRect :: (int, int, int, int ->),
+
+    onDrawItem :: (item, display_target, graphics, int, int, int, int->),
+    onGetHeight :: (item, display_target, graphics, int -> int),
+    onOpenItem :: (item ->),
+    onToggleItemPinnedState :: (item ->),
+    onGetIsTooltipRequired :: (item, display_target, graphics, int, int, int,
+                               int -> bool),
+    onDetailsView :: (item -> {title :: string,
+                               details_control :: activeXcontrol,
+                               flags :: int}),
+    onProcessDetailsViewFeedback :: (item, int -> ),
+    onRemoveItem :: (item -> bool),
+};
+
+
+//------SUB-ELEMENTS------
+//all these are related to their xml representation.
+type img :: { //(basicElement <- {
+    visible :: bool, //from basicElement
+    colorMultiply :: string,
+    cropMaintainAspect :: string,
+    src :: string,
+    readonly srcHeight :: int,
+    readonly srcWidth :: int,
+
+    readonly setSrcSize :: (int, int ->),
+};
+
+//_label is here because button has all
+//the properties of label except 'innerText'
+type _label :: { //(basicElement <- {
+    align :: string,
+    bold :: bool,
+    color :: string,
+    font :: string,
+    italic :: bool,
+    size :: int,
+    strikeout :: bool,
+    trimming :: string,
+    underline :: bool,
+    vAlign:: string,
+    wordWrap :: bool,
+};
+
+type label :: { //(basicElement <- _label <- {
+    innerText :: string,
+};
+
+type button :: { //(basicElement <- _label <- {
+    disabledImage :: string,
+    downImage :: string,
+    image :: string,
+    overImage :: string,
+};
+
+type checkbox :: { //(basicElement <- _label <- {
+    image :: string,
+    checkedDisabledImage :: string,
+    checkedDownImage :: string,
+    checkedOverImage :: string,
+    checkedImage :: string,
+    disabledImage :: string,
+    downImage :: string,
+    overImage :: string,
+    value :: bool,
+};
+
+type radio :: checkbox;
+
+type item :: { //(basicElement <- {
+    background :: string,
+    selected :: bool,
+};
+
+type combobox :: { //(basicElement <- {
+    background :: string,
+    droplistVisible :: bool,
+    //itemHeight :: (U int string),
+    //itemWidth :: (U int string),
+    itemHeight :: int,
+    itemWidth :: int,
+    itemOverColor :: string,
+    itemSeparator :: bool,
+    itemSeparatorColor :: string,
+    maxDroplistItems :: int,
+    selectedIndex :: int,
+    selectedItem :: item,
+    type :: string,
+    value :: string,
+
+    readonly appendString :: (string -> bool),
+    readonly clearSelection :: (->),
+    readonly insertStringAt :: (string, int -> bool),
+    readonly removeString :: (string ->),
+
+    onchange :: (->),
+    ontextchange :: (->),
+};
+
+type listbox :: { //(basicElement <- {
+    autoscroll :: bool,
+    background :: string,
+    //itemHeight :: (U int string),
+    //itemWidth :: (U int string),
+    itemHeight :: int,
+    itemWidth :: int,
+    itemOverColor :: string,
+    itemSelectedColor :: string,
+    itemSeparator :: bool,
+    itemSeparatorColor :: string,
+    multiSelect :: bool,
+    selectedIndex :: int,
+    selectedItem :: item,
+
+    readonly appendString :: (string -> bool),
+    readonly clearSelection :: (->),
+    readonly insertStringAt :: (string, int -> bool),
+    readonly removeString :: (string ->),
+
+    onchange :: (->),
+};
+
+//a isn't technically related to label,
+//at least in the API spec, but it has
+//all the properties of one, and we
+//have a structural type system.
+type a :: { //(basicElement <- label <- {
+    href :: string,
+    overColor :: string,
+};
+
+//contentarea:
+//interesting API note:
+//> While derived from basicElement, many
+//> basicElement properties are not supported.
+//> Only the x, y, width, height, and name
+//> basicElement properties are supported.
+//I believe we still have to have it
+//have the properties of a basicElement,
+//though, so that if ever we are passed
+//a contentarea, the contract will pass.
+
+//This is a visual basic array.
+//I think its only interaction with pJS is this function:
+/*type VBArray<T> :: {
+    readonly toArray :: Array<T>,
+};*/
+
+type contentarea :: { //(basicElement <- {
+    writeonly contentFlags :: int,
+    maxContentItems :: int,
+    contentItems :: Array<contentitem>, //should be VBArray
+    //pinImages is specified as variant, but the description
+    //is 'Array of images'. have to see how it's used.
+    //pinImages :: variant,
+    pinImages :: Array<img>,
+
+    //readonly addContentItem :: (item, options ->),
+    readonly removeContentItem :: (item->),
+    readonly removeAllContentItems :: (->),
+
+};
+
+type div :: { //(basicElement <- {
+    autoscroll :: bool,
+    background :: string,
+};
+
+type edit :: { //(basicElement <- {
+    //from basicElement:
+    focus :: (->),
+
+    background :: string,
+    bold :: bool,
+    color :: string,
+    font :: string,
+    idealBoundingRect :: size,
+    italic :: bool,
+    multiline :: bool,
+    passwordChar :: string,
+    readonly :: bool,
+    size :: int,
+    strikeout :: bool,
+    underline :: bool,
+    value :: string,
+    wordWrap :: bool,
+
+    onchange :: (->),
+};
+
+//'windows only':
+/*type object :: (basicElement <- {
+    readonly classId :: string,
+    readonly object :: object, //not sure if this is the same 'object'...
+    wmpServiceType :: string,
+    wmpSkin :: string,
+});*/
+
+type progressbar :: { //(basicElement <- {
+    emptyImage :: string,
+    fullImage :: string,
+    max :: int,
+    min:: int,
+    orientation:: string,
+    thumbDisabledImage:: string,
+    thumbDownImage :: string,
+    thumbOverImage :: string,
+    thumbImage :: string,
+    value :: int,
+
+    onchange :: (->),
+} ;
+
+type scrollbar :: { //(basicElement <- {
+    background :: string,
+    leftDownImage :: string,
+    leftImage :: string,
+    leftOverImage :: string,
+    lineStep:: int,
+    max :: int,
+    min:: int,
+    orientation:: string,
+    pageStep :: int,
+    rightDownImage :: string,
+    rightImage :: string,
+    rightOverImage :: string,
+    thumbDownImage :: string,
+    thumbImage :: string,
+    thumbOverImage :: string,
+    value :: int,
+
+    onchange :: (->),
+};
+
+//------GOOGLE TALK------
+//TODO...
+
+//--------OBJECTS--------
+//http://code.google.com/apis/desktop/docs/gadget_apiref.html#options
+external options :: {
+    readonly count :: int,
+
+    readonly add :: (forall T . (string, T ->)),
+    readonly encryptValue :: (forall T . (string, T ->)),
+    readonly exists :: (string -> bool),
+    readonly getDefaultValue :: (string -> string),
+    readonly getValue :: (forall T : T <: {} . (string -> T)),
+    readonly putDefaultValue :: (string, string ->),
+    readonly putValue :: (forall T : T <: {} . (string, T ->)),
+    readonly remove :: (string->),
+    readonly removeAll :: (->),
+};
+
+//------NAMESPACES------
+/*TODO:
+  Need some way to deal with namespaces, and them being optional
+  when referring to stuff in them.
+  For example, in a browser, the global object is 'window'.
+  In the gadgetAPI, the global object includes 'framework' in
+  it, so 'framework.X...' === X...
+
+  Solution for now: be able to augment external types, using <- .
+  */
+
+//this acts as a namespace. all the internal objects
+//act as namespaces as well.
+external framework :: {
+    //next 2 are windows only
+    readonly BrowseForFile :: (string -> string),
+    readonly BrowseForFiles :: (string -> collection), //TODO: define collection
+    readonly audio :: {
+        //readonly open :: (string, audioclip.onstatechange? -> audioclip),
+        //readonly play :: (string, audioclip.onstatechange? -> audioclip),
+        readonly stop :: (audioclip ->),
+    },
+    readonly graphics :: {
+        readonly createPoint :: ( -> point),
+        readonly createSize :: ( -> size),
+        //loadImage takes a string or an XMLHttpRequest.responseStream .
+        //there is code which uses responseStream
+        //  beauty_mtbig5/main.js (647)
+        //  google_video/main.js (395)
+        //I can't find it in any API reference anywhere...
+        //these two articles do define it/use it:
+        //  http://msdn.microsoft.com/en-us/library/ms763792(VS.85).aspx
+        //  http://code.google.com/support/bin/answer.py?answer=79663&topic=11366#scenario1
+        //but TDGTJ doesn't.
+
+//        readonly loadImage :: ((string -> image),
+//                            (XMLHttp.responseStream -> image)),
+    },
+    readonly runtime :: {
+        readonly appName :: string,
+        readonly appVersion :: string,
+        readonly osName :: string,
+        readonly osVersion :: string,
+    },
+    readonly system :: {
+        //readonly filesystem :: Scripting.FileSystemObject,
+        //TODO: fill in later
+    },
+
+};
+
+external gadget :: {
+    debug :: {
+        readonly error :: (string ->),
+        readonly trace :: (string ->),
+        readonly warning :: (string ->),
+    },
+    storage :: {
+        readonly extract :: (string -> string),
+        readonly openText :: (string -> string),
+    },
+};
+
+//it seems reasonable to add this line, because
+//any script must be executing in the context
+//of a <view> inside of an xml file.
+external view :: view;
+
+//Now we extend the @global with all of these namespaces, as well
+//as the view object, apparently.
+
+//<framework> instead of framework because framework is an object,
+//and we're extending the @global *type* with the *type* of framework.
+//maybe the <> could be optional?
+
+//maybe require 'redefine' instead of 'external' here to make it
+//clear we are redefining something?
+//external @global :: (@global <- <framework> <- <gadget> <- view);
+
+//now for casts to deal with event.srcElement
+//the code for this is in casts.js
+
+/*
+external readonly srcElementToA           :: (viewXelement -> a);
+external readonly srcElementToButton      :: (viewXelement -> button);
+external readonly srcElementToCheckbox    :: (viewXelement -> checkbox);
+external readonly srcElementToCombobox    :: (viewXelement -> combobox);
+external readonly srcElementToContentarea :: (viewXelement -> contentarea);
+external readonly srcElementToDiv         :: (viewXelement -> div);
+external readonly srcElementToEdit        :: (viewXelement -> edit);
+external readonly srcElementToImg         :: (viewXelement -> img);
+external readonly srcElementToItem        :: (viewXelement -> item);
+external readonly srcElementToLabel       :: (viewXelement -> label);
+external readonly srcElementToListbox     :: (viewXelement -> listbox);
+external readonly srcElementToObject      :: (viewXelement -> object);
+external readonly srcElementToProgressbar :: (viewXelement -> progressbar);
+external readonly srcElementToRadio       :: (viewXelement -> radio);
+external readonly srcElementToScrollbar   :: (viewXelement -> scrollbar);
+
+external readonly srcElementToElement     :: (viewXelement -> element);
+external readonly srcElementToView        :: (viewXelement -> view);
+
+//let's not miss out typing
+//F:\Documents\research\pJStotJS\gdietunesbertlagaiss\infopanel.js
+
+*/
+
+//TYPE ALIASES / EXTERNALS
+//Resources:
+type Resources :: {
+  cache :: {},
+  getText :: ([Resources] string -> string),
+  getImage :: ([Resources] string -> string),
+  makePlaceholder :: (string -> string),
+  getDetailsHtml :: ([Resources] -> string),
+};
+
+//LoginView
+//the parts of gmailgadget that loginview uses
+type GGPartial :: {
+  login :: ([GGPartial] ->),
+  keyboardShortcutsEnabled :: bool,
+  ...
+};
+
+type LoginView :: {
+  gadget :: GGPartial,
+
+  onUsernameKeyPress :: ([LoginView] ->),
+  onRememberFocus :: ([LoginView] bool ->),
+  ...
+};
+
+type MailView :: rec MailView . {
+};
+
+//main.js
+external g_resources :: Resources; //only exists once main.js executes!
+
+type GmailGadget :: {
+    loginView :: LoginView,
+    mailView :: MailView,
+    lastKeyPressed :: int,
+    keyboardShortcutsEnabled :: bool,
+    resizeToken :: int,
+
+    //prototype methods:
+    login :: ([GGPartial] ->),
+    sizeDetailsView :: ([GmailGadget] ->),
+    onOpen :: ([GmailGadget] ->),
+    openTermsPage :: ([GmailGadget] ->),
+    isMailView :: ([GmailGadget] -> bool),
+    isUpgradeView :: ([GmailGadget] -> bool),
+    isLoginView :: ([GmailGadget] -> bool),
+    isNotCompatibleView :: ([GmailGadget] -> bool),
+};
+
+//strings.xml (auto gen)
+external strings :: {
+    VERSION_STRING :: string,
+    GADGET_NAME :: string,
+    GADGET_DESCRIPTION :: string,
+    GADGET_ABOUT_TEXT :: string,
+    LOGIN :: string,
+    FROM :: string,
+    SIGN_IN_TO_GMAIL :: string,
+    YOUR :: string,
+    ACCOUNT :: string,
+    REPLY_TO :: string,
+    TO :: string,
+    HEADING_TO :: string,
+    DATE :: string,
+    CC :: string,
+    BCC :: string,
+    SUBJECT :: string,
+    INBOX :: string,
+    SEARCH_RESULTS :: string,
+    SEND :: string,
+    DISCARD :: string,
+    MESSAGE_SENT :: string,
+    MESSAGE_DISCARDED :: string,
+    COMPOSE :: string,
+    STARRED :: string,
+    CHATS :: string,
+    SENT_MAIL :: string,
+    DRAFTS :: string,
+    ALL_MAIL :: string,
+    SPAM :: string,
+    TRASH :: string,
+    SHOW_SEARCH :: string,
+    HIDE_SEARCH :: string,
+    SHOW_DETAILS :: string,
+    HIDE_DETAILS :: string,
+    REPLY_FOOTER :: string,
+    REPLY_ALL_FOOTER :: string,
+    FORWARD_FOOTER :: string,
+    OF :: string,
+    HYPHEN :: string,
+    ADD_CC :: string,
+    ADD_BCC :: string,
+    LOGOUT :: string,
+    USERNAME :: string,
+    PASSWORD :: string,
+    REMEMBER_ME :: string,
+    CONVERSATION_ARCHIVED :: string,
+    CONVERSATION_TRASHED :: string,
+    CONVERSATION_REPORT_SPAM :: string,
+    MESSAGE_NO_BODY :: string,
+    MESSAGE_NO_SUBJECT :: string,
+    ME :: string,
+    UNKNOWN_SENDER :: string,
+    PM :: string,
+    AM :: string,
+    NO_SUBJECT :: string,
+    CONFIRM_DISCARD :: string,
+    REPLY_STRING :: string,
+    FORWARD_STRING :: string,
+    MUST_UPGRADE :: string,
+    GET_LATEST_VERSION :: string,
+    REFRESH :: string,
+    TERMS :: string,
+    LOADING :: string,
+    MENU_OPEN :: string,
+    MENU_ARCHIVE :: string,
+    MENU_TRASH :: string,
+    MENU_REPORT_SPAM :: string,
+    MENU_STAR :: string,
+    MENU_REMOVE_STAR :: string,
+    MENU_MARK_READ :: string,
+    MENU_MARK_UNREAD :: string,
+    INVALID_EMAIL_ADDRESS :: string,
+    BAD_CREDENTIALS_ERROR_MESSAGE :: string,
+    CAPTCHA_ERROR_MESSAGE :: string,
+    ACCOUNT_LOCKED_ERROR :: string,
+    SERVER_OR_NETWORK_ERROR :: string,
+    ERROR_LOADING_CONVERSATION :: string,
+    MESSAGE_ATTACHMENTS :: string,
+    NOT_COMPATIBLE :: string,
+};
+//Main.xml: (automatically generated)
+external label :: label;
+external bottomRightMainBg :: div;
+external bottomCenterMainBg :: div;
+external bottomLeftMainBg :: div;
+external middleRightMainBg :: div;
+external middleCenterMainBg :: div;
+external middleLeftMainBg :: div;
+external topRightMainBg :: div;
+external topCenterMainBg :: div;
+external lblAccount :: label;
+external topLeftMainBg :: div;
+external upgradeDiv :: div;
+external upgradeUrl :: a;
+external reason :: label;
+external notCompatibleDiv :: div;
+external loginDiv :: div;
+external userBg :: div;
+external passBg :: div;
+external userLabel :: label;
+external user :: edit;
+external passLabel :: label;
+external pass :: edit;
+external rememberFocus :: img;
+external remember :: checkbox;
+external login :: button;
+external mainDiv :: div;
+external bottomRightContentBg :: div;
+external bottomCenterContentBg :: div;
+external bottomLeftContentBg :: div;
+external middleRightContentBg :: div;
+external middleCenterContentBg :: div;
+external middleLeftContentBg :: div;
+external topRightContentBg :: div;
+external topCenterContentBg :: div;
+external folderLabel :: label;
+external topLeftContentBg :: div;
+external mailList :: listbox;
+external searchTextBorder :: div;
+external searchText :: edit;
+external searchTextClose :: button;
+external footerDiv :: div;
+external browseLabel :: label;
+external newer :: button;
+external older :: button;
+external composeLabel :: a;
+external searchToggleLabel :: a;
+external logoutLabel :: a;
+external actionMenuCloser :: button;
+external switchComboBorder :: div;
+external switchComboUp :: div;
+external switchComboUpLbl :: label;
+external switchComboContainer :: div;
+external switchCombo :: listbox;
+external switchComboDown :: div;
+external switchComboDownLbl :: label;
+external actionsMenuBorder :: div;
+external actionsMenu :: listbox;
+external mnuTrash :: item;
+external lblTrash :: label;
+external mnuSpam :: item;
+external lblSpam :: label;
+external mnuStar :: label;
+external mnuMarkRead :: label;
+external imgLoading :: img;
+
+//CODE:
+//Constants:
+// Copyright 2007 Google Inc.
+// All Rights Reserved.
+
+// @fileoverview Constants used throughout the plugin
+
+var TIME_BETWEEN_HTTP_REQUESTS = 1000; // in ms
+var SWITCH_COMBO_SCROLL_DELAY = 100;
+var BLANK_LINE = 'b';
+var END_LINE_CHAR = '\x10'; //String.fromCharCode(10);
+
+var SENDER_COLOR_PALETTE = ['#790619', '#ad3894', '#c8892b', '#e62b60',
+                            '#c580de', '#558391', '#a60619', '#c8b080',
+                            '#d50060', '#80a686', '#c28000', '#846655',
+                            '#cc55ca', '#550099', '#55681c', '#79063f',
+                            '#da8900', '#cc007b', '#008391'];
+
+var REPORTED_CLIENT_NAME = 'gd-gmail-gadget-' + strings.VERSION_STRING;
+
+// All the possible folders
+var FILTERS = {
+    INBOX: 'INBOX',
+    STARRED: 'label:Starred',
+    CHATS: 'label:Chats',
+    SENT_MAIL: 'label:Sent',
+    ALL_MAIL: 'label:',
+    SPAM: 'label:Spam',
+    TRASH: 'label:Trash',
+    SEARCH: 'SEARCH',
+    LABEL: 'LABEL'};
+
+// The following constants define the positions of various views in the
+// view switch combobox
+
+// JS compiler does not like assignment to CONSTANTS.
+// Declaring with a regular variable first.
+/*var tempComboPosition = {};
+tempComboPosition['INBOX'] = 0;
+tempComboPosition[FILTERS.STARRED] = 1;
+tempComboPosition[FILTERS.ALL_MAIL] = 4;
+tempComboPosition[1] = FILTERS.STARRED;
+tempComboPosition[2] = FILTERS.CHATS;
+tempComboPosition[3] = FILTERS.SENT_MAIL;
+tempComboPosition[4] = FILTERS.ALL_MAIL;
+tempComboPosition[5] = FILTERS.SPAM;
+tempComboPosition[6] = FILTERS.TRASH;
+tempComboPosition['LABELS_SEPARATOR'] = 7;
+
+var COMBO_POSITION = tempComboPosition;*/
+
+var SOURCE_ID = 'GD';
+
+var CONNECTION_DATA = {
+    // Gmail URL with a random number to avoid carrier network caching
+    GMAIL_URL: '/mail/m/' + Math.floor(Math.random() * 10000000000) +
+        '?source=' + SOURCE_ID + '&ver=' + strings.VERSION_STRING,
+    APPS_URL: '/m/' + Math.floor(Math.random() * 10000000000) +
+        '?source=' + SOURCE_ID + '&ver=' + strings.VERSION_STRING,
+    COMMON_POST_PARAMETERS: 'p=1.1&x=Web&platformID=' + SOURCE_ID +
+      '&xv=' + strings.VERSION_STRING,
+    REFRESH_INTERVAL_MS: 300000,  // 5 minutes in milliseconds
+    LOADED_STATE: 4,  // loaded state number for xmlhttprequest
+    HTTP_OK: 200,  // ready status number for xmlhttprequest
+    GMAIL_HOST: 'mail.google.com',
+    APPS_DOMAIN_PREFIX: 'mail.google.com/a/',
+    HTTP_PREFIX: 'http://',
+    HTTPS_PREFIX: 'https://',
+    MOBILE_AUTH_HEADER: 'X-Mobile-Google-Client',
+    MOBILE_AUTH_HEADER_VALUE: '1' };
+
+var ACTION = {
+    ARCHIVE: 1,
+    TRASH: 2,
+    REPORT_SPAM: 3,
+    STAR: 4,
+    UNSTAR: 5,
+    MARK_AS_READ: 6,
+    MARK_AS_UNREAD: 7};
+
+// These are constant strings from the milu request/response format
+var URL = {
+    MODE: 'zym',
+    LOGIN_MODE: 'l',
+    OFFSET_PARAM: 'st',
+    NUM_MAILS_PARAM: 'sz',
+    USER_PARAM: 'user',
+    PASS_PARAM: 'password',
+    TIMESTAMP_PARAM: 'tlt',
+    SEARCH_LABEL_PARAM: 's',
+    SEARCH_MODE: 'q',
+    LABEL_MODE: 'cat',
+    ACTION_TOKEN_PARAM: 'at',
+    TO_PARAM: 'to',
+    CC_PARAM: 'cc',
+    BCC_PARAM: 'bcc',
+    SUBJECT_PARAM: 'subject',
+    BODY_PARAM: 'body',
+    BU_PARAM: 'bu',
+    HAOT_PARAM: 'haot',
+    MESSAGE_URL_PARAM: 'rm',
+    CONV_TITLE_PARAM: 'rmns',
+    THREAD_ID_PARAM: 'th',
+    SEND_OPERATION: 'sfc',
+    QUOTE_THREAD: 'qt',
+    FORWARD_THREAD: 'ft',
+    VIEW_PARAM: 'v',
+    ATTACHMENT_VIEW_PARAM: 'view',
+    ATTACHMENT_VIEW: 'att',
+    ATTACHMENT_DISPLAY_PARAM: 'disp',
+    ATTACHMENT_DISPLAY: 'vah',
+    ATTACHMENT_MAX_WIDTH: 'w',
+    ATTACHMENT_MAX_HEIGHT: 'h',
+    ATTACHMENT_ID_PARAM: 'attid',
+    JPEG_SUPPORT_PARAM: 'j',
+    CONTACTS_LIST: 'cl',
+    CONVERSATION_VIEW: 'c',
+    CONTACTS_LIST_ORDERING: 'pnl',
+    CL_ALL: 'a',
+    CL_FREQUENTLY_USED: 'f',
+    CL_ALL_SORTED_FREQUENCY: 'ac',
+    CL_FREQUENTLY_USED_SORTED_FREQ: 'fc',
+    SPAM_PARAM: 'ssp',
+    TRASH_PARAM: 'str',
+    DISABLED: '0',
+    ENABLED: '1',
+
+    ACTION_PARAM: ['', 'ar', 'tr', 'sp', 'st', 'xst', 'rd', 'ur'],
+
+    THREAD_PARAM: 't',
+    MESSAGE_ID_PARAM: 'm',
+    MESSAGE_PARAM: 'd',
+    MESSAGE_EXPAND_OPERATION: 'u',
+    MESSAGE_OFFSET_PARAM: 'n',
+    LOGOUT_PARAM: 'gadget_logout',
+    MESSAGE_OUTPUT_HTML_PARAM: 'moh' };
+
+var IMAGE_PATHS = {
+    STAR_ON: 'images/star_active.png',
+    STAR_OFF: 'images/star_default.png',
+    PAPERCLIP: 'images/paperclip.png',
+    ERROR_LEFT: 'images/error_left.png',
+    ERROR_CENTER: 'images/error_center.png',
+    ERROR_RIGHT: 'images/error_right.png',
+    SWITCH_SCROLL_UP: 'images/scroll_up_default.png',
+    SWITCH_SCROLL_UP_HOVER: 'images/scroll_up_hover.png',
+    SWITCH_SCROLL_DOWN: 'images/scroll_down_default.png',
+    SWITCH_SCROLL_DOWN_HOVER: 'images/scroll_down_hover.png'};
+
+var UIDATA = {
+    FONT: 'arial',
+    LOADING_LABEL_X_OFFSET: 55,
+    PAPERCLIP_OFFSET: 27,
+    STAR_OFFSET: 15,
+    DATE_WIDTH: 45,
+    FONT_SIZE_SUBJECT: 8,
+    FONT_COLOR_SUBJECT: '#0065cd',
+    FONT_SIZE_SENDER: 8,
+    FONT_SIZE_DATE: 8,
+    FONT_COLOR_MAIL: '#66B3FF',
+    MAIL_FIRST_LINE_HEIGHT: 14,
+    RESIZE_TIMEOUT: 500,
+    LABELS_COLOR: '#33AA33',
+    DARK_BORDER: '#000000',
+    LIGHT_BORDER: '#7F9DB9',
+    ENABLED_TEXTBOX_COLOR: '#000000',
+    DISABLED_TEXTBOX_COLOR: '#BBBBBB',
+    ACTION_COMBO_TEXT_SIZE: 8,
+    ERROR_MESSAGE_MAX_DISPLAY_TIME: 3000, // in ms
+    DOUBLE_KEY_SHORTCUTS_MAX_DELAY: 3000}; // in ms
+
+var KEYS = {
+    TAB: 9, ENTER: 13, SHIFT: 16, ESCAPE: 27, SPACE: 32,
+    HOME: 36, END: 35,
+    LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40,
+    MENU: 93, SLASH: 191,
+    EXCLAMATION_MARK: 33, POUND_SIGN: 35,
+    A: 65, C: 67, D: 68, F: 70, G: 71, I: 73, J: 74,
+    K: 75, N: 78, O: 79, P: 80, R: 82, S: 83, U: 85, Y: 89,
+    PAGE_UP: 33, PAGE_DOWN: 34, F5: 116 };
+
+var THREAD_LIST_DATA_INFO = {
+    TRUE: 'T', FALSE: 'F', AM: 'a', PM: 'p',
+    REQUIRE_HTTPS: 'T', OPTIONAL_UPGRADE: 'O', PAGE_BROADCAST: 'B',
+    LOGIN_ERROR: 'E',
+    LEGAL_CONVERSATION: 'C',
+    MESSAGE_BODY_LINE_STARTING_CHARACTER: ':',
+    NO_CHANGE: 'NO_CHANGE',
+    NEED_UPGRADE: 'ERROR:NEED_UPGRADE',
+    LOGIN_ERRORS: {B: strings.BAD_CREDENTIALS_ERROR_MESSAGE,
+        C: strings.CAPTCHA_ERROR_MESSAGE,
+        L: strings.ACCOUNT_LOCKED_ERROR}};
+
+var OPTION_NAMES = {
+    USER: 'user',
+    PASS: 'pass' };
+
+var BASE_TEN = 10;
+
+//Utils:
+var nullFunction = function() :: (->) {};
+
+/*function bind(self, method, var_args) {
+  var args = Array.prototype.slice.call(arguments, 2);
+
+  return function(var_args) {
+    return method.apply(self,
+        args.concat(Array.prototype.slice.call(arguments)));
+  };
+}*/
+
+function sanitizeXml(string) :: (string -> string) {
+  string += '';
+  /*string = string.replace(/&/g, "&amp;");
+  string = string.replace(/</g, "&lt;");
+  string = string.replace(/>/g, "&gt;");
+  string = string.replace(/\u0027/g, "&apos;");
+  string = string.replace(/\u0022/g, "&quot;");*/
+  return string;
+}
+
+var _Utils_getDomain = function(email) :: (string -> string) {
+      if (true) { //if (email.indexOf('@') == -1) {
+        return '';
+      }
+
+      return "no substr fail"; //return email.substr(email.indexOf('@') + 1);
+    };
+
+var Utils = {
+  getMessage: function(key) :: (string -> string?) {
+      //return strings[key];
+      return "LACK OF DICT FAIL";
+    },
+  escapeRegexp: function(str) :: (string -> string){
+      //var re = new RegExp("([\(\)\.\*\\\?\+\[\^\$])", "gi");
+      //return str.replace(re, "\\$1");
+      return "regexp parse fail";
+    },
+  isGmailAccount: function(email) :: (string -> bool) {
+      var domain = _Utils_getDomain(email);
+
+      return !domain || domain == 'gmail.com';
+    },
+  getDomain: _Utils_getDomain,
+  isWindows: function() :: (-> bool) {
+      //return framework.runtime.osName.match(/windows/i) !== null;
+      return false; //regexp nyi fail.
+    },
+};
+
+//Resources:
+function Resources() :: ([{...}] ~~> {cache :: {}}) {
+  this.cache = {};
+}
+
+
+// Returns the contents of a script file.
+Resources.prototype.getText = function(filename) ::
+  ([Resources] string -> string) {
+  //var script = this.cache[filename] || gadget.storage.openText(filename);
+  var script = gadget.storage.openText(filename);
+
+  if (script) {
+    //this.cache[filename] = script;
+  }
+
+  return script;
+};
+
+// Returns the path of an extracted image.
+//bug! extract might return
+Resources.prototype.getImage = function(filename) ::
+  ([Resources] string -> string) {
+  var path = //this.cache[filename] ||
+      gadget.storage.extract('images/details/' + filename);
+          //.replace(/\\/g, '/');
+
+  if (path) {
+    //this.cache[filename] = path;
+  }
+
+  return path;
+};
+
+var Resources_glob = {
+  DETAILS_HTML_FILE : 'details.html',
+  COMPOSE_HTML_FILE : 'compose.html',
+  DETAILS_COMMON_JS_FILE : 'details_common.js',
+  DETAILS_COMPOSE_JS_FILE : 'details_compose.js',
+  DETAILS_VIEW_IMAGES : [
+  'action_button.gif',
+  'dv_top.gif',
+  'dv_topleft.gif',
+  'dv_topright.gif',
+  'dv_bottom.gif',
+  'dv_bottomleft.gif',
+  'dv_bottomright.gif',
+  'dv_bottom_short.gif',
+  'dv_bottomleft_short.gif',
+  'dv_bottomright_short.gif',
+  'dv_left.gif',
+  'dv_right.gif',
+  'error_center.gif',
+  'error_left.gif',
+  'error_right.gif',
+  'focus_arrow.gif',
+  'star_active_pad.gif',
+  'star_default_pad.gif' ],
+};
+
+Resources.prototype.makePlaceholder = function(s) :: (string -> string) {
+  return '[![' + s + ']!]';
+};
+
+Resources.prototype.getDetailsHtml = function() :: (
+  [Resources] -> string) {
+
+  if (this.cache) {//[Resources.DETAILS_HTML_FILE]) {
+    return "string from the cache"; //this.cache[Resources.DETAILS_HTML_FILE];
+  }
+
+  var detailsHtml = this.getText(Resources_glob.DETAILS_HTML_FILE);
+
+  /*detailsHtml = detailsHtml.replace(
+      this.makePlaceholder(Resources_glob.DETAILS_COMMON_JS_FILE),
+      g_resources.getText(Resources_glob.DETAILS_COMMON_JS_FILE));
+
+  detailsHtml = detailsHtml.replace(
+      this.makePlaceholder(Resources_glob.DETAILS_COMPOSE_JS_FILE),
+      g_resources.getText(Resources_glob.DETAILS_COMPOSE_JS_FILE));*/
+
+  for (var i = 0; i < Resources_glob.DETAILS_VIEW_IMAGES.length; ++i) {
+    var file = Resources_glob.DETAILS_VIEW_IMAGES[i];
+    /*detailsHtml = detailsHtml.replace(
+        new RegExp(Utils.escapeRegexp(this.makePlaceholder(file)), 'g'),
+        g_resources.getImage(file));*/
+  }
+
+  //this.cache[Resources.DETAILS_HTML_FILE] = detailsHtml;
+
+  return detailsHtml;
+};
+
+Resources.prototype.getComposeHtml = function() :: (-> string) {
+/*  if (this.cache[Resources.COMPOSE_HTML_FILE]) {
+    return this.cache[Resources.COMPOSE_HTML_FILE];
+  }
+
+  var detailsHtml = this.getText(Resources.COMPOSE_HTML_FILE);
+
+  detailsHtml = detailsHtml.replace(
+      this.makePlaceholder(Resources.DETAILS_COMMON_JS_FILE),
+      g_resources.getText(Resources.DETAILS_COMMON_JS_FILE));
+
+  detailsHtml = detailsHtml.replace(
+      this.makePlaceholder(Resources.DETAILS_COMPOSE_JS_FILE),
+      g_resources.getText(Resources.DETAILS_COMPOSE_JS_FILE));
+
+  for (var i = 0; i < Resources.DETAILS_VIEW_IMAGES.length; ++i) {
+    var file = Resources.DETAILS_VIEW_IMAGES[i];
+    detailsHtml = detailsHtml.replace(
+        new RegExp(Utils.escapeRegexp(this.makePlaceholder(file)), 'g'),
+        g_resources.getImage(file));
+  }
+
+  this.cache[Resources.COMPOSE_HTML_FILE] = detailsHtml;
+
+  return detailsHtml;*/
+  return "same as previous function!";
+};
+
+//LoginView
+// Copyright 2007 Google Inc.
+// All Rights Reserved.
+
+// @fileoverview Functions for handling the login view of the gadget
+
+function LoginView(gadget) :: ([{...}] GGPartial ~~> {gadget::GGPartial}) {
+  this.gadget = gadget;
+}
+
+// This function is called onkeypress of the username editbox. accepts tab and
+// enter key.
+LoginView.prototype.onUsernameKeyPress = function() :: ([LoginView] ->) {
+  if (view.event.keyCode == KEYS.ENTER) {
+    if (pass.value === '') {
+      pass.focus();
+    } else {
+      this.gadget.login();
+    }
+    //view.event.returnValue = false; //ANF fail w/ readable
+  }
+};
+/*
+// This function is called onkeydown of the password editbox. accepts enter key.
+LoginView.prototype.onPasswordKeyPress = function() :: ([LoginView] ->) {
+  if (view.event.keyCode == KEYS.ENTER) {
+    if (user.value.length === 0) {
+      user.focus(); // Put focus on user field.
+    } else {
+      this.gadget.login();
+    }
+    //view.event.returnValue = false;
+  }
+};
+
+// This function is called onkeydown of the remember checkbox.
+LoginView.prototype.onRememberKeyPress = function() :: ([LoginView] ->) {
+  if (view.event.keyCode == KEYS.ENTER ||
+      view.event.keyCode == KEYS.SPACE) {
+    remember.value = !remember.value;
+    this.onRememberFocus(true);
+  }
+};
+
+LoginView.prototype.onLoginKeyPress = function() :: ([LoginView] ->) {
+  if (view.event.keyCode == KEYS.ENTER ||
+      view.event.keyCode == KEYS.SPACE) {
+    // Put focus on user field if its empty.
+    if (user.value.length === 0) {
+      user.focus();
+    } else {
+      this.gadget.login();
+    }
+  }
+};
+
+// This function is called onfocusin/out of the search editbox.
+LoginView.prototype.onUsernameFocus = function(got) :: ([LoginView] bool ->) {
+  this.gadget.keyboardShortcutsEnabled = !got;
+};
+
+// This function is called onfocusin/out of the search editbox.
+LoginView.prototype.onPasswordFocus = function(got) :: ([LoginView] bool ->) {
+  this.gadget.keyboardShortcutsEnabled = !got;
+};
+*/
+// This function is called when the remember checkbox gets or looses focus
+LoginView.prototype.onRememberFocus = function(got) :: ([LoginView] bool ->) {
+  this.gadget.keyboardShortcutsEnabled = !got;
+  rememberFocus.visible = got;
+};
+/*
+// This function is called when the action combo gets or looses focus
+LoginView.prototype.onLoginFocus = function(got) :: ([LoginView] bool ->) {
+  this.gadget.keyboardShortcutsEnabled = !got;
+  login.image = got ? 'images/action_hover.png' : 'images/action_default.png';
+};
+*/
+//main.js:
+function GmailGadget() :: ([{login :: ([GGPartial] ->), ...}] ~~>
+                           {loginView :: LoginView,
+                            mailView :: MailView?,
+                            lastKeyPressed :: int?,
+                            keyboardShortcutsEnabled :: bool,
+                            resizeToken :: int, ...}) {
+  switchComboUpLbl.innerText = '\u25B2';
+  switchComboDownLbl.innerText = '\u25BC';
+  this.mailView = undefined; //null
+
+  this.lastKeyPressed = undefined;
+  this.keyboardShortcutsEnabled = true;
+
+  this.resizeToken = -1;  // Timeout token used in onResize //-1 instead of null
+  this.loginView = new LoginView(this);
+
+  gadget.debug.trace('Curent gadget version is: ' + strings.VERSION_STRING);
+  //options.putValue(OPTION_NAMES.VERSION_NUM, strings.VERSION_STRING); //bug!
+}
+
+
+

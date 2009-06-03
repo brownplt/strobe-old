@@ -367,7 +367,7 @@ doFuncConstr (<:) p env ee cs r_v f_v args_v isNewStmt =
 
       instConstraints <- mapM checkInst (zip3 insts vs cs')
 
-      let t1 <: t2 = isSubType (stateTypeEnv state) 
+      let t1 <: t2 = isRight $ isSubType (stateTypeEnv state) 
                                (instConstraints ++ cs' ++ cs) 
                                 t1 t2
       
@@ -449,7 +449,10 @@ stmt :: Env -- ^the environment in which to type-check this statement
      -> TypeCheck [(G.Node, Env)]
 stmt env ee cs erettype node s = do
   state <- get
-  let t1 <: t2 = isSubType (stateTypeEnv state) cs t1 t2
+  let t1 <: t2  = isRight $ isSubType (stateTypeEnv state) cs t1 t2 
+  let t1 <:$ t2 = case isSubType (stateTypeEnv state) cs t1 t2 of
+                    Left msg -> msg
+                    Right _ -> "success"
   let tenv = stateTypeEnv state
   
   succs <- stmtSuccs s
@@ -485,8 +488,10 @@ stmt env ee cs erettype node s = do
           Just (Just (tDec, tAct, _))
             | (closeObject tAct) <: ttype -> return ()
             | otherwise  -> typeError p $ printf 
-                "'this' has type %s at constructor exit, expected %s" 
+                "'this' has type %s at constructor exit, expected %s.\n\
+                \reason: %s" 
                 (renderType (closeObject tAct)) (renderType ttype)
+                  ((closeObject tAct) <:$ ttype)
             
       noop
     SeqStmt{} -> noop
@@ -586,8 +591,8 @@ stmt env ee cs erettype node s = do
                         return $ zip (map fst succs) (repeat env')
                     | otherwise -> do
                         typeError p $ printf
-                          "property %s has type %s in constructed this, \
-                          \but got %s" 
+                          "property %s has type %s in finalThis, \
+                          \but it is being assigned a type of %s" 
                           prop (renderType t') (renderType t_rhs)
                         noop
                 Right t -> catastrophe p (printf 
@@ -756,7 +761,7 @@ lookupConstraint t@(TId x) (tc:tcs) = case tc of
   otherwise -> lookupConstraint t tcs
 
 lookupConstraint t (tc:tcs) = case tc of
-  TCSubtype t1 t2 | isSubType M.empty [] t (TId t1) -> t2
+  TCSubtype t1 t2 | isRight $ isSubType M.empty [] t (TId t1) -> t2
                   | otherwise -> lookupConstraint t tcs
   
 
@@ -767,7 +772,7 @@ expr :: Env -- ^the environment in which to type-check this expression
      -> TypeCheck Type
 expr env ee cs e = do 
   state <- get
-  let t1 <: t2 = isSubType (stateTypeEnv state) cs t1 t2
+  let t1 <: t2 = isRight $ isSubType (stateTypeEnv state) cs t1 t2
   renderType <- return $ (\t -> renderType (realiasType (stateTypeEnv state) t))
   let unConstraint t = lookupConstraint t cs
   let tenv = stateTypeEnv state
@@ -909,7 +914,7 @@ operator :: Env -> [TypeConstraint]
          -> TypeCheck Type
 operator env cs loc op args = do
   state <- get
-  let t1 <: t2 = isSubType (stateTypeEnv state) cs t1 t2
+  let t1 <: t2 = isRight $ isSubType (stateTypeEnv state) cs t1 t2 
   -- The ANF transform gaurantees that the number of arguments is correct for
   -- the specified operator.
   

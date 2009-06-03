@@ -27,7 +27,7 @@ module TypedJavaScript.Types
 
 import BrownPLT.JavaScript.Analysis.ANF
 import TypedJavaScript.Prelude
-import TypedJavaScript.PrettyPrint()
+import TypedJavaScript.PrettyPrint(renderType)
 import qualified Data.Set as S
 import qualified Data.Map as M
 
@@ -260,12 +260,14 @@ inferLit expr =
 -- additional constraints.  It should not be exported as the type-checker must
 -- check for subtypes in the presence of user-specified constraints.
 --
-x <: y = isSubType M.empty [] x y
+x <: y = case isSubType M.empty [] x y of
+  Left _ -> False
+  Right _ -> True
 
 
-assert :: Bool -> Maybe ()
-assert False = Nothing
-assert True = Just ()
+assert :: Monad m => Bool -> m ()
+assert False = fail ""
+assert True = return ()
 
 anyM :: (a -> b -> Maybe a) -> a -> [b] -> Maybe a
 anyM _ a [] = Nothing
@@ -273,11 +275,12 @@ anyM f a (b:bs) = case f a b of
   Nothing -> anyM f a bs
   Just a  -> return a
 
-st :: Map String Type  -- ^type environment
+st :: Monad m => Map String Type  -- ^type environment
    -> Set (Type, Type) -- ^assumed subtypes
    -> (Type, Type) -- ^we are checking if lhs <: rhs      
-   -> Maybe (Set (Type, Type)) -- ^returns an extended set of assumptions if
-                               -- ^lhs <: rhs
+   -> m (Set (Type, Type))
+         -- returns an extended set of assumptions if lhs <: rhs
+         -- on fail
 st env rel (t1, t2)
   | (t1, t2) `S.member` rel = return rel
   | otherwise = do
@@ -291,11 +294,11 @@ st env rel (t1, t2)
     -- However, if x != y, they may still be structurally equivalent.
     (TEnvId x, _) -> case M.lookup x env of
       Just t1' -> st env rel (t1', t2)
-      Nothing -> error $ printf "BrownPLT.TypedJS.Subtypes.st: TEnvId %s is \
+      Nothing -> fail $ printf "BrownPLT.TypedJS.Subtypes.st: TEnvId %s is \
                                 \not in the environment. TEnvId x <: t2" x
     (_, TEnvId y) -> case M.lookup y env of
       Just t2' -> st env rel (t1, t2')
-      Nothing -> error $ printf "BrownPLT.TypedJS.Subtypes.st: TEnvId %s is \
+      Nothing -> fail $ printf "BrownPLT.TypedJS.Subtypes.st: TEnvId %s is \
                                 \not in the environment. t1 <: TEnvId y" y
     -- int <: double because it makes sense, and also they are
     -- represented the same in javascript.
@@ -329,7 +332,7 @@ st env rel (t1, t2)
 
       foldM (st env) rel (zip args1 args2')
     (TSequence args1 Nothing, TSequence args2 (Just vararg2)) -> do
-      Nothing --fail, since args2 could access more than args1 has(?)
+      fail "tsequence" --fail, since args2 could access more than args1 has(?)
     (TSequence args1 (Just vararg1), TSequence args2 (Just vararg2)) -> do
       --TODO: add test cases for this case
       --check everything up to the varargs:
@@ -354,7 +357,7 @@ st env rel (t1, t2)
         (True, True) -> st env rez (fromJust pt2, fromJust pt1)
         (False, True) -> fail "func is not subtype of constructor"
         (True, False) -> fail "constructor is not subtype of funtcion"
-        (False, False) -> Just rez
+        (False, False) -> return rez
       
     (TForall ids1 tcs1 t1, TForall ids2 tcs2 t2) -> do
       assert (ids1 == ids2)
@@ -368,17 +371,23 @@ st env rel (t1, t2)
       -- if prop2 is writable, prop1 must be writable and a supertype
       -- if it's neither, then it really doesn't matter.
       let prop2prop rel (id1, (t1, (r1, w1))) (id2, (t2, (r2, w2))) = do
-            rel' <- doRead rel (t1, r1) (t2, r2)
-            doWrite rel' (t1, w1) (t2, w2)            
-          doRead rel (t1, r1) (t2, r2) = if r2 
+            rel' <- doRead rel id1 (t1, r1) (t2, r2)
+            doWrite rel' id1 (t1, w1) (t2, w2)            
+          doRead rel id (t1, r1) (t2, r2) = if r2 
             then if not r1
               then fail "readability mismatch"  
-              else st env rel (t1, t2)
+              else case st env rel (t1, t2) of
+                Nothing -> fail $ printf "while subtyping field %s: %s" id "___"
+                Just rel -> return rel
             else return rel
-          doWrite rel (t1, w1) (t2, w2) = if w2 
+          doWrite rel id (t1, w1) (t2, w2) = if w2 
             then if not w1
               then fail "writability mismatch"
-              else st env rel (t2, t1)
+              else let zomk :: Either String (Set (Type, Type))
+                       zomk = st env rel (t2, t1) in case zomk of
+                   Left msg -> fail$printf "while supertyping field %s: %s" id
+                                     msg
+                   Right rel -> return rel
             else return rel
       
             
@@ -387,9 +396,13 @@ st env rel (t1, t2)
         --in props1
         ((True, False, props1), (_, _, props2)) -> do
           let prop rel (id2, (t2, (r2, w2))) = do
-                (t1,(r1, w1)) <- lookup id2 props1
-                prop2prop rel (id2, (t1, (r1, w1))) (id2, (t2, (r2, w2)))
-          foldM prop (S.insert (t1, t2) rel) props2
+                case lookup id2 props1 of
+                  Nothing -> fail $ printf "lhs does not have property %s" id2
+                  Just (t1,(r1,w1)) -> do
+                    prop2prop rel (id2, (t1, (r1, w1))) (id2, (t2, (r2, w2)))
+          case foldM prop (S.insert (t1, t2) rel) props2 of
+            Left msg -> fail msg
+            Right rel -> return rel
         
         --if there's slack in the second object... obj1 doesn't have to have
         --all of props2, as those will be accounted for in the slack.
@@ -407,7 +420,9 @@ st env rel (t1, t2)
                 (t1,(r1, w1)) <- lookup id2 props1
                 prop2prop rel (id2, (t1, (r1, w1))) (id2, (t2, (r2, w2)))
           case S.null (S.difference fields1 fields2) of
-            True -> foldM prop (S.insert (t1, t2) rel) props2
+            True -> case foldM prop (S.insert (t1, t2) rel) props2 of
+              Just rel -> return rel
+              Nothing -> fail "object subtyping invariant fail"
             False -> fail "subtyping: invariant objects"
 
     (t1, TRec v t2') -> do
@@ -417,17 +432,27 @@ st env rel (t1, t2)
       rez <- st env (S.insert (t1, t2) rel) (substType v t1 t1', t2)
       return rez
     (TUnion ts1, t2) -> do
-      foldM (\rel t1 -> st env rel (t1, t2)) rel ts1 -- all
+      let do_t1 rel t1 = let zomk :: Either String (Set (Type, Type))
+                             zomk = st env rel (t1, t2) in case zomk of
+            Left msg -> fail $ printf"type %s in the union '%s' isn't a subtype\
+                               \ of the rhs, %s, because: %s" (renderType t1)
+                               (renderType (TUnion ts1)) (renderType t2) msg
+            Right rel -> return rel
+      case foldM do_t1 rel ts1 of
+        Left msg -> fail $ "lhs union st fail: " ++ msg
+        Right rel -> return rel
     (t1, TUnion ts2) -> do
-      anyM (\rel t2 -> st env rel (t1, t2)) rel ts2
-
+      case anyM (\rel t2 -> st env rel (t1, t2)) rel ts2 of
+        Just rel -> return rel
+        Nothing -> fail "rhs tunion st fail"
+ 
     --temporary hack: if the TId is in the env, then look it up -}
     (TId x, _) -> case M.lookup x env of
       Just t1' -> st env rel (t1', t2)
-      Nothing -> Nothing
+      Nothing -> fail $ printf "TId %s not in the type env" x
     (_, TId y) -> case M.lookup y env of
       Just t2' -> st env rel (t1, t2')
-      Nothing -> Nothing
+      Nothing -> fail $ printf "TId %s not in the type env" y
 
     otherwise -> fail $ printf "%s is not a subtype of %s" (show t1) (show t2)
 
@@ -435,11 +460,11 @@ st env rel (t1, t2)
 
 isSubType :: Map String Type
           -> [TypeConstraint] -> Type -> Type
-          -> Bool
+          -> Either String ()
 isSubType env cs t1 t2 = result where
   result = case st env initial (t1, t2) of
-    Just _ -> True
-    Nothing -> False
+    Left msg -> Left msg
+    Right rel -> Right ()
   initial = S.fromList (map subtype cs)
   subtype (TCSubtype v t) = (TId v, t)
 
