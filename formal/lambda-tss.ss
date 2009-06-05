@@ -11,7 +11,15 @@
   ; Identifiers
   (x (variable-except lambda let if equal? typeof : int string bool U))
   ; Evaluation contexts
-  (E (equal? E e) (equal? v E) (typeof E) (let (x E) e) (if E e e) (E e) (v E) hole))
+  (E (equal? E e) (equal? v E) (typeof E) (let (x E) e) (if E e e) (E e) (v E) hole)
+  ; Type environments
+  (Env ((id T) ...))
+  ; Structure of the typing relation
+  )
+
+(define tc
+  (reduction-relation
+   λtss
 
 
    
