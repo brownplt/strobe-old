@@ -390,7 +390,40 @@ Proof.
   (* v = w, substitution happens *)
   assert (T = S) as HypTeqS.
     rewrite -> e in Binds.
-    apply binds_mid_eq with (F := F) (z := w) (E := E). simpl. exact Binds.
+    apply binds_mid_eq with (F := F) (z := w) (E := E). simpl.
+Admitted.
+
+Theorem preservation : forall E e e' T,
+  typing E e T ->
+  eval e e' ->
+  typing E e' T.
+Proof.
+  intros E e e' T H.
+  generalize dependent e'.
+  induction H; intros e' J.
+  inversion J. inversion J. (* contradictions *)
+  (* e_equal *)
+  inversion J; subst; auto.
+  apply typing_equal with (T := T).
+  apply IHtyping1.  exact H5. exact H0.
+  apply typing_equal with (T := T).
+  exact H. apply IHtyping2. exact H5.
+  (* e_typeof *)
+  inversion J; auto.
+  apply typing_typeof with (T := T).
+  apply IHtyping. exact H1.
+  (* e_if *)
+  inversion J; subst; auto. (* gg *)
+  (* e_app *)
+  
+  
+  apply IHtyping2.
+  
+ exact HypPreserv.
+
+  inversion J; subst; auto. auto. auto. auto. auto.
+  assert (typing E e' T) as HypPresv.
+
 
 
 Example eg_typing_3 :
