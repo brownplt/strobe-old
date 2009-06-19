@@ -69,5 +69,6 @@ Require Import Coq.FSets.FSetProperties.
 Module rts_eq := EqProperties (rts).
 Module rts_props := Properties (rts).
 
+Definition RTS := rts.t.
 Ltac rtsdec := RTSDecide.fsetdec.
 
