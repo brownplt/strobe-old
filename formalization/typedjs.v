@@ -178,6 +178,25 @@ Inductive value : exp -> Prop :=
   | value_bool : forall b, value (e_bool b)
   | value_abs : forall t e, lc (e_abs t e) -> value (e_abs t e).
 
+
+Inductive runtime_type : exp -> RT -> Prop :=
+  | typeof_num : forall n, runtime_type (e_num n) rt_number
+  | typeof_str : forall s, runtime_type (e_str s) rt_string
+  | typeof_bool : forall b, runtime_type (e_bool b) rt_boolean
+  | typeof_abs : forall t e, lc (e_abs t e) -> runtime_type (e_abs t e) rt_function.
+
+Lemma values_have_types : forall e,
+  value e ->
+  (exists rt, runtime_type e rt).
+Proof.
+  intros.
+  destruct H.
+    exists rt_number. apply typeof_num.
+    exists rt_string. apply typeof_str.
+    exists rt_boolean. apply typeof_bool.
+    exists rt_function. apply typeof_abs. exact H.
+Qed.
+
 Inductive eval : exp -> exp -> Prop :=
   | eval_beta : forall t e1 e2,
       lc (e_abs t e1) -> value e2 ->
@@ -226,6 +245,10 @@ Ltac gather_atoms :=
   let C := gather_atoms_with (fun x : list (atom * typ) => dom x) in
   let D := gather_atoms_with (fun x : exp => fv x) in
   constr:(A `union` B `union` C `union` D).
+
+Tactic Notation "pick" "fresh" ident(x) :=
+  let L := gather_atoms in
+  (pick fresh x for L).
 
 Tactic Notation
       "pick" "fresh" ident(atom_name) "and" "apply" constr(lemma) :=
@@ -291,7 +314,21 @@ Inductive typing : env -> exp -> typ -> Prop :=
       typing E (e_app e1 e2) T2
   | typing_num : forall E n, typing E (e_num n) typ_integer
   | typing_str : forall E s, typing E (e_str s) typ_string
-  | typing_bool : forall E b, typing E (e_bool b) typ_boolean.
+  | typing_bool : forall E b, typing E (e_bool b) typ_boolean
+  | typing_sub : forall E e S T,
+      subtype S T ->
+      typing E e S ->
+      typing E e T
+  | typing_val : forall E val S T R RT,
+      value val ->
+      typing E val S ->
+      runtime_type val RT ->
+      Some T = static R S ->
+      rts.In RT R ->
+      typing E val T.
+
+Check typing.
+      
 
 Hint Constructors typing.
 
@@ -353,6 +390,14 @@ Proof.
   apply typing_num.
   apply typing_str.
   apply typing_bool.
+  (* subtyping *)
+  apply typing_sub with (S := S).
+  exact H.
+  apply IHtyping.
+  reflexivity.
+  exact Ok.
+  (* runtime typing *)
+  apply typing_val with (T := T) (S := S) (RT := RT) (R := R); auto.
 Qed.
 
 Lemma weakening : forall E F e T,
@@ -371,27 +416,82 @@ Proof.
   intros E e T H. induction H; eauto.
 Qed.
 
-Lemma substitution_var : forall E F u S T T' w v R,
-  binds v T' (F ++ (w, S) :: E) ->
-  ok (F ++ (w, S) :: E) ->
-  Some T = static R T' ->
-  typing E u S ->
-  typing (F ++ E) (subst w u (e_fvar R v)) T.
+Lemma runtime_subst : forall E v R RT T T',
+  typing E v T ->
+  rts.In RT R ->
+  Some T' = static R T ->
+  runtime_type v RT ->
+  typing E v T'.
 Proof.
-  intros E F u S T T' w v R Binds Ok Static H.
-  simpl.
-  destruct (v == w).
-  Focus 2.
-  (* v <> w, nothing to do *)
-  apply typing_var with (T := T').
-  apply ok_remove_mid_cons with (x := w) (a := S). exact Ok.
-  apply binds_remove_mid with (y := w) (b := S). simpl. exact Binds. exact n.
-  rewrite -> Static. reflexivity.
-  (* v = w, substitution happens *)
-  assert (T = S) as HypTeqS.
-    rewrite -> e in Binds.
-    apply binds_mid_eq with (F := F) (z := w) (E := E). simpl.
+  intros E v R RT T T'.
+  intros HypTyping HypSubset HypStatic HypRuntime.
+  induction HypRuntime.
+    Admitted.
+
+Lemma refine_R : forall E val S T R RT,
+  value val ->
+  typing E val S ->
+  Some T = static R S ->
+  runtime_type val RT ->
+  rts.In RT R.
+Proof.
+  intros.
+  destruct val; inversion H.
+  Focus 2. subst.
 Admitted.
+
+
+Lemma strong_substitution : forall E F e val S T w,
+  value val ->
+  typing (F ++ (w, S) :: E) e T ->
+  typing E val S ->
+  typing (F ++ E) (subst w val e) T.
+Proof.
+  intros F E e val S T w Value.
+  remember (E ++ (w, S) :: F) as G.
+  intros Hyp0 Hyp1.
+  generalize dependent E.
+  generalize dependent F.
+  generalize dependent Value.
+  induction Hyp0.
+  (* e_fvar *)
+  intros.
+  simpl.
+  subst.
+  destruct (v == w).
+    Focus 2.
+    (* v <> w so nothing to do *)
+    apply typing_var with (T := T).
+    apply ok_remove_mid_cons with (x := w) (a := S).
+    exact H.
+    apply binds_remove_mid_cons with (y := w) (b := S) in H0.
+    exact H0.
+    exact n.
+    exact H1.
+    (* v = w, substitute *)
+    Focus 1.
+    subst.
+    assert (T = S).
+      apply binds_mid_eq_cons with (F := E0) (x := w) (E := F) in H0.
+      exact H0.
+      exact H.
+    subst.
+
+    assert (exists rt, runtime_type val rt).
+      apply values_have_types in Value. exact Value.
+    destruct H2 as [rt RuntimeType].
+    (* Intuitively, T' <: S *)
+    subst.
+    apply typing_val with (RT := rt) (S := S) (R := R).
+      exact Value.
+      apply weakening. exact Hyp1. apply ok_remove_mid_cons in H. exact H.
+      exact RuntimeType.
+      rewrite <- H1. reflexivity.
+      clear H H0.
+Admitted.
+
+
+
 
 Theorem preservation : forall E e e' T,
   typing E e T ->
@@ -415,7 +515,15 @@ Proof.
   (* e_if *)
   inversion J; subst; auto. (* gg *)
   (* e_app *)
+  inversion J; subst.
+  inversion H. subst. (* e0 an abstraction *)
+  pick fresh x.
   
+  apply values_have_types in H5. destruct H5 as [RT].
+  Check values_have_types.
+  apply runtime_type in e2.
+  Focus 4.
+  apply IHtyping1.
   
   apply IHtyping2.
   
