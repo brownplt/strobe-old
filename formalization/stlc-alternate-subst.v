@@ -2,14 +2,25 @@ Add LoadPath "metatheory".
 Require Import Metatheory.
 
 Inductive typ : Set :=
-  | typ_base  : typ
+  | typ_int  : typ
+  | typ_str : typ
+  | typ_bool : typ
   | typ_arrow : typ -> typ -> typ.
+
+Inductive string : Set :=
+  string_const : string.
+
+Inductive const : Set :=
+  | const_int : nat -> const
+  | const_bool : bool -> const
+  | const_str : string -> const.
 
 Inductive exp : Set :=
   | bvar : nat  -> exp    (* bound variables *)
   | fvar : atom -> exp   (* free  variables *)
   | abs  : typ -> exp  -> exp (* type of the binding instance *)
-  | app  : exp  -> exp -> exp.
+  | app  : exp  -> exp -> exp
+  | e_const : const -> exp.
 
 Inductive subst : atom -> exp -> exp -> exp -> Prop :=
   | subst_bvar : forall z u (i : nat), subst z u (bvar i) (bvar i)
@@ -22,9 +33,9 @@ Inductive subst : atom -> exp -> exp -> exp -> Prop :=
   | subst_app : forall z u e1 e2 e1' e2',
       subst z u e1 e1' ->
       subst z u e2 e2' ->
-      subst z u (app e1 e2) (app e1' e2').
-
-Hint Constructors subst.
+      subst z u (app e1 e2) (app e1' e2')
+  | subst_const : forall z u (c : const),
+      subst z u (e_const c) (e_const c).
 
 Fixpoint open_rec (k : nat) (u : exp) (e : exp) {struct e} : exp :=
   match e with
@@ -32,11 +43,17 @@ Fixpoint open_rec (k : nat) (u : exp) (e : exp) {struct e} : exp :=
     | fvar x => fvar x
     | abs t e1 => abs t (open_rec (S k) u e1)
     | app e1 e2 => app (open_rec k u e1) (open_rec k u e2)
+    | e_const c => e_const c
   end.
 
 Definition open e u := open_rec 0 u e.
 
 Notation env := (list (atom * typ)).
+
+Inductive typing_const : const -> typ -> Prop :=
+  | typing_int : forall n, typing_const (const_int n) typ_int
+  | typing_bool : forall b, typing_const (const_bool b) typ_bool
+  | typing_str : forall s, typing_const (const_str s) typ_str.
 
 Inductive typing : env -> exp -> typ -> Prop :=
   | typing_var : forall E (x : atom) T,
@@ -50,9 +67,12 @@ Inductive typing : env -> exp -> typ -> Prop :=
   | typing_app : forall E e1 e2 T1 T2,
       typing E e1 (typ_arrow T1 T2) ->
       typing E e2 T1 ->
-      typing E (app e1 e2) T2.
+      typing E (app e1 e2) T2
+  | typing_e_const : forall E c T,
+      typing_const c T ->
+      typing E (e_const c) T.
 
-Hint Constructors typing.
+
 
 Inductive lc : exp -> Prop :=
   | lc_var : forall x,
@@ -63,14 +83,17 @@ Inductive lc : exp -> Prop :=
   | lc_app : forall e1 e2,
       lc e1 ->
       lc e2 ->
-      lc (app e1 e2).
+      lc (app e1 e2)
+  | lc_e_const : forall c,
+      lc (e_const c).
 
-Hint Constructors lc.
 
 Inductive value : exp -> Prop :=
   | value_abs : forall t e,
       lc (abs t e) ->
-      value (abs t e).
+      value (abs t e)
+  | value_const : forall c,
+      value (e_const c).
 
 Inductive eval : exp -> exp -> Prop :=
   | eval_beta : forall t e1 e2,
@@ -86,7 +109,7 @@ Inductive eval : exp -> exp -> Prop :=
       eval e2 e2' ->
       eval (app e1 e2) (app e1 e2').
 
-Hint Constructors value eval.
+Hint Constructors typing typing_const subst lc value eval.
 
 Fixpoint fv (e : exp) {struct e} : atoms :=
   match e with
@@ -94,6 +117,7 @@ Fixpoint fv (e : exp) {struct e} : atoms :=
     | fvar x => singleton x
     | abs t e1 => fv e1
     | app e1 e2 => (fv e1) `union` (fv e2)
+    | e_const c => {}
   end.
 
 (*****************************************************************************
@@ -131,29 +155,6 @@ Tactic Notation
   pick fresh atom_name excluding L and apply lemma.
 
 
-Lemma subst_fresh : forall (x : atom) e u,
-  x `notin` fv e -> subst x u e e.
-Proof.
-  intros x e u.
-  intros H.
-  induction e.
-    apply subst_bvar.
-    apply subst_fvar_noop.
-      unfold not.
-      intros.
-      unfold fv in H.
-      assert (x `notin` singleton a -> False). fsetdec.
-      apply H1. exact H.
-    apply subst_abs.
-      apply IHe.
-      fsetdec.
-    simpl in H.
-    apply subst_app.
-      apply IHe1. fsetdec.
-      apply IHe2. fsetdec.
-Qed. 
-
-
 Lemma open_rec_lc_core : forall e j v i u,
   i <> j ->
   open_rec j v e = open_rec i u (open_rec j v e) ->
@@ -184,6 +185,8 @@ Proof.
     apply open_rec_lc_core with (i := S k) (j := 0) (u := u) (v := fvar x). auto. auto.
   Case "lc_app".
     intro k. simpl. f_equal. auto. auto.
+  (* e_const *)
+  auto.
 Qed.
 
 Lemma subst_open_rec : forall e1 e2 e1' e2' u x k,
@@ -204,6 +207,8 @@ Proof.
   (* abs *)
   inversion H0. simpl. auto.
   inversion H0. subst.  simpl in *. auto.
+  (* const *)
+  inversion H0. subst. auto.
 Qed.
 
 Lemma subst_open_var : forall (x y : atom) u e e1,
@@ -246,6 +251,8 @@ Proof.
     eapply typing_app.
       eapply IHtyping1. reflexivity. apply Ok.
       eapply IHtyping2. reflexivity. apply Ok.
+  (* const *)
+  apply typing_e_const. exact H.
 Qed.
 
 Lemma typing_weakening : forall E F e T,
@@ -257,8 +264,6 @@ Proof.
   rewrite <- (nil_concat _ (F ++ E)).
   apply typing_weakening_strengthened; auto.
 Qed.
-
-
 
 Lemma typing_regular_lc : forall E e T,
   typing E e T -> lc e.
@@ -314,6 +319,8 @@ Proof.
   intros.
   inversion H. subst.
   eapply typing_app; auto.
+  (* const *)
+  intros. inversion H0. auto.
 Qed.
 
 (** *** Exercise
@@ -334,6 +341,30 @@ Proof.
   apply typing_subst_strengthened with (S := S) (u := u) (z := z) (e := e). 
     simpl. exact HypInd. exact HypS. exact HypSubst.
 Qed.
+
+
+Lemma subst_fresh : forall (x : atom) e u,
+  x `notin` fv e -> subst x u e e.
+Proof.
+  intros x e u.
+  intros H.
+  induction e.
+    apply subst_bvar.
+    apply subst_fvar_noop.
+      unfold not.
+      intros.
+      unfold fv in H.
+      assert (x `notin` singleton a -> False). fsetdec.
+      apply H1. exact H.
+    apply subst_abs.
+      apply IHe.
+      fsetdec.
+    simpl in H.
+    apply subst_app.
+      apply IHe1. fsetdec.
+      apply IHe2. fsetdec.
+    apply subst_const.
+Qed. 
 
 
 (*************************************************************************)
@@ -368,13 +399,17 @@ Proof.
   intros E e e' T H.
   generalize dependent e'.
   induction H; intros e' J.
+  (* fvar *)
   inversion J.
+  (* abs *)
   inversion J.
+  (* app *)
   inversion J; subst.
   inversion H. subst.
   pick fresh x.
   assert (subst x e2 (open e0 (fvar x)) (open e0 e2)) as HypIntro.
     apply subst_intro. fsetdec. inversion H5. exact H1.
+     apply lc_e_const.
   eapply typing_subst with (S := T1) (z := x) 
                           (e := (open e0 (fvar x))) (e' := (open e0 e2)).
     apply H4. fsetdec.
@@ -388,8 +423,9 @@ Proof.
   assert (typing E e2' T1) as HypPresv.
     apply IHtyping2. exact H5.
   apply typing_app with (T1 := T1). exact H. exact HypPresv.
+ (* const *)
+ inversion J.
 Qed.
-
 
 Lemma progress : forall e T,
   typing nil e T ->
@@ -418,11 +454,16 @@ Proof.
   Case "typing_app".
     right.
     destruct IHtyping1 as [V1 | [e1' Eval1]]; auto.
-      destruct IHtyping2 as [V2 | [e2' Eval2]]; auto.
-        inversion V1; subst. exists (open e e2); auto.
-        exists (app e1 e2'); auto.
-      exists (app e1' e2).
-        apply eval_app_1. Focus 2. assumption. Check typing_regular_lc.
-          eapply typing_regular_lc; eauto.
+    destruct IHtyping2 as [V2 | [e2' Eval2]]; auto.
+    inversion V1; subst. exists (open e e2); auto.
+    inversion H. inversion H4.
+    exists (app e1 e2'); auto.
+    exists (app e1' e2).
+    apply eval_app_1. 
+    eapply typing_regular_lc; eauto.
+    assumption.
+  (* const *)
+  left.
+  apply value_const.
 Qed.
 

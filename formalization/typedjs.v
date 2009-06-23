@@ -3,38 +3,20 @@ Require Import Metatheory.
 Require Import Dataflow.
 
 Inductive typ : Set :=
-  | typ_string : typ
-  | typ_boolean : typ
-  | typ_integer : typ
-  | typ_arrow : typ -> typ -> typ
-  | typ_union : typ -> typ -> typ.
-
-Axiom typ_union_symm : forall t1 t2, typ_union t1 t2 = typ_union t2 t1.
-
-(* A split is an annotation on a conditional. *)
-Inductive split : Set :=
-  | split_bvar : nat -> RTS -> RTS -> split
-  | split_none : split.
+  | typ_base  : typ
+  | typ_arrow : typ -> typ -> typ.
 
 Inductive exp : Set :=
-  | bvar : nat -> exp (* bound variables with de Brujin indices *)
-  | fvar : RTS -> atom -> exp (* free variables with names *)
-  | abs  : typ -> exp  -> exp (* lambda binders *)
-  | app  : exp  -> exp -> exp (* application *).
-
-(*  | cond : split -> exp -> exp -> exp -> exp. *)
-
-Inductive runtime_type : exp -> RT -> Prop :=
-  | typeof_abs : forall t e, runtime_type (abs t e) rt_function.
+  | bvar : nat  -> exp    (* bound variables *)
+  | fvar : atom -> exp   (* free  variables *)
+  | abs  : typ -> exp  -> exp (* type of the binding instance *)
+  | app  : exp  -> exp -> exp.
 
 Inductive subst : atom -> exp -> exp -> exp -> Prop :=
   | subst_bvar : forall z u (i : nat), subst z u (bvar i) (bvar i)
-  | subst_fvar_noop : forall z u (r : RTS) (x : atom),
-      x <> z -> subst z u (fvar r x) (fvar r x)
-  | subst_fvar : forall (z : atom) (u : exp) (rt : RT) (r : RTS), 
-      runtime_type u rt ->
-      rts.In rt r ->
-      subst z u (fvar r z) u
+  | subst_fvar_noop : forall z u (x : atom),
+      x <> z -> subst z u (fvar x) (fvar x)
+  | subst_fvar : forall (z : atom) (u : exp), subst z u (fvar z) u
   | subst_abs : forall z u t e1 e1',
       subst z u e1 e1' ->
       subst z u (abs t e1) (abs t e1')
@@ -42,49 +24,29 @@ Inductive subst : atom -> exp -> exp -> exp -> Prop :=
       subst z u e1 e1' ->
       subst z u e2 e2' ->
       subst z u (app e1 e2) (app e1' e2').
-(*
-  | subst_cond : forall z u e1 e2 e3 e1' e2' e3',
-      subst z u e1 e1' ->
-      subst z u e2 e2' ->
-      subst z u e3 e3' ->
-      subst z u (cond split_none e1 e2 e3) (cond split_none e1' e2' e3').
-*)
 
 Hint Constructors subst.
 
 Fixpoint open_rec (k : nat) (u : exp) (e : exp) {struct e} : exp :=
   match e with
     | bvar i => if k === i then u else (bvar i)
-    | fvar r x => fvar r x
+    | fvar x => fvar x
     | abs t e1 => abs t (open_rec (S k) u e1)
     | app e1 e2 => app (open_rec k u e1) (open_rec k u e2)
   end.
 
 Definition open e u := open_rec 0 u e.
 
-Inductive lc : exp -> Prop :=
-  | lc_var : forall r x,
-      lc (fvar r x)
-  | lc_abs : forall L e r t,
-      (forall x:atom, x `notin` L -> lc (open e (fvar r x))) ->
-      lc (abs t e)
-  | lc_app : forall e1 e2,
-      lc e1 ->
-      lc e2 ->
-      lc (app e1 e2).
-
-Hint Constructors lc.
-
 Notation env := (list (atom * typ)).
 
 Inductive typing : env -> exp -> typ -> Prop :=
-  | typing_var : forall E (x : atom) (r : RTS) T,
+  | typing_var : forall E (x : atom) T,
       ok E ->
       binds x T E ->
-      typing E (fvar r x) T
-  | typing_abs : forall L E r e T1 T2,
+      typing E (fvar x) T
+  | typing_abs : forall L E e T1 T2,
       (forall x : atom, x `notin` L ->
-        typing ((x, T1) :: E) (open e (fvar r x)) T2) ->
+        typing ((x, T1) :: E) (open e (fvar x)) T2) ->
       typing E (abs T1 e) (typ_arrow T1 T2)
   | typing_app : forall E e1 e2 T1 T2,
       typing E e1 (typ_arrow T1 T2) ->
@@ -93,18 +55,51 @@ Inductive typing : env -> exp -> typ -> Prop :=
 
 Hint Constructors typing.
 
-Inductive wf_exp : env -> exp -> Prop :=
-  
+Inductive lc : exp -> Prop :=
+  | lc_var : forall x,
+      lc (fvar x)
+  | lc_abs : forall L e t,
+      (forall x:atom, x `notin` L -> lc (open e (fvar x))) ->
+      lc (abs t e)
+  | lc_app : forall e1 e2,
+      lc e1 ->
+      lc e2 ->
+      lc (app e1 e2).
 
+Hint Constructors lc.
+
+Inductive value : exp -> Prop :=
+  | value_abs : forall t e,
+      lc (abs t e) ->
+      value (abs t e).
+
+Inductive eval : exp -> exp -> Prop :=
+  | eval_beta : forall t e1 e2,
+      lc (abs t e1) ->
+      value e2 ->
+      eval (app (abs t e1) e2) (open e1 e2)
+  | eval_app_1 : forall e1 e1' e2,
+      lc e2 ->
+      eval e1 e1' ->
+      eval (app e1 e2) (app e1' e2)
+  | eval_app_2 : forall e1 e2 e2',
+      value e1 ->
+      eval e2 e2' ->
+      eval (app e1 e2) (app e1 e2').
+
+Hint Constructors value eval.
 
 Fixpoint fv (e : exp) {struct e} : atoms :=
   match e with
     | bvar i => {}
-    | fvar r x => singleton x
+    | fvar x => singleton x
     | abs t e1 => fv e1
     | app e1 e2 => (fv e1) `union` (fv e2)
-(*    | cond s e1 e2 e3 => (fv e1) `union` (fv e2) `union` (fv e3) *)
   end.
+
+(*****************************************************************************
+ * Tactics                                                                   *
+ *****************************************************************************)
 
 Ltac gather_atoms :=
   let A := gather_atoms_with (fun x : atoms => x) in
@@ -113,36 +108,29 @@ Ltac gather_atoms :=
   let D := gather_atoms_with (fun x : exp => fv x) in
   constr:(A `union` B `union` C `union` D).
 
+(** We can use [gather_atoms] to define a variant of the [(pick fresh
+    x for L)] tactic, which we call [(pick fresh x)].  The tactic
+    chooses an atom fresh for "everything" in the context. *)
+
 Tactic Notation "pick" "fresh" ident(x) :=
   let L := gather_atoms in
   (pick fresh x for L).
+
+(** We can also use [gather_atoms] to define a tactic for applying a
+    rule that is defined using cofinite quantification.  The tactic
+    [(pick fresh x and apply H)] applies a rule [H], just as the
+    [apply] tactic would.  However, the tactic also picks a
+    sufficiently fresh name [x] to use.
+
+    Note: We define this tactic in terms of another tactic, [(pick
+    fresh x excluding L and apply H)], which is defined and documented
+    in [Metatheory.v]. *)
 
 Tactic Notation
       "pick" "fresh" ident(atom_name) "and" "apply" constr(lemma) :=
   let L := gather_atoms in
   pick fresh atom_name excluding L and apply lemma.
 
-
-Lemma subst_fresh : forall (x : atom) e u,
-  x `notin` fv e -> subst x u e e.
-Proof.
-  intros x e u.
-  intros H.
-  induction e.
-  apply subst_bvar.
-  apply subst_fvar_noop.
-    unfold not.
-    intros.
-    unfold fv in H.
-    assert (x `notin` singleton a -> False). fsetdec.
-    apply H1. exact H.
-  apply subst_abs.
-    apply IHe.
-    fsetdec.
-  apply subst_app; simpl in H.
-    apply IHe1. fsetdec.
-    apply IHe2. fsetdec.
-Qed. 
 
 Lemma open_rec_lc_core : forall e j v i u,
   i <> j ->
@@ -248,8 +236,6 @@ Proof.
   apply typing_weakening_strengthened; auto.
 Qed.
 
-
-
 Lemma typing_regular_lc : forall E e T,
   typing E e T -> lc e.
 Proof.
@@ -325,26 +311,29 @@ Proof.
     simpl. exact HypInd. exact HypS. exact HypSubst.
 Qed.
 
-Inductive value : exp -> Prop :=
-  | value_abs : forall t e,
-      lc (abs t e) ->
-      value (abs t e).
 
-Inductive eval : exp -> exp -> Prop :=
-  | eval_beta : forall t e1 e2,
-      lc (abs t e1) ->
-      value e2 ->
-      eval (app (abs t e1) e2) (open e1 e2)
-  | eval_app_1 : forall e1 e1' e2,
-      lc e2 ->
-      eval e1 e1' ->
-      eval (app e1 e2) (app e1' e2)
-  | eval_app_2 : forall e1 e2 e2',
-      value e1 ->
-      eval e2 e2' ->
-      eval (app e1 e2) (app e1 e2').
+Lemma subst_fresh : forall (x : atom) e u,
+  x `notin` fv e -> subst x u e e.
+Proof.
+  intros x e u.
+  intros H.
+  induction e.
+    apply subst_bvar.
+    apply subst_fvar_noop.
+      unfold not.
+      intros.
+      unfold fv in H.
+      assert (x `notin` singleton a -> False). fsetdec.
+      apply H1. exact H.
+    apply subst_abs.
+      apply IHe.
+      fsetdec.
+    simpl in H.
+    apply subst_app.
+      apply IHe1. fsetdec.
+      apply IHe2. fsetdec.
+Qed. 
 
-Hint Constructors value eval.
 
 (*************************************************************************)
 (** * Preservation *)
