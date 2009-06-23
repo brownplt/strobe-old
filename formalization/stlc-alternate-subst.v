@@ -491,7 +491,6 @@ Proof.
     simpl. exact Value. exact HypInd. exact HypS. exact HypSubst.
 Qed.
 
-
 Lemma subst_fresh : forall (x : atom) e u,
   x `notin` fv e -> subst x u e e.
 Proof.
@@ -521,25 +520,46 @@ Qed.
 (** * Preservation *)
 (*************************************************************************)
 
-(** *** Note
-
-    In order to prove preservation, we need one more lemma, which
-    states that when we open a term, we can instead open the term with
-    a fresh variable and then substitute for that variable.
-
-    Technically, the [(lc u)] hypothesis is not needed to prove the
-    conclusion.  However, it makes the proof simpler. *)
-
-Lemma subst_intro : forall (x : atom) u e,
+Lemma subst_intro : forall (x : atom) u e r rt,
+  value u ->
+  runtime_type u rt ->
+  rts.In rt r ->
   x `notin` (fv e) ->
   lc u ->
-  subst x u (open e (fvar x)) (open e u).
+  subst x u (open e (fvar r x)) (open e u).
 Proof.
-  intros x u e H J.
+  intros x u e r rt Value Hruntime Hconsistent H J.
   unfold open.
   apply subst_open_rec.
-    exact J. apply subst_fresh. exact H. auto.
+    exact J. apply subst_fresh. exact H.
+    eauto.
 Qed.
+
+Hint Constructors runtime_type.
+
+Lemma coherence : forall E val rt T,
+  value val ->
+  typing E val T ->
+  runtime_type val rt ->
+  rts.In rt (runtime T).
+Proof.
+  intros E val rt T Hvalue Htyping Hrt.
+
+  destruct val; inversion Hvalue.
+  subst.
+  inversion Hrt. subst.
+    induction Htyping; inversion Hrt.
+    simpl. fsetdec.
+    subst.
+  inversion Htyping; subst.
+  simpl. fsetdec.
+  simpl.
+
+  induction T; simpl.
+    destruct val; inversion Hvalue.
+    subst. inversion Htyping. subst.
+
+  subst. inversion H1.
 
 Lemma preservation : forall E e e' T,
   typing E e T ->
@@ -556,26 +576,43 @@ Proof.
   (* app *)
   inversion J; subst.
   inversion H. subst.
+  assert (exists rt, runtime_type e2 rt).
+    destruct e2; inversion H5.
+    exists rt_function. apply typeof_abs.
+    subst. destruct c; eauto.
+  destruct H1 as [rt H1].
   pick fresh x.
-  assert (subst x e2 (open e0 (fvar x)) (open e0 e2)) as HypIntro.
-    apply subst_intro. fsetdec. inversion H5. exact H1.
+  assert (subst x e2 (open e0 (fvar (runtime T1) x)) (open e0 e2)) as HypIntro.
+    eapply subst_intro. 
+      exact H5. apply H1.
+      apply H1.
+      destruct T1. 
+      apply runtime_type.
+      eauto. 
+   
+
+fsetdec. inversion H5. exact H1.
      apply lc_e_const.
   eapply typing_subst with (S := T1) (z := x) 
                           (e := (open e0 (fvar x))) (e' := (open e0 e2)).
     apply H4. fsetdec.
     apply H0.
-    apply HypIntro.
+    apply HypIntro. *)
   (* application where e1 is reduced *)
+  Focus 2.
   assert (typing E e1' (typ_arrow T1 T2)) as HypPresv.
     apply IHtyping1. exact H5.
   apply typing_app with (T1 := T1). exact HypPresv. exact H0.
   (* application where e2 is reduced *)
+  Focus 2.
   assert (typing E e2' T1) as HypPresv.
     apply IHtyping2. exact H5.
   apply typing_app with (T1 := T1). exact H. exact HypPresv.
   (* const *)
+  Focus  2.
   inversion J.
   (* cond *)
+  Focus 2.
   inversion J; subst; auto.
 Qed.
 
