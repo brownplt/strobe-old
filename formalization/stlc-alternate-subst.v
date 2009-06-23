@@ -20,7 +20,8 @@ Inductive exp : Set :=
   | fvar : atom -> exp   (* free  variables *)
   | abs  : typ -> exp  -> exp (* type of the binding instance *)
   | app  : exp  -> exp -> exp
-  | e_const : const -> exp.
+  | e_const : const -> exp
+  | cond : exp -> exp -> exp -> exp.
 
 Inductive subst : atom -> exp -> exp -> exp -> Prop :=
   | subst_bvar : forall z u (i : nat), subst z u (bvar i) (bvar i)
@@ -35,7 +36,12 @@ Inductive subst : atom -> exp -> exp -> exp -> Prop :=
       subst z u e2 e2' ->
       subst z u (app e1 e2) (app e1' e2')
   | subst_const : forall z u (c : const),
-      subst z u (e_const c) (e_const c).
+      subst z u (e_const c) (e_const c)
+  | subst_cond : forall z u (e1 e2 e3 e1' e2' e3' : exp),
+      subst z u e1 e1' ->
+      subst z u e2 e2' ->
+      subst z u e3 e3' ->
+      subst z u (cond e1 e2 e3) (cond e1' e2' e3').
 
 Fixpoint open_rec (k : nat) (u : exp) (e : exp) {struct e} : exp :=
   match e with
@@ -44,6 +50,9 @@ Fixpoint open_rec (k : nat) (u : exp) (e : exp) {struct e} : exp :=
     | abs t e1 => abs t (open_rec (S k) u e1)
     | app e1 e2 => app (open_rec k u e1) (open_rec k u e2)
     | e_const c => e_const c
+    | cond e1 e2 e3 => cond (open_rec k u e1) 
+                            (open_rec k u e2)
+                            (open_rec k u e3)
   end.
 
 Definition open e u := open_rec 0 u e.
@@ -70,9 +79,12 @@ Inductive typing : env -> exp -> typ -> Prop :=
       typing E (app e1 e2) T2
   | typing_e_const : forall E c T,
       typing_const c T ->
-      typing E (e_const c) T.
-
-
+      typing E (e_const c) T
+  | typing_cond : forall E e1 e2 e3 T,
+      typing E e1 typ_bool ->
+      typing E e2 T ->
+      typing E e3 T ->
+      typing E (cond e1 e2 e3) T.
 
 Inductive lc : exp -> Prop :=
   | lc_var : forall x,
@@ -85,7 +97,9 @@ Inductive lc : exp -> Prop :=
       lc e2 ->
       lc (app e1 e2)
   | lc_e_const : forall c,
-      lc (e_const c).
+      lc (e_const c)
+  | lc_cond : forall e1 e2 e3,
+      lc e1 -> lc e2 -> lc e3 -> lc (cond e1 e2 e3).
 
 
 Inductive value : exp -> Prop :=
@@ -107,7 +121,20 @@ Inductive eval : exp -> exp -> Prop :=
   | eval_app_2 : forall e1 e2 e2',
       value e1 ->
       eval e2 e2' ->
-      eval (app e1 e2) (app e1 e2').
+      eval (app e1 e2) (app e1 e2')
+  | cxt_cond : forall e1 e2 e3 e1',
+      eval e1 e1' ->
+      lc e2 ->
+      lc e3 ->
+      eval (cond e1 e2 e3) (cond e1' e2 e3)
+  | eval_cond_true : forall e2 e3,
+      lc e2 ->
+      lc e3 ->
+      eval (cond (e_const (const_bool true)) e2 e3) e2
+  | eval_cond_false : forall e2 e3,
+      lc e2 ->
+      lc e3 ->
+      eval (cond (e_const (const_bool false)) e2 e3) e3.
 
 Hint Constructors typing typing_const subst lc value eval.
 
@@ -118,6 +145,7 @@ Fixpoint fv (e : exp) {struct e} : atoms :=
     | abs t e1 => fv e1
     | app e1 e2 => (fv e1) `union` (fv e2)
     | e_const c => {}
+    | cond e1 e2 e3 => (fv e1) `union` (fv e2) `union` (fv e3)
   end.
 
 (*****************************************************************************
@@ -187,6 +215,8 @@ Proof.
     intro k. simpl. f_equal. auto. auto.
   (* e_const *)
   auto.
+  (* cond *)
+  intros. simpl. f_equal; auto.
 Qed.
 
 Lemma subst_open_rec : forall e1 e2 e1' e2' u x k,
@@ -209,6 +239,8 @@ Proof.
   inversion H0. subst.  simpl in *. auto.
   (* const *)
   inversion H0. subst. auto.
+  (* cond *)
+  inversion H0. subst. simpl. auto.
 Qed.
 
 Lemma subst_open_var : forall (x y : atom) u e e1,
@@ -253,6 +285,8 @@ Proof.
       eapply IHtyping2. reflexivity. apply Ok.
   (* const *)
   apply typing_e_const. exact H.
+  (* cond *)
+  auto.
 Qed.
 
 Lemma typing_weakening : forall E F e T,
@@ -321,6 +355,8 @@ Proof.
   eapply typing_app; auto.
   (* const *)
   intros. inversion H0. auto.
+  (* cond *)
+  intros. inversion H. auto.
 Qed.
 
 (** *** Exercise
@@ -364,6 +400,7 @@ Proof.
       apply IHe1. fsetdec.
       apply IHe2. fsetdec.
     apply subst_const.
+    apply subst_cond; simpl in H; auto.
 Qed. 
 
 
@@ -423,8 +460,10 @@ Proof.
   assert (typing E e2' T1) as HypPresv.
     apply IHtyping2. exact H5.
   apply typing_app with (T1 := T1). exact H. exact HypPresv.
- (* const *)
- inversion J.
+  (* const *)
+  inversion J.
+  (* cond *)
+  inversion J; subst; auto.
 Qed.
 
 Lemma progress : forall e T,
@@ -465,5 +504,23 @@ Proof.
   (* const *)
   left.
   apply value_const.
+  (* cond *)
+  right.
+  inversion H0. subst.
+  apply IHtyping1 in H.
+  apply IHtyping2 in H1.
+  apply IHtyping3 in H2.
+  destruct H.
+  Focus 2.
+  destruct H as [e1' H].
+  exists (cond e1' e2 e3).
+  apply cxt_cond; (auto || eapply typing_regular_lc; eauto).
+  destruct e1; inversion H.
+  inversion H7. (* dismiss abs *)
+  subst. destruct c; inversion H7; inversion H5. (* dismiss non-bools *)
+  subst. destruct b.
+  exists e2. apply eval_cond_true; (auto || eapply typing_regular_lc; eauto).
+  exists e3. apply eval_cond_false; (auto || eapply typing_regular_lc; eauto).
+  reflexivity. reflexivity. reflexivity.
 Qed.
 
