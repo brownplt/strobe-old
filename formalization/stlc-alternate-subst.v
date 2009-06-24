@@ -607,6 +607,14 @@ Proof.
   inversion HypT; subst; inversion HypRT; subst; simpl; fsetdec.
 Qed.
 
+Lemma subtype_coherence_rev : forall S T,
+  subtype T S -> 
+  rts.Subset (runtime S) (runtime T) ->
+  subtype S T.
+Proof.
+  intros S T Hsubtype Hsubset.
+Admitted.
+
 Lemma subtype_coherence: forall S T,
   subtype S T ->
   rts.Subset (runtime S) (runtime T).
@@ -700,6 +708,16 @@ Proof.
   apply static_coherence in H2.
   assert (rts.Subset (runtime T) (runtime S)).
     apply subtype_coherence. exact H2.
+Focus 2.
+  subst.
+  apply static_coherence in H2.
+  assert (rts.Subset (runtime T) (runtime S)).
+    apply subtype_coherence. exact H2.
+  eapply rts_props.in_subset.
+    apply IHHtyping. exact Hvalue. exact Hrt.
+    (* Here, we have (runtime T) <= (runtime S), but we need the other *)
+    (* Perhaps we could require that values be annotated with their runtime types. *)
+  
 Admitted.
 
 
