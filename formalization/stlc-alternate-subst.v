@@ -37,7 +37,8 @@ Inductive static : rts.t -> typ -> typ -> Prop :=
   | ast_arrow : forall r t1 t2, rts.In rt_function r ->
       static r (typ_arrow t1 t2) (typ_arrow t1 t2)
   | ast_union: forall r t1 t2 t1' t2',
-      static r t1 t1' /\ static r t2 t2' -> 
+      static r t1 t1' ->
+      static r t2 t2' -> 
       static r (typ_union t1 t2) (typ_union t1' t2')
   | ast_unionL : forall r t1 t2 t1',
       static r t1 t1' ->
@@ -61,12 +62,14 @@ Inductive subtype_step : typ -> typ -> Prop :=
       subtype_step (typ_arrow s1 s2) (typ_arrow t1 t2)
   | subtype_unionL : forall (s1 s2 t1 t2 : typ),
       subtype_step s1 t1 ->
-      subtype_step s2 t1 ->
-      subtype_step s1 t2 ->
       subtype_step s2 t2 ->
       subtype_step (typ_union s1 s2) (typ_union t1 t2)
-  | subtype_unionR : forall (s t1 t2 : typ),
-      subtype_step s t1 \/ subtype_step s t2 -> subtype_step s (typ_union t1 t2).
+  | subtype_unionRL : forall (s t1 t2 : typ),
+      subtype_step s t1 -> 
+      subtype_step s (typ_union t1 t2)
+  | subtype_unionRR : forall (s t1 t2 : typ),
+      subtype_step s t2 -> 
+      subtype_step s (typ_union t1 t2).
 
 Inductive subtype : typ -> typ -> Prop :=
   | subtype_invariant : forall (t : typ), 
@@ -584,15 +587,76 @@ Lemma subtype_coherence: forall S T,
   rts.Subset (runtime S) (runtime T).
 Proof.
   intros S T H.
-  induction H.
-    apply rts_props.subset_equal. reflexivity.
-    induction t.
-      destruct u; (apply IHsubtype || inversion H0).
-      destruct u; (apply IHsubtype || inversion H0).
-      destruct u; (apply IHsubtype || inversion H0).
-      inversion H0. subst. simpl in *. apply IHsubtype.
-      assert (rts.Subset (runtime u) (runtime (typ_union t1 t2))).
-Admitted.
+  induction H; subst.
+  (* function *)
+  simpl. apply rts_props.subset_equal. reflexivity.
+  (* unionL *)
+  simpl. 
+  assert (rts.Subset (runtime s1) (rts.union (runtime t1) (runtime t2))).
+    eapply rts_props.subset_trans. apply IHsubtype_step1.
+    apply rts_props.union_subset_1.
+  assert (rts.Subset (runtime s2) (rts.union (runtime t1) (runtime t2))).
+    eapply rts_props.subset_trans. apply IHsubtype_step2.
+    apply rts_props.union_subset_2.
+  apply rts_props.union_subset_3.
+    exact H1. exact H2.
+  (* unionRL *)
+  simpl.
+  eapply rts_props.subset_trans.
+    apply IHsubtype_step.
+  apply rts_props.union_subset_1.
+  (* unionRR *)
+  simpl.
+  eapply rts_props.subset_trans.
+    apply IHsubtype_step.
+  apply rts_props.union_subset_2.
+Qed.
+
+
+Lemma subtype_coherence: forall S T,
+  subtype_step S T ->
+  rts.Subset (runtime S) (runtime T).
+Proof.
+  intros S T H.
+  induction H; subst.
+  (* function *)
+  simpl. apply rts_props.subset_equal. reflexivity.
+  (* unionL *)
+  simpl. 
+  assert (rts.Subset (runtime s1) (rts.union (runtime t1) (runtime t2))).
+    eapply rts_props.subset_trans. apply IHsubtype_step1.
+    apply rts_props.union_subset_1.
+  assert (rts.Subset (runtime s2) (rts.union (runtime t1) (runtime t2))).
+    eapply rts_props.subset_trans. apply IHsubtype_step2.
+    apply rts_props.union_subset_2.
+  apply rts_props.union_subset_3.
+    exact H1. exact H2.
+  (* unionRL *)
+  simpl.
+  eapply rts_props.subset_trans.
+    apply IHsubtype_step.
+  apply rts_props.union_subset_1.
+  (* unionRR *)
+  simpl.
+  eapply rts_props.subset_trans.
+    apply IHsubtype_step.
+  apply rts_props.union_subset_2.
+Qed.
+
+Lemma static_coherence : forall R S T,
+  static R S T ->
+  subtype T S.
+Proof.
+  intros R S T Hstatic.
+  induction Hstatic; try (apply subtype_invariant).
+  (* ast_union *)
+  apply subtype_trans with (u := typ_union t1' t2').
+  apply subtype_invariant.
+  apply subtype_unionL.
+  Focus 2.
+  
+  
+  
 
 Lemma coherence : forall E val rt T,
   value val ->
@@ -601,6 +665,49 @@ Lemma coherence : forall E val rt T,
   rts.In rt (runtime T).
 Proof.
   intros E val rt T Hvalue Htyping Hrt.
+  induction Htyping; inversion Hvalue.
+  (* functions *)
+  inversion Hrt.
+  simpl.
+  rewrite -> RTSFacts.singleton_iff.
+  reflexivity.
+  (* flat values *)
+  subst.
+  inversion Hrt.
+  eapply const_coherence. apply H. apply H1.
+  (* subtypes of functions *)
+  inversion Hrt; subst.  
+    inversion H3. (* contradiction *)
+  assert (rts.In rt_function (runtime S)).
+    apply IHHtyping. exact Hvalue. trivial.
+  assert (rts.Subset (runtime S) (runtime T)).
+    apply subtype_coherence. exact H.
+  eapply rts_props.in_subset.
+    apply H1. exact H3.
+  (* subtypes of flat values *) 
+  subst.
+  assert (rts.Subset (runtime S) (runtime T)).
+    apply subtype_coherence. exact H.
+  assert (rts.In rt (runtime S)).
+    apply IHHtyping. exact Hvalue. exact Hrt.
+  eapply rts_props.in_subset.
+    apply H1. exact H0.
+  (* runtime types of functions *)
+  inversion Hrt; subst.
+    inversion H6. (* contradiction *)
+  inversion Htyping; subst.
+  
+  Focus 5.
+  
+  
+  assert (rts.In rt (runtime S)).
+    apply IHHtyping. exact Hvalue. exact Hrt. 
+ 
+    subst. assert (rts.In rt (runtime S)).
+
+    eapply const_coherence. 
+  induction Htyping; inversion Hvalue. subst.
+
   induction Htyping; subst.
     inversion Hvalue.
     
@@ -613,7 +720,6 @@ Proof.
   
     Focus 3. inversion H
 
-  destruct val; inversion Hvalue.
   subst. inversion Hrt. subst.
   (* flat values *)
   Focus 2. subst.
