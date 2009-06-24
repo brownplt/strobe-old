@@ -27,12 +27,6 @@ Inductive exp : Set :=
   | e_const : const -> exp
   | cond : exp -> exp -> exp -> exp.
 
-Inductive runtime_type : exp -> RT -> Prop :=
-  | typeof_num : forall n, runtime_type (e_const (const_int n)) rt_number
-  | typeof_str : forall s, runtime_type (e_const (const_str s)) rt_string
-  | typeof_bool : forall b, runtime_type (e_const (const_bool b)) rt_boolean
-  | typeof_abs : forall t e, runtime_type (abs t e) rt_function.
-
 Inductive static : rts.t -> typ -> typ -> Prop :=
   | ast_integer : forall r, rts.In rt_number r -> 
       static r typ_int typ_int
@@ -61,15 +55,6 @@ Fixpoint runtime (t : typ) { struct t } : rts.t:=
   | typ_union t1 t2 => rts.union (runtime t1) (runtime t2)
   end.
 
-Inductive base_typ : typ -> Prop :=
-  | base_typ_int : base_typ (typ_int)
-  | base_typ_bool : base_typ (typ_bool)
-  | base_typ_str : base_typ (typ_str).
-
-Inductive subtypable : typ -> Prop :=
-  | subtypable_arrow : forall t1 t2, subtypable (typ_arrow t1 t2)
-  | subtypable_union : forall t1 t2, subtypable (typ_union t1 t2).
-
 Inductive subtype_step : typ -> typ -> Prop :=
   | subtype_arrow : forall (s1 s2 t1 t2 : typ),
       subtype_step t1 s1 /\ subtype_step s2 t2 -> 
@@ -90,6 +75,23 @@ Inductive subtype : typ -> typ -> Prop :=
       subtype s u ->
       subtype_step u t -> 
       subtype s t.
+
+
+Inductive typing_const : const -> typ -> Prop :=
+  | typing_int : forall n, typing_const (const_int n) typ_int
+  | typing_bool : forall b, typing_const (const_bool b) typ_bool
+  | typing_str : forall s, typing_const (const_str s) typ_str.
+
+Inductive runtime_type_const : const -> RT -> Prop :=
+  | runtime_type_const_int : forall n, runtime_type_const (const_int n) rt_number
+  | runtime_type_const_bool : forall b, runtime_type_const (const_bool b) rt_boolean
+  | runtime_type_const_str : forall s, runtime_type_const (const_str s) rt_string.
+
+Inductive runtime_type : exp -> RT -> Prop :=
+  | typeof_const : forall c rt,
+      runtime_type_const c rt ->
+      runtime_type (e_const c) rt
+  | typeof_abs : forall t e, runtime_type (abs t e) rt_function.
 
 Inductive subst : atom -> exp -> exp -> exp -> Prop :=
   | subst_bvar : forall z u (i : nat), subst z u (bvar i) (bvar i)
@@ -130,10 +132,7 @@ Definition open e u := open_rec 0 u e.
 
 Notation env := (list (atom * typ)).
 
-Inductive typing_const : const -> typ -> Prop :=
-  | typing_int : forall n, typing_const (const_int n) typ_int
-  | typing_bool : forall b, typing_const (const_bool b) typ_bool
-  | typing_str : forall s, typing_const (const_str s) typ_str.
+
 
 
 Inductive lc : exp -> Prop :=
@@ -181,7 +180,7 @@ Inductive typing : env -> exp -> typ -> Prop :=
       typing E e3 T ->
       typing E (cond e1 e2 e3) T
   | typing_sub : forall E e S T,
-      subtype S T ->
+      subtype_step S T ->
       typing E e S ->
       typing E e T
   | typing_runtime : forall E e rt r S T,
@@ -220,7 +219,7 @@ Inductive eval : exp -> exp -> Prop :=
       lc e3 ->
       eval (cond (e_const (const_bool false)) e2 e3) e3.
 
-Hint Constructors typing typing_const subst lc value eval subtypable.
+Hint Constructors typing typing_const subst lc value eval.
 
 Fixpoint fv (e : exp) {struct e} : atoms :=
   match e with
@@ -571,6 +570,14 @@ Proof.
     rewrite <- H3. reflexivity.
 Qed.
 
+Lemma const_coherence : forall c rt T,
+  typing_const c T ->
+  runtime_type_const c rt ->
+  rts.In rt (runtime T).
+Proof.
+  intros c rt T HypT HypRT.
+  inversion HypT; subst; inversion HypRT; subst; simpl; fsetdec.
+Qed.
 
 Lemma subtype_coherence: forall S T,
   subtype S T ->
@@ -594,13 +601,43 @@ Lemma coherence : forall E val rt T,
   rts.In rt (runtime T).
 Proof.
   intros E val rt T Hvalue Htyping Hrt.
+  induction Htyping; subst.
+    inversion Hvalue.
+    
+    inversion Htyping; subst.
+      eapply const_coherence; eauto.
+      inversion H1; subst.
+      eapply const_coherence; eauto.
+      
+      inversion Htyping. apply H2.
+  
+    Focus 3. inversion H
 
   destruct val; inversion Hvalue.
   subst. inversion Hrt. subst.
+  (* flat values *)
+  Focus 2. subst.
+  induction Htyping; subst; inversion Hvalue; subst.
+    inversion Hrt; subst.
+  eapply const_coherence; eauto.
+  inversion Htyping. subst.
+  eapply const_coherence; eauto.
+  inversion Hrt. subst. 
+
   induction Htyping; inversion Hrt.
     simpl. fsetdec.
     subst.
     assert (rts.In rt_function (runtime S)) as IH; auto.
+    induction H; subst.
+      simpl. fsetdec.
+      simpl. rewrite -> RTSFacts.union_iff.
+      assert (rts.In rt_function (runtime t1)).
+        apply IHsubtype_step1. inversion Htyping. auto.
+
+ simpl in *.
+      inversion H; simpl.
+      apply IHHtyping in Hvalue.
+      
 Admitted.
 
 Lemma preservation : forall E e e' T,
@@ -623,60 +660,52 @@ Proof.
     exists rt_function. apply typeof_abs.
     subst. destruct c; eauto.
   destruct H1 as [rt H1].
-  pick fresh x.
-  assert (subst x e2 (open e0 (fvar (runtime T1) x)) (open e0 e2)) as HypIntro.
+  pick fresh x0.
+  assert (subst x0 e2 (open e0 (fvar (runtime T1) x0)) (open e0 e2)) as HypIntro.
     eapply subst_intro. 
       exact H5. apply H1.
       eapply coherence. apply H5. apply H0. exact H1. 
       fsetdec.
       eapply typing_regular_lc. apply H0.
-  assert (typing ((x, T1) :: E) (open e0 (fvar (runtime T1) x)) T2).
-    apply H4. fsetdec.
-  eapply typing_subst. apply H5. apply H2. apply H0. exact HypIntro.
-  (* application with subtyping *) 
-  Check typing_su
-  eapply typing_sub.
-    Ce
-    
-  inversion H1. subst.
-  assert (typing E (abs t e0) (typ_arrow T1 T2)).
-    eapply typing_sub. apply H1. exact H2.
-  clear H1 H2.
-  assert (exists rt, runtime_type e2 rt).
-    destruct e2; inversion H5.
-    exists rt_function. apply typeof_abs.
-    subst. destruct c; eauto.
-  destruct H1 as [rt H1].
-  pick fresh x.
-  assert (subst x e2 (open e0 (fvar (runtime T1) x)) (open e0 e2)) as HypIntro.
-    eapply subst_intro. 
-      exact H5. apply H1.
-      eapply coherence. apply H5. apply H0. exact H1. 
-      fsetdec.
-      eapply typing_regular_lc. apply H0.
-  assert (typing ((x, T1) :: E) (open e0 (fvar (runtime T1) x)) T2).
-    apply Fr. fsetdec.
-  eapply typing_subst. apply H5. apply H2. apply H0. exact HypIntro.
+  eapply typing_subst.
+    apply H5.
+    apply H4. 
+      assert (x0 `notin` L). fsetdec. apply H2.
+    apply H0.
+    apply HypIntro.
+  (* application with subtyping *)
+  assert (typing E (abs t e0) (typ_arrow T1 T2)) as HypTArr.
+    apply typing_sub with (S := S). exact H1. exact H2.
+    inversion HypTArr; subst.
+    Focus 2.
   
-Check typing_sub.  apply typing_sub with (S := S) (T := typ_arrow T1 T2) in H2.
+    
 
+
+
+  Focus 3.
+  (* application where e1 is reduced *)
+  assert (typing E e1' (typ_arrow T1 T2)) as HypPresv.
+    apply IHtyping1. exact H5.
+  apply typing_app with (T1 := T1). exact HypPresv. exact H0.
   (* application where e2 is reduced *)
-  subst.
+  Focus 3.
   assert (typing E e2' T1) as HypPresv.
     apply IHtyping2. exact H5.
   apply typing_app with (T1 := T1). exact H. exact HypPresv.
 
-  (* application where e1 is reduced *)
-  subst.
-  assert (typing E (abs T1 e0) (typ_arrow T1 T2)) as HypPresv.
-    apply IHtyping1. exact H5.
-  apply typing_app with (T1 := T1). exact HypPresv. exact H0.
   (* const *)
-  Focus  2.
+  Focus  3.
   inversion J.
   (* cond *)
-  Focus 2.
+  Focus 3.
   inversion J; subst; auto.
+  (* subtyping *)
+  Focus 3.
+  eapply typing_sub. apply H. apply IHtyping. exact J.
+  (* runtime typing *)
+  Focus 3.
+  inversion H; subst; inversion J.
 Qed.
 
 Lemma progress : forall e T,
