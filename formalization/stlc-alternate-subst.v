@@ -598,25 +598,6 @@ Proof.
     rewrite <- H3. reflexivity.
 Qed.
 
-Lemma runtime_static_1 : forall R S T,
-  static R S T -> rts.Subset (runtime T) R.
-Proof.
-  intros R S T Hstatic.
-  inversion Hstatic; subst; simpl.
-  Check rts_props.in_subset.
-  apply rts_props.in_subset in H.
-
-Lemma runtime_in_static: forall rt r S T,
-  rts.In rt (runtime S) ->
-  static r S T ->
-  rts.In rt (runtime T).
-Proof.
-  intros rt r S T Hin Hstatic.
-  induction S; simpl.
-    destruct T; destruct rt; simpl.
-    rewrite -> RTSFacts.singleton_iff. reflexivity.
-Admitted.
-
 Lemma subtype_coherence: forall S T,
   subtype S T ->
   rts.Subset (runtime S) (runtime T).
@@ -652,16 +633,6 @@ Proof.
   apply rts_props.union_subset_2.
 Qed.
 
-
-Lemma const_coherence : forall c rt T,
-  typing_const c T ->
-  runtime_type_const c rt ->
-  rts.In rt (runtime T).
-Proof.
-  intros c rt T HypT HypRT.
-  inversion HypT; subst; inversion HypRT; subst; simpl; fsetdec.
-Qed.
-
 Lemma static_coherence : forall R S T,
   static R S T ->
   subtype T S.
@@ -680,6 +651,24 @@ Proof.
   apply subtype_unionRR. exact IHHstatic.
 Qed.
 
+Lemma runtime_static_1 : forall R S T,
+  static R S T -> rts.Subset (runtime T) R.
+Proof.
+  intros R S T Hstatic.
+  
+  inversion Hstatic; subst; simpl.
+Admitted.
+
+Lemma const_coherence : forall c rt T,
+  typing_const c T ->
+  runtime_type_const c rt ->
+  rts.In rt (runtime T).
+Proof.
+  intros c rt T HypT HypRT.
+  inversion HypT; subst; inversion HypRT; subst; simpl; fsetdec.
+Qed.
+
+
 
 Lemma canonical_abs_typing : forall E T1 e T,
   typing E (abs T1 e) T ->
@@ -694,8 +683,10 @@ Proof.
   eapply rts_props.in_subset. apply H0. apply H.
   (* runtime typing *)
   inversion H0. subst.
-  eapply runtime_in_static. apply H1. apply H2.
-Qed.   
+  apply runtime_static_1 in H2.
+  eapply rts_props.in_subset.
+    apply H1.
+Admitted.
 
 Lemma runtime_static_coherence: forall E val rt T,
   value val ->
