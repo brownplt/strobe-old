@@ -218,7 +218,6 @@ Inductive typing : env -> exp -> typ -> Prop :=
       static r S T ->
       typing E e T.
 
-
 Inductive eval : exp -> exp -> Prop :=
   | eval_beta : forall t e1 e2,
       lc (abs t e1) ->
@@ -660,7 +659,62 @@ Proof.
   inversion HypT; subst; inversion HypRT; subst; simpl; fsetdec.
 Qed.
 
+Lemma typing_const_inv : forall E c S,
+  typing E (e_const c) S ->
+  exists T, typing_const c T /\ subtype T S.
+Proof.
+  intros E c S Htyping.
+  remember (e_const c) as const.
+  induction Htyping; inversion Heqconst0; subst.
+Focus 3.
+  assert (typing E (e_const c) T) as HtypingT. eapply typing_runtime; eauto.
+  apply IHHtyping in H3.
+  destruct H3 as [T' [Htyping' Hsub]].
+  exists T'. split. exact Htyping'.
+  apply static_coherence in H2.
+    inversion HtypingT; subst.
+    assert (T = T').
+      inversion Htyping'; inversion H5; subst; 
+      (reflexivity || inversion H5 || inversion Htyping').
+    rewrite -> H3.
+    apply subtype_refl.
+    (* subtyping *)
+    
+    eapply subtype_trans.
+      apply Hsub.
+    Admitted.
+(*
+      reflexivity. inversion H5.
+         
+    Focus 3. auto.
+  
+  eapply subtype_trans. apply Hsub.
 
+
+
+  (* typing_const *)
+  exists T. split.
+  exact H.
+  intros.
+    induction T'. 
+  
+
+apply subtype_refl.
+  (* typing_sub *)
+  apply IHHtyping in H0.
+  destruct H0 as [T' [Htyping' Hsub]].
+  exists T'. split. exact Htyping'.
+  eapply subtype_trans. apply Hsub. apply H.
+  (* typing_runtime *)
+  assert (typing E (e_const c) T) as HtypingT. eapply typing_runtime; eauto.
+  apply IHHtyping in H3.
+  destruct H3 as [T' [Htyping' Hsub]].
+  exists T'. split. exact Htyping'.
+  apply static_coherence in H2.
+  
+  eapply subtype_trans. apply Hsub.
+  
+*)
 Lemma typing_inv_abs : forall E T1 e T,
   typing E (abs T1 e) T ->
   exists T2, typing E (abs T1 e) (typ_arrow T1 T2) /\ 
@@ -739,6 +793,13 @@ Proof.
     eapply rts_props.in_subset.
       apply Hsingleton. exact Hsub.
     (* flat values *)
+    inversion H3; subst.
+      (* typing_e_const *)
+      inversion Hrt; subst. eapply const_coherence. apply H6. exact H5.
+      (* subtyping *)
+      apply IHHtyping in Hvalue.
+      apply static_coherence in H2.
+      eapply rts_props.in_subset. apply Hvalue.
     subst.
 Admitted.
   
@@ -777,6 +838,7 @@ Proof.
   eapply rts_props.in_subset.
     apply H1. exact H0.
   (* runtime typing *)
+  Check runtime_static_coherence.
   eapply runtime_static_coherence; eauto.
   eapply runtime_static_coherence; eauto.
 Qed.
@@ -814,7 +876,7 @@ Proof.
     apply H4. 
       assert (x0 `notin` L). fsetdec. apply H2.
     apply H0.
-    apply HypIntro.
+    exact HypIntro.
   (* application with subtyping *)
   assert (typing E (abs t e0) (typ_arrow T1 T2)) as HypTArr.
     apply typing_sub with (S := S). exact H1. exact H2.
