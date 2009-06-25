@@ -651,14 +651,6 @@ Proof.
   apply subtype_unionRR. exact IHHstatic.
 Qed.
 
-Lemma runtime_static_1 : forall R S T,
-  static R S T -> rts.Subset (runtime T) R.
-Proof.
-  intros R S T Hstatic.
-  
-  inversion Hstatic; subst; simpl.
-Admitted.
-
 Lemma const_coherence : forall c rt T,
   typing_const c T ->
   runtime_type_const c rt ->
@@ -669,24 +661,43 @@ Proof.
 Qed.
 
 
-
-Lemma canonical_abs_typing : forall E T1 e T,
+Lemma typing_inv_abs : forall E T1 e T,
   typing E (abs T1 e) T ->
-  rts.In rt_function (runtime T).
+  exists T2, typing E (abs T1 e) (typ_arrow T1 T2) /\ 
+             subtype (typ_arrow T1 T2) T.
 Proof.
   intros E T1 e T Htyping.
   remember (abs T1 e) as exp.
-  induction Htyping; inversion Heqexp0; subst.
-  simpl. rewrite -> RTSFacts.singleton_iff. reflexivity.
-  apply subtype_coherence in H.
-  apply IHHtyping in H0.
-  eapply rts_props.in_subset. apply H0. apply H.
-  (* runtime typing *)
-  inversion H0. subst.
-  apply runtime_static_1 in H2.
-  eapply rts_props.in_subset.
-    apply H1.
+  induction Htyping; intros; inversion Heqexp0. (* dismiss non-abstractions *)
+  (* typing_abs *)
+  subst. clear Heqexp0.
+  pick fresh x.
+  assert (typing ((x, T1) :: E) (open e (fvar (runtime T1) x)) T2).
+    apply H. fsetdec.
+  exists T2.
+  split.
+  apply typing_abs with (L := L).
+  apply H.
+  apply subtype_refl.
+  (* typing_sub *)
+  subst.
+  apply IHHtyping in H0. 
+  destruct H0 as [T2 [Htyping' Hsub']].
+  exists T2.
+  split.
+  exact Htyping'.
+  eapply subtype_trans. apply Hsub'. exact H.
+  (* typing_runtime *)
+  subst. 
+  apply IHHtyping in H3.
+  destruct H3 as [T2 [Htyping' Hsub']].
+  exists T2.
+  split.
+  exact Htyping'.
+  (* subtyping for typing_runtime *)
+  inversion H0; subst.
 Admitted.
+
 
 Lemma runtime_static_coherence: forall E val rt T,
   value val ->
@@ -716,17 +727,19 @@ Proof.
   eapply rts_props.in_subset. apply Hsub. exact Hsubset.
   (* runtime typing *)
   assert (typing E e T). eapply typing_runtime; eauto.
-  destruct e; inversion Hvalue.
+  destruct e; inversion Hvalue; subst.
     (* abstractions *)
-    inversion Hrt. inversion H3. subst.
-    simpl. rewrite -> RTSFacts.singleton_iff. reflexivity.
-    subst. apply subtype_coherence in H10.
-    apply static_coherence in H2.
+    assert (rt = rt_function); subst. inversion Hrt. reflexivity.
+    apply typing_inv_abs in H3.
+    destruct H3 as [T2 [HtypingT2 Hsub]].
+    apply subtype_coherence in Hsub.
+    simpl in Hsub.
+    assert (rts.In rt_function (rts.singleton rt_function)) as Hsingleton.
+      rewrite -> RTSFacts.singleton_iff. reflexivity.
+    eapply rts_props.in_subset.
+      apply Hsingleton. exact Hsub.
     (* flat values *)
     subst.
-  
-  assert (rts.In rt (runtime S)) as Hsub. apply IHHtyping; auto.
-  apply static_coherence in H2.
 Admitted.
   
 Lemma coherence : forall E val rt T,
