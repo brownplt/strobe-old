@@ -56,31 +56,6 @@ Fixpoint runtime (t : typ) { struct t } : rts.t:=
   | typ_union t1 t2 => rts.union (runtime t1) (runtime t2)
   end.
 
-(*
-Inductive subtype_step : typ -> typ -> Prop :=
-  | subtype_arrow : forall (s1 s2 t1 t2 : typ),
-      subtype_step t1 s1 /\ subtype_step s2 t2 -> 
-      subtype_step (typ_arrow s1 s2) (typ_arrow t1 t2)
-  | subtype_unionL : forall (s1 s2 t1 t2 : typ),
-      subtype_step s1 t1 ->
-      subtype_step s2 t2 ->
-      subtype_step (typ_union s1 s2) (typ_union t1 t2)
-  | subtype_unionRL : forall (s t1 t2 : typ),
-      subtype_step s t1 -> 
-      subtype_step s (typ_union t1 t2)
-  | subtype_unionRR : forall (s t1 t2 : typ),
-      subtype_step s t2 -> 
-      subtype_step s (typ_union t1 t2).
-
-Inductive subtype : typ -> typ -> Prop :=
-  | subtype_invariant : forall (t : typ), 
-      subtype t t
-  | subtype_trans : forall (s t u : typ), 
-      subtype s u ->
-      subtype_step u t -> 
-      subtype s t.
-*)
-
 Inductive subtype : typ -> typ -> Prop :=
   | subtype_refl : forall (t : typ), 
       subtype t t
@@ -159,9 +134,6 @@ Definition open e u := open_rec 0 u e.
 
 Notation env := (list (atom * typ)).
 
-
-
-
 Inductive lc : exp -> Prop :=
   | lc_var : forall r x,
       lc (fvar r x)
@@ -209,14 +181,19 @@ Inductive typing : env -> exp -> typ -> Prop :=
   | typing_sub : forall E e S T,
       subtype S T ->
       typing E e S ->
-      typing E e T
+      typing E e T.
+
+Inductive typing_soundness : env -> exp -> typ -> Prop :=
+  | typing_static : forall E e T,
+      typing E e T -> 
+      typing_soundness E e T
   | typing_runtime : forall E e rt r S T,
       value e ->
       typing E e S ->
       runtime_type e rt ->
       rts.In rt r ->
       static r S T ->
-      typing E e T.
+      typing_soundness E e T.
 
 Inductive eval : exp -> exp -> Prop :=
   | eval_beta : forall t e1 e2,
@@ -246,7 +223,7 @@ Inductive eval : exp -> exp -> Prop :=
       eval (cond (e_const (const_bool false)) e2 e3) e3.
 
 Hint Constructors typing typing_const subst lc value eval runtime_type
-  runtime_type_const.
+  runtime_type_const typing_soundness.
 
 Fixpoint fv (e : exp) {struct e} : atoms :=
   match e with
@@ -296,7 +273,40 @@ Tactic Notation
  * Lemmas                                                                    *
  *****************************************************************************)
 
-
+Lemma subtype_coherence: forall S T,
+  subtype S T ->
+  rts.Subset (runtime S) (runtime T).
+Proof.
+  intros S T H.
+  induction H; subst.
+  (* reflexivity *)
+  simpl. apply rts_props.subset_equal. reflexivity.
+  (* transitivity *)
+  eapply rts_props.subset_trans.
+    apply IHsubtype1. apply IHsubtype2.
+  (* functions *)
+  simpl. apply rts_props.subset_equal. reflexivity.
+  (* unionL *)
+  simpl. 
+  assert (rts.Subset (runtime s1) (rts.union (runtime t1) (runtime t2))).
+    eapply rts_props.subset_trans. apply IHsubtype1.
+    apply rts_props.union_subset_1.
+  assert (rts.Subset (runtime s2) (rts.union (runtime t1) (runtime t2))).
+    eapply rts_props.subset_trans. apply IHsubtype2.
+    apply rts_props.union_subset_2.
+  apply rts_props.union_subset_3.
+    exact H1. exact H2.
+  (* unionRL *)
+  simpl.
+  eapply rts_props.subset_trans.
+    apply IHsubtype.
+  apply rts_props.union_subset_1.
+  (* unionRR *)
+  simpl.
+  eapply rts_props.subset_trans.
+    apply IHsubtype.
+  apply rts_props.union_subset_2.
+Qed.
 
 Lemma open_rec_lc_core : forall e j v i u,
   i <> j ->
@@ -358,58 +368,6 @@ Proof.
   inversion H0. subst. simpl. auto.
 Qed.
 
-Lemma typing_weakening_strengthened :  forall E F G e T,
-  typing (G ++ E) e T ->
-  ok (G ++ F ++ E) ->
-  typing (G ++ F ++ E) e T.
-Proof.
-  intros E F G e T H.
-  remember (G ++ E) as E'.
-  generalize dependent G.
-  induction H; intros G Eq Ok; subst.
-  Case "typing_var".
-    apply typing_var with (T := T).
-      apply Ok.
-      apply binds_weaken. apply H0. apply Ok. exact H1.
-  Case "typing_abs".
-    pick fresh x and apply typing_abs.
-    rewrite <- cons_concat_assoc.
-    apply H0.
-      auto.
-      rewrite cons_concat_assoc. reflexivity.
-      rewrite cons_concat_assoc. apply ok_cons.
-        apply Ok.
-        auto.
-  Case "typing_app".
-    eapply typing_app.
-      eapply IHtyping1. reflexivity. apply Ok.
-      eapply IHtyping2. reflexivity. apply Ok.
-  (* const *)
-  apply typing_e_const. exact H.
-  (* cond *)
-  auto.
-  (* subtyping *)
-  eapply typing_sub.
-    apply H.
-    auto.
-  (* runtime *)
-  eapply typing_runtime.
-    exact H. apply IHtyping. reflexivity. exact Ok.
-    apply H1.
-    apply H2.
-    exact H3.
-Qed.
-
-Lemma typing_weakening : forall E F e T,
-    typing E e T ->
-    ok (F ++ E) ->
-    typing (F ++ E) e T.
-Proof.
-  intros E F e T H J.
-  rewrite <- (nil_concat _ (F ++ E)).
-  apply typing_weakening_strengthened; auto.
-Qed.
-
 Lemma typing_regular_lc : forall E e T,
   typing E e T -> lc e.
 Proof.
@@ -450,12 +408,217 @@ Proof.
   auto. auto. auto.
 Qed.
 
+Lemma subst_fresh : forall (x : atom) e u,
+  x `notin` fv e -> subst x u e e.
+Proof.
+  intros x e u.
+  intros H.
+  induction e.
+    apply subst_bvar.
+    apply subst_fvar_noop.
+      unfold not.
+      intros.
+      unfold fv in H.
+      assert (x `notin` singleton a -> False). fsetdec.
+      apply H1. exact H.
+    apply subst_abs.
+      apply IHe.
+      fsetdec.
+    simpl in H.
+    apply subst_app.
+      apply IHe1. fsetdec.
+      apply IHe2. fsetdec.
+    apply subst_const.
+    apply subst_cond; simpl in H; auto.
+Qed. 
+
+Lemma subst_intro : forall (x : atom) u e r rt,
+  value u ->
+  runtime_type u rt ->
+  rts.In rt r ->
+  x `notin` (fv e) ->
+  lc u ->
+  subst x u (open e (fvar r x)) (open e u).
+Proof.
+  intros x u e r rt Value Hruntime Hconsistent H J.
+  unfold open.
+  apply subst_open_rec.
+    exact J. apply subst_fresh. exact H.
+    eauto.
+Qed.
+
+Lemma single_runtime_type : forall val r1 r2,
+  runtime_type val r1 ->
+  runtime_type val r2 ->
+  r1 = r2.
+Proof.
+  intros val r1 r2 Hrt1 Hrt2.
+  inversion Hrt1; inversion Hrt2; subst.
+  inversion H; inversion H2; subst; (reflexivity || inversion H3).
+  inversion H2.
+  inversion H2.
+  reflexivity.
+Qed.
+
+Lemma static_sub : forall R S T,
+  static R S T ->
+  subtype T S.
+Proof.
+  intros R S T Hstatic. 
+  induction Hstatic; try (apply subtype_refl).
+  (* ast_union *)
+  apply subtype_trans with (u := typ_union t1' t2').
+  apply subtype_refl.
+  apply subtype_unionL.
+  apply IHHstatic1.
+  apply IHHstatic2.
+  (* ast_unionL *)
+  apply subtype_unionRL. exact IHHstatic.
+  (* ast_unionR *)
+  apply subtype_unionRR. exact IHHstatic.
+Qed.
+
+(************
+* Weakening *
+************)
+
+Lemma typing_static_weakening : forall E F G e T,
+  typing (G ++ E) e T ->
+  ok (G ++ F ++ E) ->
+  typing (G ++ F ++ E) e T.
+Proof.
+  intros E F G e T H.
+  remember (G ++ E) as E'.
+  generalize dependent G.
+  induction H; intros G Eq Ok; subst; try eauto.
+  (* typing_abs *)
+  pick fresh x and apply typing_abs.
+  rewrite <- cons_concat_assoc.
+  apply H0.
+  auto.
+  rewrite cons_concat_assoc. reflexivity.
+  rewrite cons_concat_assoc. apply ok_cons.
+  apply Ok.
+  auto.
+Qed.
+
+Lemma typing_weakening_strengthened :  forall E F G e T,
+  typing_soundness (G ++ E) e T ->
+  ok (G ++ F ++ E) ->
+  typing_soundness (G ++ F ++ E) e T.
+Proof.
+  intros E F G e T H Ok.
+  inversion H; subst.
+  (* static typing *)
+  apply typing_static.
+  apply typing_static_weakening. exact H0. exact Ok.
+  (* runtime typing *)
+  eapply typing_runtime.
+  exact H0.
+  apply typing_static_weakening. apply H1. exact Ok.
+  apply H2.
+  apply H3.
+  exact H4.
+Qed.
+
+Lemma typing_weakening : forall E F e T,
+    typing_soundness E e T ->
+    ok (F ++ E) ->
+    typing_soundness (F ++ E) e T.
+Proof.
+  intros E F e T H J.
+  rewrite <- (nil_concat _ (F ++ E)).
+  apply typing_weakening_strengthened; auto.
+Qed.
+
+(********************************************************************)
+(* Coherence                                                        *)
+(********************************************************************)
+
+Lemma const_coherence : forall c rt T,
+  typing_const c T ->
+  runtime_type_const c rt ->
+  rts.In rt (runtime T).
+Proof.
+  intros c rt T HypT HypRT.
+  inversion HypT; subst; inversion HypRT; subst; simpl; fsetdec.
+Qed.
+
+Lemma static_coherence : forall E val rt T,
+  value val ->
+  typing E val T ->
+  runtime_type val rt ->
+  rts.In rt (runtime T).
+Proof.
+  intros E val rt T Hvalue Htyping Hrt.
+  induction Htyping; inversion Hvalue.
+  (* functions *)
+  inversion Hrt.
+  simpl.
+  rewrite -> RTSFacts.singleton_iff.
+  reflexivity.
+  (* flat values *)
+  subst.
+  inversion Hrt.
+  eapply const_coherence. apply H. apply H1.
+  (* subtypes of functions *)
+  inversion Hrt; subst. inversion H3. (* contradiction *)  
+  assert (rts.Subset (runtime S) (runtime T)).
+    apply subtype_coherence. exact H.
+  assert (rts.In rt_function (runtime S)).
+    apply IHHtyping in Hvalue. exact Hvalue.
+    exact Hrt.
+  eapply rts_props.in_subset. apply H3. exact H1.
+  (* subtypes of flat values *) 
+  subst.
+  assert (rts.Subset (runtime S) (runtime T)).
+    apply subtype_coherence. exact H.
+  assert (rts.In rt (runtime S)).
+    apply IHHtyping in Hvalue. exact Hvalue.
+    exact Hrt.
+  eapply rts_props.in_subset. apply H1. exact H0.
+Qed.
+
+Theorem coherence : forall E val rt T,
+  value val ->
+  typing_soundness E val T ->
+  runtime_type val rt ->
+  rts.In rt (runtime T).
+Proof.
+  intros E val rt T Hvalue Htyping Hrt.
+  inversion Htyping; subst.
+  eapply static_coherence; eauto.
+  (* runtime typing *)
+  assert (subtype T S). eapply static_sub. apply H3.
+  assert (rts.Subset (runtime T) (runtime S)).
+    eapply subtype_coherence. exact H4.
+  assert (rt0 = rt); subst. eapply single_runtime_type; eauto.
+  apply static_coherence with (rt := rt) (T := S) (E := E) in H.
+    exact H.
+
+
+
+  apply static_sub in H3.
+  apply subtype_coherence in H3.
+  apply static_coherence with (rt := rt0) in H0.
+    eapply rts_props.in_subset. apply H0.  
+  Check runtime_static_coherence.
+  eapply runtime_static_coherence; eauto.
+  eapply runtime_static_coherence; eauto.
+Qed.
+
+(***************
+* Substitution *
+***************)
+
+  
+
 Lemma typing_subst_strengthened : forall E F e e' u S T z,
   value u ->
-  typing (F ++ (z, S) :: E) e T ->
-  typing E u S ->
+  typing_soundness (F ++ (z, S) :: E) e T ->
+  typing_soundness E u S ->
   subst z u e e' ->
-  typing (F ++ E) e' T.
+  typing_soundness (F ++ E) e' T.
 Proof.
   intros F E e e' u S T z Value.
   remember (E ++ (z, S) :: F) as G. 
@@ -463,7 +626,8 @@ Proof.
   generalize dependent E.
   generalize dependent F.
   generalize dependent e'.
-  induction Hyp0.
+  inversion Hyp0; subst.
+  induction H.
   (* var *)
   intros.
   subst.
@@ -476,6 +640,16 @@ Proof.
     subst. apply typing_weakening.
     Focus 2. eapply ok_remove_mid_cons. apply H.
     eapply typing_runtime.
+      exact
+  
+    assert (typing F e' S).
+      inversion Hyp1; subst. exact H3.
+      assert (rt = rt0); subst. 
+        eapply single_runtime_type; eauto.
+      
+
+      
+   
       exact Value.
       apply Hyp1.
       apply H4.
@@ -536,49 +710,12 @@ Proof.
     simpl. exact Value. exact HypInd. exact HypS. exact HypSubst.
 Qed.
 
-Lemma subst_fresh : forall (x : atom) e u,
-  x `notin` fv e -> subst x u e e.
-Proof.
-  intros x e u.
-  intros H.
-  induction e.
-    apply subst_bvar.
-    apply subst_fvar_noop.
-      unfold not.
-      intros.
-      unfold fv in H.
-      assert (x `notin` singleton a -> False). fsetdec.
-      apply H1. exact H.
-    apply subst_abs.
-      apply IHe.
-      fsetdec.
-    simpl in H.
-    apply subst_app.
-      apply IHe1. fsetdec.
-      apply IHe2. fsetdec.
-    apply subst_const.
-    apply subst_cond; simpl in H; auto.
-Qed. 
 
 
 (*************************************************************************)
 (** * Preservation *)
 (*************************************************************************)
 
-Lemma subst_intro : forall (x : atom) u e r rt,
-  value u ->
-  runtime_type u rt ->
-  rts.In rt r ->
-  x `notin` (fv e) ->
-  lc u ->
-  subst x u (open e (fvar r x)) (open e u).
-Proof.
-  intros x u e r rt Value Hruntime Hconsistent H J.
-  unfold open.
-  apply subst_open_rec.
-    exact J. apply subst_fresh. exact H.
-    eauto.
-Qed.
 
 Hint Constructors runtime_type.
 
@@ -597,67 +734,9 @@ Proof.
     rewrite <- H3. reflexivity.
 Qed.
 
-Lemma subtype_coherence: forall S T,
-  subtype S T ->
-  rts.Subset (runtime S) (runtime T).
-Proof.
-  intros S T H.
-  induction H; subst.
-  (* reflexivity *)
-  simpl. apply rts_props.subset_equal. reflexivity.
-  (* transitivity *)
-  eapply rts_props.subset_trans.
-    apply IHsubtype1. apply IHsubtype2.
-  (* functions *)
-  simpl. apply rts_props.subset_equal. reflexivity.
-  (* unionL *)
-  simpl. 
-  assert (rts.Subset (runtime s1) (rts.union (runtime t1) (runtime t2))).
-    eapply rts_props.subset_trans. apply IHsubtype1.
-    apply rts_props.union_subset_1.
-  assert (rts.Subset (runtime s2) (rts.union (runtime t1) (runtime t2))).
-    eapply rts_props.subset_trans. apply IHsubtype2.
-    apply rts_props.union_subset_2.
-  apply rts_props.union_subset_3.
-    exact H1. exact H2.
-  (* unionRL *)
-  simpl.
-  eapply rts_props.subset_trans.
-    apply IHsubtype.
-  apply rts_props.union_subset_1.
-  (* unionRR *)
-  simpl.
-  eapply rts_props.subset_trans.
-    apply IHsubtype.
-  apply rts_props.union_subset_2.
-Qed.
 
-Lemma static_coherence : forall R S T,
-  static R S T ->
-  subtype T S.
-Proof.
-  intros R S T Hstatic. 
-  induction Hstatic; try (apply subtype_refl).
-  (* ast_union *)
-  apply subtype_trans with (u := typ_union t1' t2').
-  apply subtype_refl.
-  apply subtype_unionL.
-  apply IHHstatic1.
-  apply IHHstatic2.
-  (* ast_unionL *)
-  apply subtype_unionRL. exact IHHstatic.
-  (* ast_unionR *)
-  apply subtype_unionRR. exact IHHstatic.
-Qed.
 
-Lemma const_coherence : forall c rt T,
-  typing_const c T ->
-  runtime_type_const c rt ->
-  rts.In rt (runtime T).
-Proof.
-  intros c rt T HypT HypRT.
-  inversion HypT; subst; inversion HypRT; subst; simpl; fsetdec.
-Qed.
+
 
 Lemma typing_const_inv : forall E c S,
   typing E (e_const c) S ->
@@ -803,45 +882,6 @@ Proof.
     subst.
 Admitted.
   
-Lemma coherence : forall E val rt T,
-  value val ->
-  typing E val T ->
-  runtime_type val rt ->
-  rts.In rt (runtime T).
-Proof.
-  intros E val rt T Hvalue Htyping Hrt.
-  induction Htyping; inversion Hvalue.
-  (* functions *)
-  inversion Hrt.
-  simpl.
-  rewrite -> RTSFacts.singleton_iff.
-  reflexivity.
-  (* flat values *)
-  subst.
-  inversion Hrt.
-  eapply const_coherence. apply H. apply H1.
-  (* subtypes of functions *)
-  inversion Hrt; subst.  
-    inversion H3. (* contradiction *)
-  assert (rts.In rt_function (runtime S)).
-    apply IHHtyping. exact Hvalue. trivial.
-  assert (rts.Subset (runtime S) (runtime T)).
-    apply subtype_coherence. exact H.
-  eapply rts_props.in_subset.
-    apply H1. exact H3.
-  (* subtypes of flat values *) 
-  subst.
-  assert (rts.Subset (runtime S) (runtime T)).
-    apply subtype_coherence. exact H.
-  assert (rts.In rt (runtime S)).
-    apply IHHtyping. exact Hvalue. exact Hrt.
-  eapply rts_props.in_subset.
-    apply H1. exact H0.
-  (* runtime typing *)
-  Check runtime_static_coherence.
-  eapply runtime_static_coherence; eauto.
-  eapply runtime_static_coherence; eauto.
-Qed.
 
 
 Lemma preservation : forall E e e' T,
