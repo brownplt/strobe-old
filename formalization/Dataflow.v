@@ -61,14 +61,16 @@ Module RT_as_OT.
 
 End RT_as_OT.
 
-Module rts := FSetList.Make(RT_as_OT).
-Module RTSFacts := FSetFacts.Facts (rts).
-Module RTSDecide := FSetDecide.Decide (rts).
-Require Import Coq.FSets.FSetEqProperties.
-Require Import Coq.FSets.FSetProperties.
-Module rts_eq := EqProperties (rts).
-Module rts_props := Properties (rts).
+Require Import FiniteSets.
+Require Import FSetDecide.
 
-Definition RTS := rts.t.
-Ltac rtsdec := RTSDecide.fsetdec.
+Module rts_module := FiniteSets.Make (RT_as_OT).
+Module rts := rts_module.F.
+Module rts_props := FSetProperties.Properties (rts).
+Module rts_facts := FSetFacts.Facts (rts).
+Module rts_decide := FSetDecide.Decide (rts).
+
+Ltac rtsdec := try apply rts_module.eq_if_Equal; rts_decide.fsetdec.
+
+Notation RTS := rts_module.F.t.
 
