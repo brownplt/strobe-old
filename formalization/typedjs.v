@@ -9,6 +9,11 @@ Inductive typ : Set :=
   | typ_arrow : typ -> typ -> typ
   | typ_union : typ -> typ -> typ.
 
+Inductive base_typ : typ -> Prop :=
+  | base_typ_int : base_typ typ_int
+  | base_typ_bool : base_typ typ_bool
+  | base_typ_str : base_typ typ_str.
+
 Axiom typ_union_symm : forall t1 t2, typ_union t1 t2 = typ_union t2 t1.
 
 Inductive string : Set :=
@@ -86,6 +91,7 @@ Inductive subtype : typ -> typ -> Prop :=
   | subtype_unionRR : forall (s t1 t2 : typ),
       subtype s t2 -> 
       subtype s (typ_union t1 t2).
+
 
 
 Inductive typing_const : const -> typ -> Prop :=
@@ -612,6 +618,158 @@ Proof.
     simpl. exact Value. exact HypInd. exact HypS. exact HypSubst.
 Qed.
 
+(*****************************************************************************)
+(* Inversion Lemmas                                                          *)
+(*****************************************************************************)
+
+Lemma subtype_inv_arrow : forall U V1 V2,
+     subtype U (typ_arrow V1 V2)
+  -> exists U1, exists U2, 
+       (U=(typ_arrow U1 U2)) /\ (subtype V1 U1) /\ (subtype U2 V2).
+Proof with eauto.
+  intros U V1 V2 Hs.
+  remember (typ_arrow V1 V2) as V.
+  generalize dependent V2. generalize dependent V1.
+  induction Hs; intros; inversion HeqV.
+  exists V1. exists V2.
+  split. reflexivity. split. apply subtype_refl. apply subtype_refl.
+  (* transitivity *)
+  apply IHHs2 in HeqV.
+  destruct HeqV as [U1 [U2 HeqV]].
+  destruct HeqV as [Hu [Hsub1 Hsub2]].
+  apply IHHs1 in Hu.
+  destruct Hu as [U3 [U4 Hu]].
+  destruct Hu as [Hs [Hsub3 Hsub]].
+  exists U3. exists U4.
+  split. exact Hs.
+  split. eapply subtype_trans. apply Hsub1. exact Hsub3.
+         eapply subtype_trans. apply Hsub. exact Hsub2.
+  (* arrow subtyping *)  
+  exists s1. exists s2.
+  subst...
+Qed.
+
+Lemma subtype_eq : forall T1 T2,
+  subtype T1 T2 ->
+  subtype T2 T1 ->
+  T1 = T2.
+Proof.
+Admitted.
+
+Lemma subtype_inv_int : forall T,
+  subtype T typ_int ->
+  T = typ_int.
+Proof.
+  intros T Hsub.
+  remember typ_int as U.
+  rewrite -> HeqU.
+  assert (subtype T typ_int) as HsubOrig. subst. exact Hsub.
+  generalize dependent HsubOrig.
+  generalize dependent HeqU.
+  induction Hsub; intros; try (inversion HeqU).
+  subst. reflexivity.
+  (* subtyping *)
+  apply IHHsub1. apply IHHsub2. exact HeqU.
+  subst. exact Hsub2. exact HsubOrig.
+Qed.
+
+Lemma subtype_inv_bool : forall T,
+  subtype T typ_bool ->
+  T = typ_bool.
+Proof.
+  intros T Hsub.
+  remember typ_bool as U.
+  rewrite -> HeqU.
+  assert (subtype T typ_bool) as HsubOrig. subst. exact Hsub.
+  generalize dependent HsubOrig.
+  generalize dependent HeqU.
+  induction Hsub; intros; try (inversion HeqU).
+  subst. reflexivity.
+  (* subtyping *)
+  apply IHHsub1. apply IHHsub2. exact HeqU.
+  subst. exact Hsub2. exact HsubOrig.
+Qed.
+
+
+(* A runtime test cannot refine an arrow type. *)
+Lemma static_arrow_sub : forall T1 T2 S T,
+  subtype (typ_arrow T1 T2) S ->
+  static (rts.singleton rt_function) S T ->
+  subtype (typ_arrow T1 T2) T.
+Proof.
+  intros T1 T2 S T Hsub Hstatic.
+  induction Hstatic.
+  inversion Hsub.
+Admitted.
+
+Lemma typing_inv_cond : forall E e1 e2 e3 T,
+  typing E (cond e1 e2 e3) T ->
+  typing E e1 typ_bool /\
+  typing E e2 T /\
+  typing E e3 T.
+Proof.
+  intros.
+  remember (cond e1 e2 e3) as Hexpr.
+  induction H; inversion HeqHexpr.
+  subst. auto.
+  subst. apply IHtyping in H1.
+  destruct H1 as [He1 [He2 He3]].
+  split. exact He1.
+  split. eapply typing_sub. apply H. exact He2.
+         eapply typing_sub. apply H. exact He3.
+  subst. inversion H.
+Qed.
+  
+
+
+Lemma typing_inv_abs : forall E e S1 T1' T2',
+  typing E (abs S1 e) (typ_arrow T1' T2') ->
+  exists T1, exists T2, (exists L, forall x, x `notin` L -> 
+            (typing ((x, S1) :: E) (open e (fvar (runtime S1) x)) T2)) /\
+             subtype (typ_arrow T1 T2) (typ_arrow T1' T2') /\
+             subtype T1 S1.
+Proof with eauto.
+  intros E e S1 T1' T2' Htyping.
+  remember (abs S1 e) as expr.
+  induction Htyping; inversion Heqexpr.
+  (* typing_abs *)
+  subst.
+  exists S1.
+  exists T2.
+  split.
+  pick fresh x'.
+  remember (L `union` dom E `union` fv e) as L0.
+  exists L0.
+  intros x Hfree.
+  apply H.
+  fsetdec.
+  split. apply subtype_refl. apply subtype_refl.
+  (* typing_sub *)
+  subst.
+  apply IHHtyping in H0.
+  destruct H0 as [T1 [T2 [[L Htyping0] H0]]].
+  exists T1. exists T2.
+  split. exists L. intros.
+  apply Htyping0. fsetdec.
+  destruct H0.
+  split. eapply subtype_trans... exact H1.
+  (* typing_runtime *)
+  subst.
+  inversion H0; subst.
+  apply IHHtyping in H3. clear IHHtyping.
+  destruct H3 as [T1 [T2 [[L Htyping0] [Hsub0 Hsub1]]]].
+  exists T1. exists T2.
+  split...
+  split.
+  (* Here, we have to prove that T1 -> T2 <: T.
+   * We know T1 -> T2 <: S and that T = static(R, S).
+   * Since T1 -> T2 <: S, S "contains" the arrow type T1 -> T2.
+   * By the static_sub lemma, T <: S.  Intituively, we know that T is
+   * an arrow type and that it is the most general arrow type contained
+   * in S--runtime type tests are first-order.  Therefore, T1 -> T2 <: T.
+   *)
+Admitted.
+
 
 
 (*****************************************************************************)
@@ -676,13 +834,7 @@ Proof.
   rtsdec.
 Qed.
 
-Lemma typing_inv_abs : forall E e S1 T1 T2,
-  typing E (abs S1 e) (typ_arrow T1 T2) ->
-  (exists L, forall x, x `notin` L -> 
-            (typing ((x, S1) :: E) (open e (fvar (runtime T1) x)) T2)) /\
-             subtype T1 S1.
-Proof.
-Admitted.
+
 
 Lemma preservation : forall E e e' T,
   typing E e T ->
@@ -698,27 +850,43 @@ Proof.
   inversion J.
   (* app *)
   inversion J; subst. (* consider applicable evaluation rules *)
-  apply typing_inv_abs in H.
-  destruct H as [[L H] Hsub].
-  assert (exists rt, runtime_type e2 rt).
+  (* beta reduction *)
+  apply typing_inv_abs in H. clear IHtyping1 IHtyping2.
+  destruct H as [T3 [T4 [[L Htyping] [Hsub HsubArg]]]].
+  apply subtype_inv_arrow in Hsub.
+  destruct Hsub as [U1 [U2 [Heq [Hsub0 Hsub1]]]].
+  inversion Heq; subst; clear Heq.
+  assert (exists rt, runtime_type e2 rt) as H1.
     destruct e2; inversion H5.
     exists rt_function. apply typeof_abs.
     subst. destruct c; eauto.
   destruct H1 as [rt H1].
   pick fresh x0.
-  assert (subst x0 e2 (open e0 (fvar (runtime T1) x0)) (open e0 e2)) as HypIntro.
+  assert (typing E e2 t) as H0'.
+    eapply typing_sub.
+    assert (subtype T1 t).
+      eapply subtype_trans. apply Hsub0. exact HsubArg.
+    apply H.
+    exact H0.
+  assert (subst x0 e2 (open e0 (fvar (runtime t) x0)) (open e0 e2)) as HypIntro.
     eapply subst_intro. 
-      exact H5. apply H1.
-      eapply coherence. apply H5. apply H0. exact H1. 
-      fsetdec.
-      eapply typing_regular_lc. apply H0.
+     exact H5. 
+     apply H1.
+     eapply coherence.
+     apply H5.
+     apply H0'.
+     exact H1.
+     fsetdec.
+     eapply typing_regular_lc. apply H0'.
+  assert (typing ((x0, t) :: E) (open e0 (fvar (runtime t) x0)) U2) as H.
+    apply Htyping. fsetdec.
   eapply typing_subst.
     apply H5.
-    apply H. 
-      assert (x0 `notin` L). fsetdec. apply H2.
-    eapply typing_sub. apply Hsub. exact H0.
+    eapply typing_sub.
+    apply Hsub1.
+    apply H.
+    exact H0'.
     exact HypIntro.
-  (* function is reduced *)
   (* application where e1 is reduced *)
   assert (typing E e1' (typ_arrow T1 T2)) as HypPresv.
     apply IHtyping1. exact H5.
@@ -737,38 +905,93 @@ Proof.
   inversion H; subst; inversion J.
 Qed.
 
+Lemma canonical_bool : forall val,
+  value val ->
+  typing nil val typ_bool ->
+  val = e_const (const_bool true) \/ val = e_const (const_bool false).
+Proof with subst.
+  intros val Hvalue Htyping.
+  remember typ_bool as T.
+  induction Htyping; inversion Hvalue.
+  inversion HeqT.
+  inversion H; subst; inversion H2.
+  destruct b. left. reflexivity. right. reflexivity.
+  subst.
+  apply subtype_inv_bool in H...
+  apply IHHtyping in Hvalue.
+  destruct Hvalue; inversion H.
+  reflexivity.
+  subst.
+  apply subtype_inv_bool in H...
+  apply IHHtyping in Hvalue.
+  destruct Hvalue. left. exact H. right. exact H.
+  reflexivity.
+  subst.
+Admitted.  
+
+Lemma canonical_abs : forall e T1 T2,
+  value e ->
+  typing nil e (typ_arrow T1 T2) ->
+  exists S1, exists e', e = abs S1 e'.
+Proof.
+  intros e T1 T2 Hvalue Htyping.
+  remember (@nil (atom * typ)) as E.
+  remember (typ_arrow T1 T2) as T.
+  generalize dependent T1.
+  generalize dependent T2.
+  induction Htyping; inversion Hvalue.
+  (* arrows *)
+  intros. exists T1. exists e. reflexivity.
+  (* const *)
+  intros. subst. inversion H.
+  (* subtyping *)
+  intros. exists t. exists e0. reflexivity.
+  (* const-subtyping *)
+  intros. subst.
+  apply subtype_inv_arrow in H.
+  destruct H as [U1 [U2 [Hsub0 [Hsub1 Hsub2]]]].
+  apply IHHtyping with (T1 := U1) (T2 := U2) in Hvalue.
+  destruct Hvalue as [S1 [e' Hvalue]].
+  inversion Hvalue.
+  reflexivity.
+  exact Hsub0.
+  (* runtime-typing of abstractions *)
+  intros. subst. exists t. exists e0. reflexivity.
+  (* runtime-typing of constants *)
+  intros. subst.
+  inversion Htyping; inversion H5; subst.
+  inversion H2. inversion H2. inversion H2.
+Admitted.
+  
+
 Lemma progress : forall e T,
   typing nil e T ->
   value e \/ exists e', eval e e'.
-Proof.
+Proof with eauto.
   intros e T H.
-
-  (* It will be useful to have a "non-destructed" form of the given
-     typing derivation, since [induction] takes apart the derivation
-     it is called on. *)
   assert (typing nil e T); auto.
-
-  (* [remember nil as E] fails here because [nil] takes an implicit
-     argument that Coq is unable to infer.  By prefixing [nil] with
-     [@], we can supply the argument to nil explicitly. *)
   remember (@nil (atom * typ)) as E.
-
   induction H; subst.
-
-  Case "typing_var".
-    inversion H1.
-  Case "typing_abs".
-    left.
-    apply value_abs.
-    eapply typing_regular_lc; eauto.
-  Case "typing_app".
-    right.
-    destruct IHtyping1 as [V1 | [e1' Eval1]]; auto.
-    destruct IHtyping2 as [V2 | [e2' Eval2]]; auto.
-    inversion V1; subst. exists (open e e2); auto.
-    inversion H. inversion H4.
-    exists (app e1 e2'); auto.
-    exists (app e1' e2).
+  (* typing_var *)
+  inversion H1.
+  (* typing_abs *)
+  left.
+  apply value_abs.
+  eapply typing_regular_lc...
+  (* typing_app *)
+  right.
+  destruct IHtyping1 as [V1 | [e1' Eval1]]; auto.
+  destruct IHtyping2 as [V2 | [e2' Eval2]]; auto.
+  assert (exists S1, exists e', e1 = abs S1 e').
+    eapply canonical_abs...
+  destruct H2 as [S1 [e' Heq]].
+  subst.
+  exists (open e' e2).
+    apply eval_beta.
+    eapply typing_regular_lc...
+    exact V2.
+  exists (app e1 e2')...
+  exists (app e1' e2).
     apply eval_app_1. 
     eapply typing_regular_lc; eauto.
     assumption.
@@ -777,21 +1000,24 @@ Proof.
   apply value_const.
   (* cond *)
   right.
-  inversion H0. subst.
+  apply typing_inv_cond in H0.
+  destruct H0 as [Hcond [Htrue Hfalse]].
   apply IHtyping1 in H.
-  apply IHtyping2 in H1.
-  apply IHtyping3 in H2.
   destruct H.
-  Focus 2.
-  destruct H as [e1' H].
-  exists (cond e1' e2 e3).
-  apply cxt_cond; (auto || eapply typing_regular_lc; eauto).
-  destruct e1; inversion H.
-  inversion H7. (* dismiss abs *)
-  subst. destruct c; inversion H7; inversion H5. (* dismiss non-bools *)
-  subst. destruct b.
-  exists e2. apply eval_cond_true; (auto || eapply typing_regular_lc; eauto).
-  exists e3. apply eval_cond_false; (auto || eapply typing_regular_lc; eauto).
-  reflexivity. reflexivity. reflexivity.
+  (* e1 is a value *)
+  apply canonical_bool in Hcond.
+  destruct Hcond; subst.
+  exists e2. apply eval_cond_true; eapply typing_regular_lc...
+  exists e3. apply eval_cond_false; eapply typing_regular_lc...
+  exact H.
+  destruct H as [e' H].
+  exists (cond e' e2 e3).
+  apply cxt_cond. exact H. 
+  eapply typing_regular_lc...
+  eapply typing_regular_lc...
+  reflexivity.
+  (* subtyping *)
+  apply IHtyping in H1. exact H1. reflexivity.
+  (* runtime typing *)
+  apply IHtyping in H1. exact H1. reflexivity.
 Qed.
-
