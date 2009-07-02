@@ -236,7 +236,7 @@ Inductive eval : exp -> exp -> Prop :=
       eval (cond (e_const (const_bool false)) e2 e3) e3.
 
 Hint Constructors typing typing_const subst lc value eval runtime_type
-  runtime_type_const.
+  runtime_type_const base_typ.
 
 Fixpoint fv (e : exp) {struct e} : atoms :=
   match e with
@@ -649,39 +649,85 @@ Proof with eauto.
   subst...
 Qed.
 
+Lemma subtype_inv_base_typ : forall S T,
+  base_typ S ->
+  subtype T S ->
+  T = S.
+Proof.
+  intros S T Hbase Hsub.
+  assert (subtype T S) as HsubOrig. exact Hsub.
+  generalize dependent HsubOrig.
+  induction Hsub; intros.
+  (* subtype_refl *)
+  reflexivity. 
+  (* subtype_trans *)
+  assert (base_typ t) as Hbase'. exact Hbase.
+  apply IHHsub2 in Hbase. subst.
+  apply IHHsub1 in Hbase'.
+  exact Hbase'. exact Hsub1. exact Hsub2.
+  (* arrows, unions, etc. *)
+  inversion Hbase. inversion Hbase. inversion Hbase. inversion Hbase.
+Qed.
+
 Lemma subtype_inv_int : forall T,
   subtype T typ_int ->
   T = typ_int.
 Proof.
-  intros T Hsub.
-  remember typ_int as U.
-  rewrite -> HeqU.
-  assert (subtype T typ_int) as HsubOrig. subst. exact Hsub.
-  generalize dependent HsubOrig.
-  generalize dependent HeqU.
-  induction Hsub; intros; try (inversion HeqU).
-  subst. reflexivity.
-  (* subtyping *)
-  apply IHHsub1. apply IHHsub2. exact HeqU.
-  subst. exact Hsub2. exact HsubOrig.
+  intros. eapply subtype_inv_base_typ. apply base_typ_int. exact H.
 Qed.
 
 Lemma subtype_inv_bool : forall T,
   subtype T typ_bool ->
   T = typ_bool.
 Proof.
-  intros T Hsub.
-  remember typ_bool as U.
-  rewrite -> HeqU.
-  assert (subtype T typ_bool) as HsubOrig. subst. exact Hsub.
-  generalize dependent HsubOrig.
-  generalize dependent HeqU.
-  induction Hsub; intros; try (inversion HeqU).
-  subst. reflexivity.
-  (* subtyping *)
-  apply IHHsub1. apply IHHsub2. exact HeqU.
-  subst. exact Hsub2. exact HsubOrig.
+  intros. eapply subtype_inv_base_typ. apply base_typ_bool. exact H.
 Qed.
+
+Lemma subtype_static_distr : forall R1 R2 S1 S2 T1 T2,
+  static R1 S1 T1 ->
+  static R2 S2 T2 ->
+  rts.Subset R1 R2 ->
+  subtype S1 S2 ->
+  subtype T1 T2.
+Proof with auto using subtype_inv_base_typ.
+  intros R1 R2 S1 S2 T1 T2 Hstatic1 Hstatic2 Hsubset Hsubtype.
+  generalize dependent T1.
+  generalize dependent T2.
+  generalize dependent S1.
+  generalize dependent R1.
+  generalize dependent R2.
+  induction S2; intros.
+  apply subtype_inv_base_typ in Hsubtype; subst...
+  apply static_sub in Hstatic1.
+  apply static_sub in Hstatic2.
+  apply subtype_inv_base_typ in Hstatic2...
+  apply subtype_inv_base_typ in Hstatic1; subst...
+  apply subtype_refl.
+  apply subtype_inv_base_typ in Hsubtype; subst...
+  apply static_sub in Hstatic1.
+  apply static_sub in Hstatic2.
+  apply subtype_inv_base_typ in Hstatic2...
+  apply subtype_inv_base_typ in Hstatic1; subst...
+  apply subtype_refl.
+  apply subtype_inv_base_typ in Hsubtype; subst...
+  apply static_sub in Hstatic1.
+  apply static_sub in Hstatic2.
+  apply subtype_inv_base_typ in Hstatic2...
+  apply subtype_inv_base_typ in Hstatic1; subst...
+  apply subtype_refl.
+  (* arrows *)
+  clear IHS2_1 IHS2_2.
+  apply subtype_inv_arrow in Hsubtype.
+  destruct Hsubtype as [U1 [U2 [Hsubtype0 [Hsubtype1 Hsubtype2]]]].
+  subst. (* In Hstatic1, S1 is now an arrow *)
+  assert (subtype (typ_arrow U1 U2) (typ_arrow S2_1 S2_2)) as Hsubtype.
+    apply subtype_arrow; auto.
+  inversion Hstatic1; subst.
+  inversion Hstatic2; subst.
+  exact Hsubtype.
+  (* unions *)
+  inversion Hstatic2; subst.
+Admitted.
 
 Lemma typing_inv_cond : forall E e1 e2 e3 T,
   typing E (cond e1 e2 e3) T ->
@@ -700,6 +746,7 @@ Proof.
          eapply typing_sub. apply H. exact He3.
   subst. inversion H.
 Qed.
+
 
 Lemma typing_inv_abs : forall E e S1 T1' T2',
   typing E (abs S1 e) (typ_arrow T1' T2') ->
@@ -734,21 +781,32 @@ Proof with eauto.
   split. eapply subtype_trans... exact H1.
   (* typing_runtime *)
   subst.
-  inversion H0; subst.
   apply IHHtyping in H3. clear IHHtyping.
   destruct H3 as [T1 [T2 [[L Htyping0] [Hsub0 Hsub1]]]].
   exists T1. exists T2.
   split...
   split.
-Focus 2. exact Hsub1.
   (* Here, we have to prove that T1 -> T2 <: T.
    * We know T1 -> T2 <: S and that T = static(R, S).
    * Since T1 -> T2 <: S, S "contains" the arrow type T1 -> T2.
-   * By the static_sub lemma, T <: S.  Intituively, we know that T is
+   * By the static_sub lemma, T <: S.  Intuitively, we know that T is
    * an arrow type and that it is the most general arrow type contained
    * in S--runtime type tests are first-order.  Therefore, T1 -> T2 <: T.
    *)
-Admitted.
+  inversion H0; subst.
+  assert (static (rts.singleton rt_function) (typ_arrow T1 T2) 
+                 (typ_arrow T1 T2)) as Hstaticsub.
+    apply ast_arrow.
+  assert (rts.Subset (rts.add rt_function rts.empty) r).
+    eapply rts_props.subset_add_3.
+      exact H1. apply rts_props.subset_empty.
+  eapply subtype_static_distr.
+    apply Hstaticsub.
+    apply H2.
+    exact H3.
+    exact Hsub0.
+  exact Hsub1.
+Qed.
 
 (*****************************************************************************)
 (* Preservation                                                              *)
