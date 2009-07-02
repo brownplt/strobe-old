@@ -649,13 +649,6 @@ Proof with eauto.
   subst...
 Qed.
 
-Lemma subtype_eq : forall T1 T2,
-  subtype T1 T2 ->
-  subtype T2 T1 ->
-  T1 = T2.
-Proof.
-Admitted.
-
 Lemma subtype_inv_int : forall T,
   subtype T typ_int ->
   T = typ_int.
@@ -690,18 +683,6 @@ Proof.
   subst. exact Hsub2. exact HsubOrig.
 Qed.
 
-
-(* A runtime test cannot refine an arrow type. *)
-Lemma static_arrow_sub : forall T1 T2 S T,
-  subtype (typ_arrow T1 T2) S ->
-  static (rts.singleton rt_function) S T ->
-  subtype (typ_arrow T1 T2) T.
-Proof.
-  intros T1 T2 S T Hsub Hstatic.
-  induction Hstatic.
-  inversion Hsub.
-Admitted.
-
 Lemma typing_inv_cond : forall E e1 e2 e3 T,
   typing E (cond e1 e2 e3) T ->
   typing E e1 typ_bool /\
@@ -719,8 +700,6 @@ Proof.
          eapply typing_sub. apply H. exact He3.
   subst. inversion H.
 Qed.
-  
-
 
 Lemma typing_inv_abs : forall E e S1 T1' T2',
   typing E (abs S1 e) (typ_arrow T1' T2') ->
@@ -761,6 +740,7 @@ Proof with eauto.
   exists T1. exists T2.
   split...
   split.
+Focus 2. exact Hsub1.
   (* Here, we have to prove that T1 -> T2 <: T.
    * We know T1 -> T2 <: S and that T = static(R, S).
    * Since T1 -> T2 <: S, S "contains" the arrow type T1 -> T2.
@@ -770,12 +750,9 @@ Proof with eauto.
    *)
 Admitted.
 
-
-
 (*****************************************************************************)
 (* Preservation                                                              *)
 (*****************************************************************************)
-
 
 Hint Constructors runtime_type.
 
@@ -833,8 +810,6 @@ Proof.
   apply static_runtime in H2.
   rtsdec.
 Qed.
-
-
 
 Lemma preservation : forall E e e' T,
   typing E e T ->
@@ -905,30 +880,6 @@ Proof.
   inversion H; subst; inversion J.
 Qed.
 
-Lemma canonical_bool : forall val,
-  value val ->
-  typing nil val typ_bool ->
-  val = e_const (const_bool true) \/ val = e_const (const_bool false).
-Proof with subst.
-  intros val Hvalue Htyping.
-  remember typ_bool as T.
-  induction Htyping; inversion Hvalue.
-  inversion HeqT.
-  inversion H; subst; inversion H2.
-  destruct b. left. reflexivity. right. reflexivity.
-  subst.
-  apply subtype_inv_bool in H...
-  apply IHHtyping in Hvalue.
-  destruct Hvalue; inversion H.
-  reflexivity.
-  subst.
-  apply subtype_inv_bool in H...
-  apply IHHtyping in Hvalue.
-  destruct Hvalue. left. exact H. right. exact H.
-  reflexivity.
-  subst.
-Admitted.  
-
 Lemma canonical_abs : forall e T1 T2,
   value e ->
   typing nil e (typ_arrow T1 T2) ->
@@ -959,10 +910,57 @@ Proof.
   intros. subst. exists t. exists e0. reflexivity.
   (* runtime-typing of constants *)
   intros. subst.
-  inversion Htyping; inversion H5; subst.
-  inversion H2. inversion H2. inversion H2.
-Admitted.
-  
+  assert (rts.Subset r (rts.singleton rt_function)) as Hrt0.
+    apply static_runtime in H2. exact H2.
+  assert (rts.In rt (rts.singleton rt_function)) as Hrt1. 
+    eapply rts_props.in_subset. apply H1. exact Hrt0.
+  inversion H0; subst.
+  inversion H4; subst; rewrite rts_facts.singleton_iff in Hrt1; 
+    inversion Hrt1.
+Qed.
+
+Lemma canonical_bool : forall val,
+  value val ->
+  typing nil val typ_bool ->
+  val = e_const (const_bool true) \/ val = e_const (const_bool false).
+Proof with subst.
+  intros val Hvalue Htyping.
+  remember typ_bool as T.
+  induction Htyping; inversion Hvalue.
+  inversion HeqT.
+  inversion H; subst; inversion H2.
+  destruct b. left. reflexivity. right. reflexivity.
+  subst.
+  apply subtype_inv_bool in H...
+  apply IHHtyping in Hvalue.
+  destruct Hvalue; inversion H.
+  reflexivity.
+  subst.
+  apply subtype_inv_bool in H...
+  apply IHHtyping in Hvalue.
+  destruct Hvalue. left. exact H. right. exact H.
+  reflexivity.
+  (* runtime-typing of functions *)
+  subst.
+  assert (rts.Subset r (rts.singleton rt_boolean)) as Hrt0.
+    apply static_runtime in H2. exact H2.
+  assert (rts.In rt (rts.singleton rt_boolean)) as Hrt1. 
+    eapply rts_props.in_subset. apply H1. exact Hrt0.
+  inversion H0; subst.
+  rewrite rts_facts.singleton_iff in Hrt1.
+  inversion Hrt1.
+  (* runtime-typing of constants *)
+  subst.
+  assert (rts.Subset r (rts.singleton rt_boolean)) as Hrt0.
+    apply static_runtime in H2. exact H2.
+  assert (rts.In rt (rts.singleton rt_boolean)) as Hrt1. 
+    eapply rts_props.in_subset. apply H1. exact Hrt0.
+  inversion H0; subst.
+  inversion H4; subst.
+  rewrite rts_facts.singleton_iff in Hrt1; inversion Hrt1.
+  destruct b. left. reflexivity. right. reflexivity.
+  rewrite rts_facts.singleton_iff in Hrt1; inversion Hrt1.
+Qed.
 
 Lemma progress : forall e T,
   typing nil e T ->
