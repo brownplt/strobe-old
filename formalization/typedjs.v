@@ -649,6 +649,42 @@ Proof with eauto.
   subst...
 Qed.
 
+Lemma subtype_inv_union : forall S T1 T2,
+  subtype S (typ_union T1 T2) ->
+  subtype S T1 \/ subtype S T2 \/ 
+  (exists S1, exists S2, S = typ_union S1 S2 /\ subtype S1 T1 /\ subtype S2 T2).
+Proof with eauto.
+  intros S T1 T2 Hs.
+  remember (typ_union T1 T2) as T.
+  generalize dependent T1.
+  generalize dependent T2.
+  induction Hs; intros. 
+  (* reflexivity *)
+  subst.
+  right. right. exists T1. exists T2. split... split; apply subtype_refl.
+  (* transitivity *)
+  subst.
+  assert (typ_union T1 T2 = typ_union T1 T2). reflexivity.
+  apply IHHs2 in H.
+  destruct H. left. eapply subtype_trans...
+  destruct H. right. left. eapply subtype_trans...
+  destruct H as [S1 [S2 [Heq [Hsub1 hsub2]]]]. 
+  apply IHHs1 in Heq.
+  destruct Heq. left. eapply subtype_trans...
+  destruct H. right. left. eapply subtype_trans...
+  destruct H as [S3 [S4 [Heq [Hsub3 Hsub4]]]].
+    right. right. exists S3. exists S4. split...
+    split. eapply subtype_trans... eapply subtype_trans...
+  (* arrows *)
+  inversion HeqT.
+  (* unions *)
+  inversion HeqT; subst.
+  right. right. exists s1. exists s2...
+  (* more unions *)
+  inversion HeqT. subst...
+  inversion HeqT. subst...
+Qed.
+
 Lemma subtype_inv_base_typ : forall S T,
   base_typ S ->
   subtype T S ->
@@ -726,7 +762,15 @@ Proof with auto using subtype_inv_base_typ.
   inversion Hstatic2; subst.
   exact Hsubtype.
   (* unions *)
-  inversion Hstatic2; subst.
+  apply subtype_inv_union in Hsubtype.
+  destruct Hsubtype.
+  (* S1 <: S2_1 *)
+  eapply IHS2_1.
+    apply Hsubset. apply H.
+     
+  inversion Hsubtype; subst.
+Focus 5.
+  
 Admitted.
 
 Lemma typing_inv_cond : forall E e1 e2 e3 T,
