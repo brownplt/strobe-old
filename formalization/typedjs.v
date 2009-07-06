@@ -1,6 +1,7 @@
 Add LoadPath "metatheory".
 Require Import Metatheory.
 Require Import Dataflow.
+Require Import Setoid.
 
 Inductive typ : Set :=
   | typ_int  : typ
@@ -14,7 +15,54 @@ Inductive base_typ : typ -> Prop :=
   | base_typ_bool : base_typ typ_bool
   | base_typ_str : base_typ typ_str.
 
-Axiom typ_union_symm : forall t1 t2, typ_union t1 t2 = typ_union t2 t1.
+Inductive typ_eq : typ -> typ -> Prop :=
+  | typ_eq_refl : forall t, 
+      typ_eq t t
+  | typ_eq_trans : forall r s t, 
+      typ_eq r s -> typ_eq s t -> typ_eq r t
+  | typ_eq_union_elimL : forall s t, 
+      typ_eq s t ->
+      typ_eq s (typ_union s t)
+  | typ_eq_union_elimR : forall s t, 
+      typ_eq s t ->
+      typ_eq (typ_union s t) s
+  | typ_eq_union_symm : forall s t, 
+      typ_eq (typ_union s t) (typ_union t s).
+
+Lemma typ_eq_symm : forall S T, 
+  typ_eq S T ->
+  typ_eq T S.
+Proof.
+  intros.
+  induction H.
+    apply typ_eq_refl.
+    eapply typ_eq_trans. apply IHtyp_eq2. apply IHtyp_eq1.
+    apply typ_eq_union_elimR. apply H.
+    apply typ_eq_union_elimL. apply H.
+    apply typ_eq_union_symm.
+Qed.
+
+Inductive subtype : typ -> typ -> Prop :=
+  | subtype_refl : forall (t : typ), 
+      subtype t t
+  | subtype_trans : forall (s t u : typ), 
+      subtype s u ->
+      subtype u t -> 
+      subtype s t
+  | subtype_arrow : forall (s1 s2 t1 t2 : typ),
+      subtype t1 s1 ->
+      subtype s2 t2 -> 
+      subtype (typ_arrow s1 s2) (typ_arrow t1 t2)
+  | subtype_unionL : forall (s1 s2 t1 t2 : typ),
+      subtype s1 t1 ->
+      subtype s2 t2 ->
+      subtype (typ_union s1 s2) (typ_union t1 t2)
+  | subtype_unionRL : forall (s t1 t2 : typ),
+      subtype s t1 -> 
+      subtype s (typ_union t1 t2)
+  | subtype_unionRR : forall (s t1 t2 : typ),
+      subtype s t2 -> 
+      subtype s (typ_union t1 t2).
 
 Inductive string : Set :=
   string_const : string.
@@ -48,19 +96,38 @@ Inductive static : rts.t -> typ -> typ -> Prop :=
   | ast_arrow : forall t1 t2,
       static (rts.singleton rt_function) (typ_arrow t1 t2) (typ_arrow t1 t2)
   | ast_union: forall r t1 t2 t1' t2',
-      rts.Subset r (runtime t1) ->
-      rts.Subset r (runtime t2) ->
+      r = rts.union (runtime t1) (runtime t2) ->
       static (rts.inter (runtime t1) r) t1 t1' ->
       static (rts.inter (runtime t2) r) t2 t2' -> 
       static r (typ_union t1 t2) (typ_union t1' t2')
   | ast_unionL : forall r t1 t2 t1',
-      rts.Subset r (runtime t1) ->
+      r = runtime t1 ->
+      rts.inter r (runtime t2) = rts.empty ->
       static r t1 t1' ->
       static r (typ_union t1 t2) t1'
   | ast_unionR : forall r t1 t2 t2',
-      rts.Subset r (runtime t2) ->
+      r = runtime t2 ->
+      rts.inter r (runtime t1) = rts.empty ->
       static r t2 t2' ->
       static r (typ_union t1 t2) t2'.
+
+Section Types.
+
+Hint Constructors subtype static base_typ typ_eq.
+
+Lemma runtime_sub: forall S T,
+  subtype S T ->
+  rts.Subset (runtime S) (runtime T).
+Proof.
+  intros. induction H; subst; simpl; rtsdec.
+Qed.
+
+Lemma static_sub : forall R S T,
+  static R S T ->
+  subtype T S.
+Proof.
+  intros. induction H; eauto.
+Qed.
 
 Lemma static_runtime : forall R S T,
   static R S T ->
@@ -70,29 +137,281 @@ Proof.
   induction Hstatic; simpl; rtsdec.
 Qed.
 
-Inductive subtype : typ -> typ -> Prop :=
-  | subtype_refl : forall (t : typ), 
-      subtype t t
-  | subtype_trans : forall (s t u : typ), 
-      subtype s u ->
-      subtype u t -> 
-      subtype s t
-  | subtype_arrow : forall (s1 s2 t1 t2 : typ),
-      subtype t1 s1 ->
-      subtype s2 t2 -> 
-      subtype (typ_arrow s1 s2) (typ_arrow t1 t2)
-  | subtype_unionL : forall (s1 s2 t1 t2 : typ),
-      subtype s1 t1 ->
-      subtype s2 t2 ->
-      subtype (typ_union s1 s2) (typ_union t1 t2)
-  | subtype_unionRL : forall (s t1 t2 : typ),
-      subtype s t1 -> 
-      subtype s (typ_union t1 t2)
-  | subtype_unionRR : forall (s t1 t2 : typ),
-      subtype s t2 -> 
-      subtype s (typ_union t1 t2).
+Lemma static_refl : forall S,
+  static (runtime S) S S.
+Proof.
+  induction S; simpl; auto.
+  eapply ast_union.
+  reflexivity.
+  assert (rts.Equal (rts.inter (runtime S1) (rts.union (runtime S1) (runtime S2)))
+                    (runtime S1)).
+    apply rts_props.inter_subset_equal.
+    apply rts_props.union_subset_1.
+  apply rts_module.eq_if_Equal in H.
+  rewrite -> H.
+  exact IHS1.
+  assert (rts.Equal (rts.inter (runtime S2) (rts.union (runtime S1) (runtime S2)))
+                    (runtime S2)).
+    apply rts_props.inter_subset_equal.
+    apply rts_props.union_subset_2.
+  apply rts_module.eq_if_Equal in H.
+  rewrite -> H.
+  exact IHS2.
+Qed.
+
+Lemma subtype_inv_arrow : forall U V1 V2,
+     subtype U (typ_arrow V1 V2)
+  -> exists U1, exists U2, 
+       (U=(typ_arrow U1 U2)) /\ (subtype V1 U1) /\ (subtype U2 V2).
+Proof with eauto.
+  intros U V1 V2 Hs.
+  remember (typ_arrow V1 V2) as V.
+  generalize dependent V2. generalize dependent V1.
+  induction Hs; intros; inversion HeqV.
+  (* reflexivity *)
+  eauto.
+  (* transitivity *)
+  apply IHHs2 in HeqV.
+  destruct HeqV as [U1 [U2 HeqV]].
+  destruct HeqV as [Hu [Hsub1 Hsub2]].
+  apply IHHs1 in Hu.
+  destruct Hu as [U3 [U4 Hu]].
+  destruct Hu as [Hs [Hsub3 Hsub]].
+  exists U3. exists U4...
+  (* arrow subtyping *)  
+  exists s1. exists s2. subst...
+Qed.
+
+Lemma subtype_inv_union : forall S T1 T2,
+  subtype S (typ_union T1 T2) ->
+  subtype S T1 \/ 
+  subtype S T2 \/ 
+  (exists S1, exists S2, S = typ_union S1 S2 /\ subtype S1 T1 /\ subtype S2 T2).
+Proof with eauto.
+  intros S T1 T2 Hs.
+  remember (typ_union T1 T2) as T.
+  generalize dependent T1.
+  generalize dependent T2.
+  induction Hs; intros. 
+  (* reflexivity *)
+  right. right...
+  (* transitivity *)
+  subst.
+  assert (typ_union T1 T2 = typ_union T1 T2). reflexivity.
+  apply IHHs2 in H.
+  destruct H. left... 
+  destruct H. right...
+  destruct H as [S1 [S2 [Heq [Hsub1 hsub2]]]]. 
+  apply IHHs1 in Heq.
+  destruct Heq. left...
+  destruct H. right. left...
+  destruct H as [S3 [S4 [Heq [Hsub3 Hsub4]]]].
+  right. right. exists S3. exists S4...
+  (* arrows *)
+  inversion HeqT.
+  (* unions *)
+  inversion HeqT; subst.
+  right. right. exists s1. exists s2...
+  (* more unions *)
+  inversion HeqT. subst...
+  inversion HeqT. subst...
+Qed.
+
+Lemma subtype_inv_base_typ : forall S T,
+  base_typ S ->
+  subtype T S ->
+  T = S.
+Proof with eauto.
+  intros S T Hbase Hsub.
+  assert (subtype T S) as HsubOrig. exact Hsub.
+  generalize dependent HsubOrig.
+  induction Hsub; intros.
+  (* subtype_refl *)
+  reflexivity.
+  (* subtype_trans *)
+  assert (base_typ t) as Hbase'. exact Hbase.
+  apply IHHsub2 in Hbase...
+  subst.
+  apply IHHsub1 in Hbase'...
+  (* arrows, unions, etc. *)
+  inversion Hbase. inversion Hbase. inversion Hbase. inversion Hbase.
+Qed.
+
+Lemma subtype_inv_int : forall T,
+  subtype T typ_int ->
+  T = typ_int.
+Proof.
+  intros. eapply subtype_inv_base_typ. apply base_typ_int. exact H.
+Qed.
+
+Lemma subtype_inv_bool : forall T,
+  subtype T typ_bool ->
+  T = typ_bool.
+Proof.
+  intros. eapply subtype_inv_base_typ. apply base_typ_bool. exact H.
+Qed.
+
+Lemma empty_static : forall S T,
+  static rts.empty S T -> False.
+Proof.
+  intros S.
+  induction S; intros; inversion H.
+  subst.
+  assert (rts.Equal rts.empty (rts.union (runtime S1) (runtime S2))).
+    rewrite <- H2. reflexivity.
+  assert (rts.Equal (runtime S1) rts.empty). rtsdec.
+  apply rts_module.eq_if_Equal in H1.
+  rewrite -> H1 in H4.
+  assert (rts.Equal (rts.inter rts.empty rts.empty) rts.empty). rtsdec.
+  apply rts_module.eq_if_Equal in H3.
+  rewrite -> H3 in H4.
+  apply IHS1 in H4. contradiction H4.
+  apply IHS1 in H6. contradiction H6.
+  apply IHS2 in H6. contradiction H6.
+Qed.
+
+Lemma static_deterministic : forall R S T1 T2,
+  static R S T1 ->
+  static R S T2 ->
+  T1 = T2.
+Proof.
+  intros R S T1 T2. intros Hstatic0 Hstatic1.
+  generalize dependent T1.
+  assert (static R S T2) as Hstatic1'. exact Hstatic1.
+  induction Hstatic1; intros.
+  inversion Hstatic0. reflexivity.
+  inversion Hstatic0. reflexivity.
+  inversion Hstatic0. reflexivity.
+  inversion Hstatic0. reflexivity.
+(* Case 1 *)
+  inversion Hstatic0; subst; remember (rts.union (runtime t1) (runtime t2)) as r.
+  apply IHHstatic1_1 in H4.
+  apply IHHstatic1_2 in H6.
+  subst. reflexivity.
+  exact Hstatic1_2.
+  exact Hstatic1_1.
+  assert (rts.inter r (runtime t2) = rts.inter (runtime t2) r).
+    apply rts_module.eq_if_Equal.
+    apply rts_props.inter_sym.
+  rewrite -> H in H4.
+  rewrite -> H4 in Hstatic1_2.
+  apply empty_static in Hstatic1_2.
+  contradiction Hstatic1_2.
+  assert (rts.inter r (runtime t1) = rts.inter (runtime t1) r).
+    apply rts_module.eq_if_Equal.
+    apply rts_props.inter_sym.
+  rewrite -> H in H4.
+  rewrite -> H4 in Hstatic1_1.
+  apply empty_static in Hstatic1_1.
+  contradiction Hstatic1_1.
+(* Case 2 *)
+  inversion Hstatic0; subst; remember (runtime t1) as r.
+  assert (rts.inter r (runtime t2) = rts.inter (runtime t2) r).
+    eapply rts_module.eq_if_Equal. apply rts_props.inter_sym.
+  rewrite <- H in H7.
+  rewrite -> H0 in H7.
+  apply empty_static in H7.
+  contradiction H7.
+  apply IHHstatic1 in H7. exact H7. exact Hstatic1.
+  assert (rts.Equal r rts.empty).
+    rewrite <- H5. rtsdec.
+  apply rts_module.eq_if_Equal in H.
+  rewrite -> H in Hstatic0.
+  apply empty_static in Hstatic0.
+  contradiction Hstatic0.
+(* Case 3 *)
+  inversion Hstatic0; subst; remember (runtime t2) as r.
+  assert (rts.inter r (runtime t1) = rts.inter (runtime t1) r).
+    eapply rts_module.eq_if_Equal. apply rts_props.inter_sym.
+  rewrite <- H in H5.
+  rewrite -> H0 in H5.
+  apply empty_static in H5.
+  contradiction H5.
+  assert (rts.Equal r rts.empty).
+    rewrite <- H5. rtsdec.
+  apply rts_module.eq_if_Equal in H.
+  rewrite -> H in Hstatic1'.
+  apply empty_static in Hstatic1'.
+  contradiction Hstatic1'.
+  apply IHHstatic1 in H7.  exact H7. exact Hstatic1.
+Qed.
+
+Lemma subtype_static_distr_function : forall T1 T2 T R S,
+  static R S T ->
+  rts.In rt_function R ->
+  subtype (typ_arrow T1 T2) S ->
+  subtype (typ_arrow T1 T2) T.
+Proof.
+  intros T1 T2 T R S Hstatic Hin Hsubtype.
+(*  generalize dependent T1.
+  generalize dependent T2.
+  generalize dependent T.
+  generalize dependent R. *)
+  induction S; intros.
+  apply subtype_inv_base_typ in Hsubtype; inversion Hsubtype; auto.
+  apply subtype_inv_base_typ in Hsubtype; inversion Hsubtype; auto.
+  apply subtype_inv_base_typ in Hsubtype; inversion Hsubtype; auto.
+  (* arrows *)
+  inversion Hstatic; subst.
+  exact Hsubtype.
+  (* unions *)
+  inversion Hstatic; subst.
+Focus 2.
+  apply subtype_inv_union in Hsubtype.
+
+  destruct Hsubtype. apply IHS1; auto.
+  destruct H.
+  assert (rts.In rt_function (runtime S2)).
+    apply runtime_sub in H. simpl in H.
+    eapply rts_props.in_subset.
+    assert (rts.In rt_function (rts.singleton rt_function)). rtsdec.
+    apply H0.
+    exact H. 
+  assert (rts.In rt_function (rts.inter (runtime S1) (runtime S2))). rtsdec.
+  rewrite -> H3 in H1.
+  rewrite -> rts_facts.empty_iff in H1.
+  contradiction H1.
+  destruct H as [S3 [S4 [H0 [H1 H2]]]]. inversion H0.
+Focus 2.
+  apply subtype_inv_union in Hsubtype.
+  destruct Hsubtype.
+  assert (rts.In rt_function (runtime S1)).
+    apply runtime_sub in H. simpl in H.
+    eapply rts_props.in_subset.
+    assert (rts.In rt_function (rts.singleton rt_function)). rtsdec.
+    apply H0.
+    exact H. 
+  assert (rts.In rt_function (rts.inter (runtime S1) (runtime S2))). rtsdec.
+  assert (rts.Equal (rts.inter (runtime S1) (runtime S2))
+                    (rts.inter (runtime S2) (runtime S1))).
+    rtsdec.
+  apply rts_module.eq_if_Equal in H2.
+  rewrite <- H2 in H3.
+  rewrite -> H3 in H1.
+  rewrite -> rts_facts.empty_iff in H1.
+  contradiction H1.
+  destruct H. apply IHS2; auto.
+  destruct H as [S3 [S4 [H0 [H1 H2]]]]. inversion H0.
+(* Case 1 *)
+  assert (rts.Equal (rts.inter (runtime S1) (rts.union (runtime S1) (runtime S2)))
+                    (runtime S1)). rtsdec.
+  apply rts_module.eq_if_Equal in H.
+  rewrite -> H in H3.
+  assert (rts.Equal (rts.inter (runtime S2) (rts.union (runtime S1) (runtime S2)))
+                    (runtime S2)). rtsdec.
+  apply rts_module.eq_if_Equal in H0.
+  rewrite -> H0 in H5.
+  assert (S1 = t1').
+    eapply static_deterministic; auto using static_refl.
+  assert (S2 = t2').
+    eapply static_deterministic; auto using static_refl.
+  subst.
+  exact Hsubtype.
+Qed.  
 
 
+End Types.
+(*****************************************************************************)
 
 Inductive typing_const : const -> typ -> Prop :=
   | typing_int : forall n, typing_const (const_int n) typ_int
@@ -148,9 +467,6 @@ Fixpoint open_rec (k : nat) (u : exp) (e : exp) {struct e} : exp :=
 Definition open e u := open_rec 0 u e.
 
 Notation env := (list (atom * typ)).
-
-
-
 
 Inductive lc : exp -> Prop :=
   | lc_var : forall r x,
@@ -236,7 +552,7 @@ Inductive eval : exp -> exp -> Prop :=
       eval (cond (e_const (const_bool false)) e2 e3) e3.
 
 Hint Constructors typing typing_const subst lc value eval runtime_type
-  runtime_type_const base_typ.
+  runtime_type_const base_typ subtype.
 
 Fixpoint fv (e : exp) {struct e} : atoms :=
   match e with
@@ -285,8 +601,6 @@ Tactic Notation
 (*****************************************************************************
  * Lemmas                                                                    *
  *****************************************************************************)
-
-
 
 Lemma open_rec_lc_core : forall e j v i u,
   i <> j ->
@@ -353,7 +667,6 @@ Lemma typing_regular_lc : forall E e T,
 Proof.
   intros E e T H. induction H; eauto.
 Qed.
-
 
 Lemma subst_open_var : forall (x y : atom) u r e e1,
   y <> x ->
@@ -428,58 +741,6 @@ Proof.
 Qed.
 
 
-Lemma runtime_sub: forall S T,
-  subtype S T ->
-  rts.Subset (runtime S) (runtime T).
-Proof.
-  intros S T H.
-  induction H; subst.
-  (* reflexivity *)
-  simpl. apply rts_props.subset_equal. reflexivity.
-  (* transitivity *)
-  eapply rts_props.subset_trans.
-    apply IHsubtype1. apply IHsubtype2.
-  (* functions *)
-  simpl. apply rts_props.subset_equal. reflexivity.
-  (* unionL *)
-  simpl. 
-  assert (rts.Subset (runtime s1) (rts.union (runtime t1) (runtime t2))).
-    eapply rts_props.subset_trans. apply IHsubtype1.
-    apply rts_props.union_subset_1.
-  assert (rts.Subset (runtime s2) (rts.union (runtime t1) (runtime t2))).
-    eapply rts_props.subset_trans. apply IHsubtype2.
-    apply rts_props.union_subset_2.
-  apply rts_props.union_subset_3.
-    exact H1. exact H2.
-  (* unionRL *)
-  simpl.
-  eapply rts_props.subset_trans.
-    apply IHsubtype.
-  apply rts_props.union_subset_1.
-  (* unionRR *)
-  simpl.
-  eapply rts_props.subset_trans.
-    apply IHsubtype.
-  apply rts_props.union_subset_2.
-Qed.
-
-Lemma static_sub : forall R S T,
-  static R S T ->
-  subtype T S.
-Proof.
-  intros R S T Hstatic. 
-  induction Hstatic; try (apply subtype_refl).
-  (* ast_union *)
-  apply subtype_trans with (u := typ_union t1' t2').
-  apply subtype_refl.
-  apply subtype_unionL.
-  apply IHHstatic1.
-  apply IHHstatic2.
-  (* ast_unionL *)
-  apply subtype_unionRL. exact IHHstatic.
-  (* ast_unionR *)
-  apply subtype_unionRR. exact IHHstatic.
-Qed.
 
 Lemma single_runtime_type : forall val rt1 rt2,
   value val ->
@@ -618,160 +879,6 @@ Proof.
     simpl. exact Value. exact HypInd. exact HypS. exact HypSubst.
 Qed.
 
-(*****************************************************************************)
-(* Inversion Lemmas                                                          *)
-(*****************************************************************************)
-
-Lemma subtype_inv_arrow : forall U V1 V2,
-     subtype U (typ_arrow V1 V2)
-  -> exists U1, exists U2, 
-       (U=(typ_arrow U1 U2)) /\ (subtype V1 U1) /\ (subtype U2 V2).
-Proof with eauto.
-  intros U V1 V2 Hs.
-  remember (typ_arrow V1 V2) as V.
-  generalize dependent V2. generalize dependent V1.
-  induction Hs; intros; inversion HeqV.
-  exists V1. exists V2.
-  split. reflexivity. split. apply subtype_refl. apply subtype_refl.
-  (* transitivity *)
-  apply IHHs2 in HeqV.
-  destruct HeqV as [U1 [U2 HeqV]].
-  destruct HeqV as [Hu [Hsub1 Hsub2]].
-  apply IHHs1 in Hu.
-  destruct Hu as [U3 [U4 Hu]].
-  destruct Hu as [Hs [Hsub3 Hsub]].
-  exists U3. exists U4.
-  split. exact Hs.
-  split. eapply subtype_trans. apply Hsub1. exact Hsub3.
-         eapply subtype_trans. apply Hsub. exact Hsub2.
-  (* arrow subtyping *)  
-  exists s1. exists s2.
-  subst...
-Qed.
-
-Lemma subtype_inv_union : forall S T1 T2,
-  subtype S (typ_union T1 T2) ->
-  subtype S T1 \/ subtype S T2 \/ 
-  (exists S1, exists S2, S = typ_union S1 S2 /\ subtype S1 T1 /\ subtype S2 T2).
-Proof with eauto.
-  intros S T1 T2 Hs.
-  remember (typ_union T1 T2) as T.
-  generalize dependent T1.
-  generalize dependent T2.
-  induction Hs; intros. 
-  (* reflexivity *)
-  subst.
-  right. right. exists T1. exists T2. split... split; apply subtype_refl.
-  (* transitivity *)
-  subst.
-  assert (typ_union T1 T2 = typ_union T1 T2). reflexivity.
-  apply IHHs2 in H.
-  destruct H. left. eapply subtype_trans...
-  destruct H. right. left. eapply subtype_trans...
-  destruct H as [S1 [S2 [Heq [Hsub1 hsub2]]]]. 
-  apply IHHs1 in Heq.
-  destruct Heq. left. eapply subtype_trans...
-  destruct H. right. left. eapply subtype_trans...
-  destruct H as [S3 [S4 [Heq [Hsub3 Hsub4]]]].
-    right. right. exists S3. exists S4. split...
-    split. eapply subtype_trans... eapply subtype_trans...
-  (* arrows *)
-  inversion HeqT.
-  (* unions *)
-  inversion HeqT; subst.
-  right. right. exists s1. exists s2...
-  (* more unions *)
-  inversion HeqT. subst...
-  inversion HeqT. subst...
-Qed.
-
-Lemma subtype_inv_base_typ : forall S T,
-  base_typ S ->
-  subtype T S ->
-  T = S.
-Proof.
-  intros S T Hbase Hsub.
-  assert (subtype T S) as HsubOrig. exact Hsub.
-  generalize dependent HsubOrig.
-  induction Hsub; intros.
-  (* subtype_refl *)
-  reflexivity. 
-  (* subtype_trans *)
-  assert (base_typ t) as Hbase'. exact Hbase.
-  apply IHHsub2 in Hbase. subst.
-  apply IHHsub1 in Hbase'.
-  exact Hbase'. exact Hsub1. exact Hsub2.
-  (* arrows, unions, etc. *)
-  inversion Hbase. inversion Hbase. inversion Hbase. inversion Hbase.
-Qed.
-
-Lemma subtype_inv_int : forall T,
-  subtype T typ_int ->
-  T = typ_int.
-Proof.
-  intros. eapply subtype_inv_base_typ. apply base_typ_int. exact H.
-Qed.
-
-Lemma subtype_inv_bool : forall T,
-  subtype T typ_bool ->
-  T = typ_bool.
-Proof.
-  intros. eapply subtype_inv_base_typ. apply base_typ_bool. exact H.
-Qed.
-
-Lemma subtype_static_distr : forall R1 R2 S1 S2 T1 T2,
-  static R1 S1 T1 ->
-  static R2 S2 T2 ->
-  rts.Subset R1 R2 ->
-  subtype S1 S2 ->
-  subtype T1 T2.
-Proof with auto using subtype_inv_base_typ.
-  intros R1 R2 S1 S2 T1 T2 Hstatic1 Hstatic2 Hsubset Hsubtype.
-  generalize dependent T1.
-  generalize dependent T2.
-  generalize dependent S1.
-  generalize dependent R1.
-  generalize dependent R2.
-  induction S2; intros.
-  apply subtype_inv_base_typ in Hsubtype; subst...
-  apply static_sub in Hstatic1.
-  apply static_sub in Hstatic2.
-  apply subtype_inv_base_typ in Hstatic2...
-  apply subtype_inv_base_typ in Hstatic1; subst...
-  apply subtype_refl.
-  apply subtype_inv_base_typ in Hsubtype; subst...
-  apply static_sub in Hstatic1.
-  apply static_sub in Hstatic2.
-  apply subtype_inv_base_typ in Hstatic2...
-  apply subtype_inv_base_typ in Hstatic1; subst...
-  apply subtype_refl.
-  apply subtype_inv_base_typ in Hsubtype; subst...
-  apply static_sub in Hstatic1.
-  apply static_sub in Hstatic2.
-  apply subtype_inv_base_typ in Hstatic2...
-  apply subtype_inv_base_typ in Hstatic1; subst...
-  apply subtype_refl.
-  (* arrows *)
-  clear IHS2_1 IHS2_2.
-  apply subtype_inv_arrow in Hsubtype.
-  destruct Hsubtype as [U1 [U2 [Hsubtype0 [Hsubtype1 Hsubtype2]]]].
-  subst. (* In Hstatic1, S1 is now an arrow *)
-  assert (subtype (typ_arrow U1 U2) (typ_arrow S2_1 S2_2)) as Hsubtype.
-    apply subtype_arrow; auto.
-  inversion Hstatic1; subst.
-  inversion Hstatic2; subst.
-  exact Hsubtype.
-  (* unions *)
-  apply subtype_inv_union in Hsubtype.
-  destruct Hsubtype.
-  (* S1 <: S2_1 *)
-  eapply IHS2_1.
-    apply Hsubset. apply H.
-     
-  inversion Hsubtype; subst.
-Focus 5.
-  
-Admitted.
 
 Lemma typing_inv_cond : forall E e1 e2 e3 T,
   typing E (cond e1 e2 e3) T ->
@@ -841,13 +948,9 @@ Proof with eauto.
   assert (static (rts.singleton rt_function) (typ_arrow T1 T2) 
                  (typ_arrow T1 T2)) as Hstaticsub.
     apply ast_arrow.
-  assert (rts.Subset (rts.add rt_function rts.empty) r).
-    eapply rts_props.subset_add_3.
-      exact H1. apply rts_props.subset_empty.
-  eapply subtype_static_distr.
-    apply Hstaticsub.
+  eapply subtype_static_distr_function.
     apply H2.
-    exact H3.
+    apply H1. (* rt_function \in r *)
     exact Hsub0.
   exact Hsub1.
 Qed.
@@ -1071,7 +1174,7 @@ Proof with eauto.
   intros e T H.
   assert (typing nil e T); auto.
   remember (@nil (atom * typ)) as E.
-  induction H; subst.
+  induction H; subst; try eauto.
   (* typing_var *)
   inversion H1.
   (* typing_abs *)
@@ -1095,9 +1198,6 @@ Proof with eauto.
     apply eval_app_1. 
     eapply typing_regular_lc; eauto.
     assumption.
-  (* const *)
-  left.
-  apply value_const.
   (* cond *)
   right.
   apply typing_inv_cond in H0.
@@ -1116,8 +1216,4 @@ Proof with eauto.
   eapply typing_regular_lc...
   eapply typing_regular_lc...
   reflexivity.
-  (* subtyping *)
-  apply IHtyping in H1. exact H1. reflexivity.
-  (* runtime typing *)
-  apply IHtyping in H1. exact H1. reflexivity.
 Qed.
