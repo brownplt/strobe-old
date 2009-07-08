@@ -72,14 +72,6 @@ Inductive const : Set :=
   | const_bool : bool -> const
   | const_str : string -> const.
 
-Inductive exp : Set :=
-  | bvar : nat  -> exp    (* bound variables *)
-  | fvar : RTS -> atom -> exp   (* free  variables *)
-  | abs  : typ -> exp  -> exp (* type of the binding instance *)
-  | app  : exp  -> exp -> exp
-  | e_const : const -> exp
-  | cond : exp -> exp -> exp -> exp.
-
 Fixpoint runtime (t : typ) { struct t } : RTS :=
   match t with
   | typ_int =>  rts.singleton rt_number
@@ -115,11 +107,36 @@ Section Types.
 
 Hint Constructors subtype static base_typ typ_eq.
 
+Lemma typ_eq_runtime : forall s t,
+  typ_eq s t ->
+  runtime s = runtime t.
+Proof.
+  intros s t Htypeq.
+  induction Htypeq; simpl.
+  reflexivity.
+  rewrite -> IHHtypeq1. rewrite <- IHHtypeq2. reflexivity.
+  rewrite <- IHHtypeq.
+  assert (rts.Equal (runtime s) (rts.union (runtime s) (runtime s))).
+    rtsdec.
+  apply rts_module.eq_if_Equal in H.
+  exact H.
+  rewrite <- IHHtypeq.
+  assert (rts.Equal (rts.union (runtime s) (runtime s)) (runtime s)).
+    rtsdec.
+  apply rts_module.eq_if_Equal in H.
+  exact H.
+  assert (rts.Equal (rts.union (runtime s) (runtime t))
+                    (rts.union (runtime t) (runtime s))).
+    rtsdec.
+  apply rts_module.eq_if_Equal in H.
+  exact H.
+Qed.
+
 Lemma runtime_sub: forall S T,
   subtype S T ->
   rts.Subset (runtime S) (runtime T).
 Proof.
-  intros. induction H; subst; simpl; rtsdec.
+  intros. induction H; try (subst; simpl; rtsdec).
 Qed.
 
 Lemma static_sub : forall R S T,
@@ -162,7 +179,7 @@ Qed.
 Lemma subtype_inv_arrow : forall U V1 V2,
      subtype U (typ_arrow V1 V2)
   -> exists U1, exists U2, 
-       (U=(typ_arrow U1 U2)) /\ (subtype V1 U1) /\ (subtype U2 V2).
+       (U = typ_arrow U1 U2) /\ (subtype V1 U1) /\ (subtype U2 V2).
 Proof with eauto.
   intros U V1 V2 Hs.
   remember (typ_arrow V1 V2) as V.
@@ -412,6 +429,15 @@ Qed.
 
 End Types.
 (*****************************************************************************)
+
+Inductive exp : Set :=
+  | bvar : nat  -> exp    (* bound variables *)
+  | fvar : RTS -> atom -> exp   (* free  variables *)
+  | abs  : typ -> exp  -> exp (* type of the binding instance *)
+  | app  : exp  -> exp -> exp
+  | e_const : const -> exp
+  | cond : exp -> exp -> exp -> exp.
+
 
 Inductive typing_const : const -> typ -> Prop :=
   | typing_int : forall n, typing_const (const_int n) typ_int
