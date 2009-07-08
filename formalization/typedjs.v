@@ -431,13 +431,12 @@ End Types.
 (*****************************************************************************)
 
 Inductive exp : Set :=
-  | bvar : nat  -> exp    (* bound variables *)
-  | fvar : RTS -> atom -> exp   (* free  variables *)
-  | abs  : typ -> exp  -> exp (* type of the binding instance *)
-  | app  : exp  -> exp -> exp
+  | bvar : RTS -> nat -> exp
+  | fvar : RTS -> atom -> exp
+  | abs : typ -> exp  -> exp (* type of the binding identifer *)
+  | app : exp  -> exp -> exp
   | e_const : const -> exp
   | cond : exp -> exp -> exp -> exp.
-
 
 Inductive typing_const : const -> typ -> Prop :=
   | typing_int : forall n, typing_const (const_int n) typ_int
@@ -456,7 +455,7 @@ Inductive runtime_type : exp -> RT -> Prop :=
   | typeof_abs : forall t e, runtime_type (abs t e) rt_function.
 
 Inductive subst : atom -> exp -> exp -> exp -> Prop :=
-  | subst_bvar : forall z u (i : nat), subst z u (bvar i) (bvar i)
+  | subst_bvar : forall z u r (i : nat), subst z u (bvar r i) (bvar r i)
   | subst_fvar_noop : forall z u r (x : atom),
       x <> z -> subst z u (fvar r x) (fvar r x)
   | subst_fvar : forall (z : atom) r rt (u : exp), 
@@ -480,7 +479,7 @@ Inductive subst : atom -> exp -> exp -> exp -> Prop :=
 
 Fixpoint open_rec (k : nat) (u : exp) (e : exp) {struct e} : exp :=
   match e with
-    | bvar i => if k === i then u else (bvar i)
+    | bvar r i => if k === i then u else (bvar r i)
     | fvar r x => fvar r x
     | abs t e1 => abs t (open_rec (S k) u e1)
     | app e1 e2 => app (open_rec k u e1) (open_rec k u e2)
@@ -578,11 +577,13 @@ Inductive eval : exp -> exp -> Prop :=
       eval (cond (e_const (const_bool false)) e2 e3) e3.
 
 Hint Constructors typing typing_const subst lc value eval runtime_type
-  runtime_type_const base_typ subtype.
+  runtime_type_const base_typ subtype static.
+
+Hint Unfold open.
 
 Fixpoint fv (e : exp) {struct e} : atoms :=
   match e with
-    | bvar i => {}
+    | bvar r i => {}
     | fvar r x => singleton x
     | abs t e1 => fv e1
     | app e1 e2 => (fv e1) `union` (fv e2)
@@ -623,6 +624,18 @@ Tactic Notation
       "pick" "fresh" ident(atom_name) "and" "apply" constr(lemma) :=
   let L := gather_atoms in
   pick fresh atom_name excluding L and apply lemma.
+
+(*****************************************************************************)
+
+Example eg_typing_0 :
+  typing nil (abs typ_int (bvar (rts.singleton rt_number) 0))
+             (typ_arrow typ_int typ_int).
+Proof.
+  apply typing_abs with (L := {}). 
+  intros. simpl. unfold open. simpl.
+  eapply typing_var; auto. 
+Qed.
+
 
 (*****************************************************************************
  * Lemmas                                                                    *

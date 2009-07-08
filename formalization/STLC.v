@@ -230,6 +230,37 @@ Inductive typing : env -> exp -> typ -> Prop :=
       typing E e2 T1 ->
       typing E (app e1 e2) T2.
 
+(*****************************************************************************)
+(* Typing algorithm                                                          *)
+(*****************************************************************************)
+
+Fixpoint typ_equal (t1 : typ) (t2 : typ) { struct t1 } : bool :=
+  match t1, t2 with
+  | typ_base, typ_base => true
+  | typ_arrow t11 t12, typ_arrow t21 t22 => 
+    match typ_equal t11 t21 with
+    | true => typ_equal t12 t22
+    | false => false
+    end
+  |  _, _ => false
+  end.
+
+Check open.
+
+Fixpoint typecheck (g : env) (e : exp) { struct e } : option typ :=
+  match e with
+  | app e1 e2 => match typecheck g e1, typecheck g e2 with
+                 | Some (typ_arrow t1 t2), Some t1' => 
+                     if typ_equal t1 t1' then Some t2 else None
+                 | _, _ => None
+                 end
+  | bvar _ => None
+  | abs t e' => open e (fvar 
+  | fvar x => get x g (* In metatheory/Environment.v *)
+  | _ => None
+  end.
+
+
 Hint Constructors typing.
 
 Lemma typing_weakening_strengthened :  forall E F G e T,

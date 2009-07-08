@@ -20,6 +20,8 @@ Module Type S.
   Parameter eq_if_Equal :
     forall s s' : F.t, F.Equal s s' -> s = s'.
 
+  Parameter elements : F.t -> list (E.t).
+
 End S.
 
 
@@ -56,6 +58,7 @@ Module Make (X : UsualOrderedType) <: S with Module E := X.
     reflexivity.
   Qed.
 
+  Definition elements := F.elements.
   (* end hide *)
 
 End Make.

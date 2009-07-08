@@ -3,7 +3,7 @@
     collection, e.g., the lemma [atom_fresh_for_set], and a tactic to
     pick an atom fresh for the current proof context.
 
-    Authors: Arthur Charguéraud and Brian Aydemir.
+    Authors: Arthur Chargu\u00e9raud and Brian Aydemir.
 
     Implementation note: In older versions of Coq, [OrderedTypeEx]
     redefines decimal constants to be integers and not natural
@@ -44,6 +44,8 @@ Module Type ATOM.
 
   Parameter eq_atom_dec : forall x y : atom, {x = y} + {x <> y}.
 
+  Parameter make_fresh_atom : list atom -> atom. 
+
 End ATOM.
 
 (** The implementation of the above interface is hidden for
@@ -82,6 +84,20 @@ Module AtomImpl : ATOM.
     exists (S x). intros J. lapply (H (S x)). omega. trivial.
   Qed.
 
+  Fixpoint make_fresh_atom (xs : list nat) { struct xs } : nat :=
+  match xs with
+  | nil => O
+  | x :: xs => x + (make_fresh_atom xs)
+  end.
+
+  Example eg_make_fresh_atom_1 : make_fresh_atom nil = 0.
+  simpl. reflexivity.
+  Qed.
+
+  Example eg_make_fresh_atom_2 : make_fresh_atom (5 :: 6 :: nil) = 11.
+  simpl. reflexivity.
+  Qed.
+
   Module Atom_as_OT := Nat_as_OT.
   Module Facts := OrderedTypeFacts Atom_as_OT.
 
@@ -93,7 +109,6 @@ Module AtomImpl : ATOM.
 End AtomImpl.
 
 Export AtomImpl.
-
 
 (* ********************************************************************** *)
 (** * Finite sets of atoms *)
