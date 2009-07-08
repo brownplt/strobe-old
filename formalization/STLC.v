@@ -1,3 +1,4 @@
+
 Add LoadPath "metatheory".
 Require Import Metatheory.
 
@@ -245,22 +246,91 @@ Fixpoint typ_equal (t1 : typ) (t2 : typ) { struct t1 } : bool :=
   |  _, _ => false
   end.
 
-Check open.
-
-Fixpoint typecheck (g : env) (e : exp) { struct e } : option typ :=
-  match e with
-  | app e1 e2 => match typecheck g e1, typecheck g e2 with
-                 | Some (typ_arrow t1 t2), Some t1' => 
-                     if typ_equal t1 t1' then Some t2 else None
-                 | _, _ => None
-                 end
-  | bvar _ => None
-  | abs t e' => open e (fvar 
-  | fvar x => get x g (* In metatheory/Environment.v *)
-  | _ => None
+Fixpoint exp_size (e : exp) { struct e } : nat := match e with
+  | app e1 e2 => S ((exp_size e1) + (exp_size e2))
+  | abs _ e1 => S (exp_size e1)
+  | fvar _ => S O
+  | bvar _ => S O
   end.
 
+Definition arg_size (arg : (env * exp)) := match arg with
+  | (_, e) => exp_size e
+end.
 
+Lemma open_var_size : forall e (v : atom) m n,
+  exp_size (open_rec m v e) = exp_size (open_rec n v e).
+Proof.
+  intros.
+  generalize dependent m.
+  generalize dependent n.
+  induction e; intros.
+  simpl.
+  destruct (m === n); destruct (n0 === n); auto.
+  simpl. reflexivity.
+  simpl.
+  f_equal.
+  apply IHe.
+  simpl. auto.
+Qed.
+
+Lemma open_size : forall e (v : atom), exp_size (open e v) =
+                                        exp_size e.
+Proof.
+  intros.
+  induction e; try (simpl; reflexivity).
+  destruct n. simpl. reflexivity. simpl. reflexivity.
+  Focus 2. 
+  unfold open in IHe1.
+  unfold open in IHe2.
+  simpl.
+  rewrite -> IHe1.
+  rewrite -> IHe2.
+  reflexivity.
+  simpl.
+  f_equal.
+  unfold open in IHe.
+  assert (exp_size (open_rec 0 v e) = exp_size (open_rec 1 v e)).
+    apply open_var_size.
+  rewrite <- IHe. symmetry. exact H.
+Qed.
+
+Program Fixpoint typecheck (arg : (env * exp)) { measure arg_size arg } : option typ :=
+  match arg with | (g, e) => match e with
+  | app e1 e2 => match typecheck (g, e1) with
+                 | Some (typ_arrow t1 t2) => match typecheck (g, e2) with
+                   | Some t1' => if typ_equal t1 t1' then Some t2 else None
+                   | _ => None
+                   end
+                 | _ => None
+                 end
+  | bvar _ => None
+  | abs t e' => 
+    let x := make_fresh_atom (AtomSet.elements (dom g)) in
+    match typecheck (((x, t) :: g), open e' (fvar x)) with
+    | Some t2 => Some (typ_arrow t t2)
+    | None => None
+    end                     
+  | fvar x => get x g (* In metatheory/Environment.v *)
+  end end.
+
+Obligation 1 of typecheck.
+  simpl. inversion Heq_arg.  simpl. omega. Qed.
+Obligation 2 of typecheck.
+  inversion Heq_arg. rewrite <- H1. rewrite <- Heq_e. simpl. omega. Qed.
+Obligation 6.
+  inversion Heq_arg.
+  assert (exp_size (open e' (make_fresh_atom (AtomSet.elements (dom l)))) =
+          exp_size e'). apply open_size.
+  simpl. omega. Qed.
+
+Example eg_typecheck_1 :
+  typecheck (nil, (abs typ_base 0)) = Some (typ_arrow typ_base typ_base).
+  lazy beta iota zeta delta. 
+  destruct (make_fresh_atom (AtomSet.elements {}) == make_fresh_atom (AtomSet.elements {})).
+  reflexivity.
+  unfold not in n. contradiction n. reflexivity.
+Qed.
+  
 Hint Constructors typing.
 
 Lemma typing_weakening_strengthened :  forall E F G e T,
