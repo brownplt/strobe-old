@@ -1,7 +1,7 @@
 {-# OPTIONS_HADDOCK ignore-exports #-}
 module BrownPLT.TypedJS.LocalFlows
-  ( BaseType (..)
-  , Type (..)
+  ( RuntimeType (..)
+  , RuntimeTypeInfo (..)
   , localTypes
   , localRefs
   , prettyRefEnv
@@ -22,16 +22,16 @@ import qualified Text.PrettyPrint.HughesPJ as PP
 
 -- |The types discernable by runtime reflection.  These largely correspond
 -- to the possible results of JavaScript's @typeof@ operator.  In addition,
--- we track the values of string literals with @TFixedString@.
-data BaseType
-  = TNumber
-  | TString
-  | TBoolean
-  | TFunction
-  | TObject 
-  | TUndefined
-  | TFixedString String
-  deriving (Show, Eq, Ord)
+-- we track the values of string literals with @RTFixedString@.
+data RuntimeType
+  = RTNumber
+  | RTString
+  | RTBoolean
+  | RTFunction
+  | RTObject 
+  | RTUndefined
+  | RTFixedString String
+  deriving (Show, Eq, Ord, Data, Typeable)
 
 
 -- |JavaScript's types are statically indeterminate.  The best we can do is
@@ -39,8 +39,8 @@ data BaseType
 -- (@TKnown@).  In other cases, a type may be statically unknown (@TUnk@).
 -- We distinguish variables whose types are unknown from uninitialized
 -- variables (@TUnreachable@).
-data Type 
-  = TKnown (Set BaseType)
+data RuntimeTypeInfo
+  = TKnown (Set RuntimeType)
   | TUnk
   | TUnreachable
   deriving (Show, Eq, Ord)
@@ -100,11 +100,11 @@ data Type
 -- may assume that the expression is either @true@/@false@ either branch.
 -- Assuming the value refines the type of @x@ in the environment.
 data Ref
-  = Type Type
+  = Type RuntimeTypeInfo
   | Ref Id
   | Typeof Id
-  | TypeIs Id Type
-  | TypeIsNot Id Type
+  | TypeIs Id RuntimeTypeInfo
+  | TypeIsNot Id RuntimeTypeInfo
   deriving (Show, Eq, Ord)
 
 
@@ -118,7 +118,7 @@ data S = S {
 }
 
 
--- |The environment before evaluation a statement.
+-- |The environment before evaluating a statement.
 getEnv :: Node -> State S Env
 getEnv node = do
   s <- get
@@ -129,46 +129,46 @@ getEnv node = do
 
 -- |JavaScript's @typeof@ operator returns one of these strings.
 stringToType :: String
-             -> Maybe BaseType
+             -> Maybe RuntimeType
 stringToType s = case s of
-  "string" -> Just TString
-  "number" -> Just TNumber
-  "function" -> Just TFunction
-  "object" -> Just TObject
-  "boolean" -> Just TBoolean
-  "undefined" -> Just TUndefined
+  "string" -> Just RTString
+  "number" -> Just RTNumber
+  "function" -> Just RTFunction
+  "object" -> Just RTObject
+  "boolean" -> Just RTBoolean
+  "undefined" -> Just RTUndefined
   otherwise -> Nothing
 
-projBaseType :: Ref -> Maybe BaseType
-projBaseType (Type (TKnown set)) = case S.toList set of
+projRuntimeType :: Ref -> Maybe RuntimeType
+projRuntimeType (Type (TKnown set)) = case S.toList set of
   [t] -> Just t
   otherwise -> Nothing
-projBaseType _ = Nothing
+projRuntimeType _ = Nothing
 
 
-injBaseType :: BaseType -> Ref
-injBaseType bt = Type (TKnown (S.singleton bt))
+injRuntimeType :: RuntimeType -> Ref
+injRuntimeType bt = Type (TKnown (S.singleton bt))
 
 
 -- |The definition of this function is based on the runtime behavior of
 -- the @typeof@ operator.
 litToType :: Lit a
-          -> Maybe BaseType
+          -> Maybe RuntimeType
 litToType lit = case lit of
-  StringLit _ s -> Just (TFixedString s)
-  RegexpLit _ _ _ _ -> Just TObject
-  NumLit _ _ -> Just TNumber
-  IntLit _ _ -> Just TNumber
-  BoolLit _ _ -> Just TBoolean
-  NullLit _ -> Just TObject
-  ArrayLit _ _ -> Just TObject
-  FuncLit _ _ _ _ -> Just TFunction
-  ArgsLit _ _ -> Just TObject
-  ObjectLit _ _ -> Just TObject
+  StringLit _ s -> Just (RTFixedString s)
+  RegexpLit _ _ _ _ -> Just RTObject
+  NumLit _ _ -> Just RTNumber
+  IntLit _ _ -> Just RTNumber
+  BoolLit _ _ -> Just RTBoolean
+  NullLit _ -> Just RTObject
+  ArrayLit _ _ -> Just RTObject
+  FuncLit _ _ _ _ -> Just RTFunction
+  ArgsLit _ _ -> Just RTObject
+  ObjectLit _ _ -> Just RTObject
 
 
 refineEnv :: Id
-          -> BaseType
+          -> RuntimeType
           -> Env
           -> Env
 refineEnv id t env = case M.lookup id env of
@@ -190,7 +190,7 @@ assignEnv id type_ env = do
                 Just t -> return (thisId, t)
                 Nothing -> fail $ printf "localTypes: %s is unbound" id
               Typeof id' | id' == id -> 
-                return (thisId, Type (TKnown (S.singleton TString)))
+                return (thisId, Type (TKnown (S.singleton RTString)))
               otherwise -> return (thisId, thisType)
   lst <- mapM f (M.toList env)
   return (M.fromList lst)
@@ -205,13 +205,13 @@ idRoot id env = case M.lookup id env of
 
 
 restrict :: Id
-         -> Type
+         -> RuntimeTypeInfo
          -> Env
          -> Env
 restrict id type_ env = M.insert (idRoot id env) (Type type_) env
 
 remove :: Id
-       -> Type
+       -> RuntimeTypeInfo
        -> Env
        -> Env
 remove id remove env = M.adjust f (idRoot id env)  env
@@ -225,9 +225,9 @@ remove id remove env = M.adjust f (idRoot id env)  env
          f other = error $ "localTypes: root references " ++ show other
 
 
-unionType :: Type -> Type -> Type
-unionType TUnreachable t = t --unionType (TKnown $ S.singleton TUndefined) t
-unionType t TUnreachable = t --unionType t (TKnown $ S.singleton TUndefined)
+unionType :: RuntimeTypeInfo -> RuntimeTypeInfo -> RuntimeTypeInfo
+unionType TUnreachable t = t --unionType (TKnown $ S.singleton RTUndefined) t
+unionType t TUnreachable = t --unionType t (TKnown $ S.singleton RTUndefined)
 unionType TUnk _ = TUnk
 unionType _ TUnk = TUnk
 unionType (TKnown ts1) (TKnown ts2) = TKnown (S.union ts1 ts2)
@@ -245,13 +245,13 @@ intersectEnv env1 env2 = M.unionWith f env1 env2
           Nothing -> Type TUnk
         f (Typeof id1) (Typeof id2) 
           | id1 == id2 = Typeof id1
-          | otherwise = Type (TKnown (S.singleton TString))
+          | otherwise = Type (TKnown (S.singleton RTString))
         f (TypeIs id1 t1) (TypeIs id2 t2)   
           | id1 == id2 = TypeIs id1 (unionType t1 t2)
-          | otherwise = Type (TKnown (S.singleton TBoolean))
+          | otherwise = Type (TKnown (S.singleton RTBoolean))
         f (TypeIsNot id1 t1) (TypeIsNot id2 t2)   
           | id1 == id2 = TypeIsNot id1 (unionType t1 t2)
-          | otherwise = Type (TKnown (S.singleton TBoolean))
+          | otherwise = Type (TKnown (S.singleton RTBoolean))
         f _ _ = Type TUnk
         -- other possibilities, e.g. TypeIs + TypeIsNot =~ TypeIs
 
@@ -263,9 +263,10 @@ succs node = do
 
 
 stmt :: Env
-      -> Node
+     -> Node
      -> Stmt (Int, SourcePos)
      -> State S [(Node, Env)]
+     -- ^The environments to push to each successor of this statement.
 stmt env node s = do
   succs <-  succs node
   let noop = return (zip (map fst succs) (repeat env)) 
@@ -357,23 +358,23 @@ expr :: Env
      -> Expr (Int, SourcePos)
      -> State S Ref
 expr env e = case e of
-  Lit (StringLit _ s) -> return (injBaseType (TFixedString s))
-  Lit (RegexpLit _ _ _ _) -> return (injBaseType TObject)
-  Lit (NumLit _ _) -> return (injBaseType TNumber)
-  Lit (IntLit _ _) -> return (injBaseType TNumber)
-  Lit (BoolLit _ _) -> return (injBaseType TBoolean)
+  Lit (StringLit _ s) -> return (injRuntimeType (RTFixedString s))
+  Lit (RegexpLit _ _ _ _) -> return (injRuntimeType RTObject)
+  Lit (NumLit _ _) -> return (injRuntimeType RTNumber)
+  Lit (IntLit _ _) -> return (injRuntimeType RTNumber)
+  Lit (BoolLit _ _) -> return (injRuntimeType RTBoolean)
   Lit (NullLit _) -> return (Type (TUnk))
   Lit (ArrayLit _ es) -> do
     mapM_ (expr env) es
-    return (injBaseType TObject)
+    return (injRuntimeType RTObject)
   Lit (ArgsLit _ es) -> do
     mapM_ (expr env) es
-    return (injBaseType TObject)
+    return (injRuntimeType RTObject)
   Lit (ObjectLit _ props) -> do
     let es = map (\(_, _, e) -> e) props
     mapM_ (\(_, _, e) -> expr env e) props
-    return (injBaseType TObject)
-  Lit (FuncLit _ _ _ _) -> return (injBaseType TFunction)
+    return (injRuntimeType RTObject)
+  Lit (FuncLit _ _ _ _) -> return (injRuntimeType RTFunction)
   VarRef _ id -> return (Ref id)
   DotRef _ obj field -> do
     _ <- expr env obj
@@ -388,16 +389,16 @@ expr env e = case e of
     let comparison = do
           t1 <- expr env lhs
           t2 <- expr env rhs
-          return (injBaseType TBoolean)
+          return (injRuntimeType RTBoolean)
     let equality' t1 t2 = case (unRef t1 env, unRef t2 env) of
-          (Typeof id, projBaseType -> Just (TFixedString s)) -> 
+          (Typeof id, projRuntimeType -> Just (RTFixedString s)) -> 
             case stringToType s of
-              Nothing -> return (injBaseType TBoolean)
+              Nothing -> return (injRuntimeType RTBoolean)
               Just localType -> 
                 return (TypeIs id (TKnown (S.singleton localType)))
-          (projBaseType -> Just (TFixedString _), Typeof _) ->
+          (projRuntimeType -> Just (RTFixedString _), Typeof _) ->
             equality' t2 t1
-          otherwise -> return (injBaseType TBoolean)
+          otherwise -> return (injRuntimeType RTBoolean)
     let equality = do
           t1 <- expr env lhs
           t2 <- expr env rhs
@@ -410,7 +411,7 @@ expr env e = case e of
     let arithmetic = do
           expr env lhs
           expr env rhs
-          return (injBaseType TNumber)           
+          return (injRuntimeType RTNumber)           
     case op of
       PrefixTypeof -> do
         t <- expr env lhs
@@ -432,16 +433,16 @@ expr env e = case e of
         case t of
           TypeIs id t' -> return (TypeIsNot id t')
           TypeIsNot id t' -> return (TypeIs id t')
-          otherwise -> return (injBaseType TBoolean)
+          otherwise -> return (injRuntimeType RTBoolean)
       PrefixBNot -> do
         t <- expr env lhs
-        return (injBaseType TNumber)
+        return (injRuntimeType RTNumber)
       PrefixMinus -> do
         t <- expr env lhs
-        return (injBaseType TNumber)
+        return (injRuntimeType RTNumber)
       PrefixVoid -> do
         t <- expr env lhs
-        return (injBaseType TUndefined)
+        return (injRuntimeType RTUndefined)
       OpMul -> arithmetic
       OpDiv -> arithmetic
       OpMod -> arithmetic
@@ -456,10 +457,13 @@ expr env e = case e of
         t1 <- expr env lhs
         t2 <- expr env rhs
         case (unRef t1 env, unRef t2 env) of
-          (projBaseType -> Just TString, _) -> return (injBaseType TString)
-          (_, projBaseType -> Just TString) -> return (injBaseType TString)
-          (projBaseType -> Just TNumber, projBaseType -> Just TNumber) ->
-            return (injBaseType TNumber)
+          (projRuntimeType -> Just RTString, _) -> 
+            return (injRuntimeType RTString)
+          (_, projRuntimeType -> Just RTString) -> 
+            return (injRuntimeType RTString)
+          (projRuntimeType -> Just RTNumber, 
+           projRuntimeType -> Just RTNumber) ->
+            return (injRuntimeType RTNumber)
           otherwise -> return (Type TUnk)
 
 
@@ -510,13 +514,13 @@ body initEnv = do
   work [(enterNode, initEnv)]
 
 
-simpleBaseType :: BaseType -> BaseType
-simpleBaseType (TFixedString _) = TString
-simpleBaseType t = t
+simpleRuntimeType :: RuntimeType -> RuntimeType
+simpleRuntimeType (RTFixedString _) = RTString
+simpleRuntimeType t = t
 
 
-simpleType :: Type -> Type
-simpleType (TKnown ts) = TKnown (S.map simpleBaseType ts)
+simpleType :: RuntimeTypeInfo -> RuntimeTypeInfo
+simpleType (TKnown ts) = TKnown (S.map simpleRuntimeType ts)
 simpleType TUnk = TUnk
 simpleType TUnreachable = TUnreachable
 
@@ -526,28 +530,29 @@ unRef (Ref id) env = case M.lookup id env of
   Nothing -> error "localTypes: unbound ref"
 unRef r _ = r
 
-flattenEnv :: Map Id Ref -> Map Id Type
+flattenEnv :: Map Id Ref -> Map Id RuntimeTypeInfo
 flattenEnv env = M.map f env 
   where f (Type t) = simpleType t
         f (Ref id) = case M.lookup (idRoot id env) env of
           Just (Ref id') -> error $ printf "localTypes: %s -> %s" id id'
           Just r -> f r
           Nothing -> error $ printf "localTypes: %s is unbound at exit" id
-        f (Typeof _) = TKnown (S.singleton TString)
-        f (TypeIs _ _) = TKnown (S.singleton TBoolean)
-        f (TypeIsNot _ _) = TKnown (S.singleton TBoolean)
+        f (Typeof _) = TKnown (S.singleton RTString)
+        f (TypeIs _ _) = TKnown (S.singleton RTBoolean)
+        f (TypeIsNot _ _) = TKnown (S.singleton RTBoolean)
 
 
 localTypes :: Graph -- ^intraprocedural control flow graph of a function
-           -> Map Id Type -- ^environment of the function
-           -> Map Node (Map Id Type) -- ^environment at each statement
+           -> Map Id RuntimeTypeInfo -- ^environment of the function
+           -> Map Node (Map Id RuntimeTypeInfo) 
+           -- ^environment at each statement
 localTypes gr env = M.map flattenEnv (sDefs (execState (body enterEnv) s))
   where enterEnv = M.map Type env
         (enterNode, _) = G.nodeRange gr
         s = S M.empty gr []
 
 localRefs :: Graph -- ^intraprocedural control flow graph of a function
-           -> Map Id Type -- ^environment of the function
+           -> Map Id RuntimeTypeInfo -- ^environment of the function
            -> Map Node (Map Id Ref) -- ^environment at each statement
 localRefs gr env = sDefs (execState (body enterEnv) s)
   where enterEnv = M.map Type env
@@ -558,6 +563,6 @@ prettyRefEnv :: Map Id Ref -> PP.Doc
 prettyRefEnv env = PP.cat (PP.punctuate PP.comma (map f $ M.toList env))
   where f (id, t) = PP.text $ printf "%s = %s" id (show t)
 
-prettyEnv :: Map Id Type -> PP.Doc
+prettyEnv :: Map Id RuntimeTypeInfo -> PP.Doc
 prettyEnv env = PP.cat (PP.punctuate PP.comma (map f $ M.toList env))
   where f (id, t) = PP.text $ printf "%s = %s" id (show t)

@@ -12,7 +12,7 @@ import TypedJavaScript.Syntax (Type (..), TypeConstraint (..),
   LatentPred (..))
 import TypedJavaScript.Types
 import TypedJavaScript.Graph
-import BrownPLT.JavaScript.Analysis (jsToCore, simplify)
+import BrownPLT.JavaScript.Analysis (toANF, simplify)
 import BrownPLT.JavaScript.Analysis.Intraprocedural (Graph,
   allIntraproceduralGraphs)
 import BrownPLT.JavaScript.Analysis.ANF
@@ -38,7 +38,7 @@ data TypeCheckState = TypeCheckState {
   stateEnvs :: Map Int Env,
   stateTypeEnv :: Map String Type,
   stateErrors :: [(SourcePos, String)],
-  stateLocalTypes :: Map Node (Map Id LT.Type)
+  stateLocalTypes :: Map Node (Map Id LT.RuntimeTypeInfo)
 } deriving (Typeable)
 
 instance Show TypeCheckState where
@@ -115,7 +115,7 @@ setLocalEnv node env = do
   put $ state { stateEnvs = M.insert node env (stateEnvs state) }
 
 
-lookupRuntimeEnv :: Node -> TypeCheck (Map Id LT.Type)
+lookupRuntimeEnv :: Node -> TypeCheck (Map Id LT.RuntimeTypeInfo)
 lookupRuntimeEnv node = do
   state <- get
   case M.lookup node (stateLocalTypes state) of
@@ -1212,7 +1212,7 @@ typeCheckWithGlobals venv tenv prog = catchFatalTypeError $ do
   -- conversion to ANF does not change the function-nesting structure of the
   -- original program.  For now, we assume that the conversion to ANF preserves
   -- the type structure of the program.
-  let (topDecls, anfProg) = jsToCore (simplify (eraseTypes prog))
+  let (topDecls, anfProg) = toANF (simplify (eraseTypes prog))
   
   
   let (anf, intraprocs) = allIntraproceduralGraphs (topDecls, anfProg)

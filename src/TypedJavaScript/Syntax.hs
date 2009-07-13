@@ -5,13 +5,14 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          ForInit(..),ForInInit(..),Type(..), LatentPred(..),         
          ToplevelStatement(..),
          showSp, propToString, unId, eqLit,
-         TypeConstraint (..), Access(..)) where
+         TypeConstraint (..), Access) where
 
 import TypedJavaScript.Prelude
 import qualified Data.Foldable as F
 import BrownPLT.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..), 
   PostfixOp (..))
 import BrownPLT.JavaScript.Analysis.ANF (Lit, eqLit)
+import BrownPLT.TypedJS.LocalFlows (RuntimeType (..))
 
 
 data JavaScript a
@@ -75,7 +76,7 @@ instance Eq (Id a) where
 --TODO: remove PropString?
 data Prop a 
   = PropId a (Id a) | PropString a String | PropNum a Integer
-  deriving (Show, Ord)
+  deriving (Show, Ord, Data, Typeable)
 
 propToString (PropId _ (Id _ s)) = s
 propToString (PropString _ s)    = s
@@ -109,27 +110,30 @@ data Expression a
   | FuncExpr a [Id a] {- arg names -} 
                Type --if TFunc, then function. if TConstr, then a constructor.
                (Statement a)    {- body -}
-  deriving (Show, Eq,Ord)
+  -- Dataflow analysis may deterine a set of possible runtime types for
+  -- certain variable references.
+  | AnnotatedVarRef a (Set RuntimeType) String
+  deriving (Show, Eq, Ord, Data, Typeable)
 
 data CaseClause a 
   = CaseClause a (Expression a) [Statement a]
   | CaseDefault a [Statement a]
-  deriving (Show, Eq,Ord)
+  deriving (Show, Eq, Ord, Data, Typeable)
   
 data CatchClause a 
   = CatchClause a (Id a) (Statement a) 
-  deriving (Show, Eq,Ord)
+  deriving (Show, Eq, Ord, Data, Typeable)
 
 data VarDecl a 
   = VarDecl a (Id a) Type
   | VarDeclExpr a (Id a) (Maybe Type) (Expression a)
-  deriving (Show, Eq,Ord)
+  deriving (Show, Eq, Ord, Data, Typeable)
   
 data ForInit a
   = NoInit
   | VarInit [VarDecl a]
   | ExprInit (Expression a)
-  deriving (Show, Eq,Ord)
+  deriving (Show, Eq, Ord, Data, Typeable)
 
 data ForInInit a
  -- |These terms introduce a name to the enclosing function's environment.
@@ -137,7 +141,7 @@ data ForInInit a
  -- type inference.  Save type inference for later.
  = ForInVar (Id a) 
  | ForInNoVar (Id a) 
- deriving (Show, Eq,Ord)
+ deriving (Show, Eq, Ord, Data, Typeable)
 
 data Statement a
   = BlockStmt a [Statement a]
@@ -169,7 +173,7 @@ data Statement a
                       [(Id a, Type)] {- optional args -}
                       (Maybe (Id a, Type)) {- optional var arg -}
                       (Statement a) {-body-} -}
-  deriving (Show, Eq,Ord)  
+  deriving (Show, Eq, Ord, Data, Typeable)  
   
 showSp :: SourcePos -> String
 showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos) ++ 

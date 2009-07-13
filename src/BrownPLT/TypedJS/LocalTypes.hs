@@ -17,7 +17,7 @@ import BrownPLT.TypedJS.TypeFunctions
 localTypes :: Graph
            -> Env -- ^enclosing environment
            -> Map Id Type
-           -> Map Node (Map Id LT.Type) -- ^runtime env. at each statement
+           -> Map Node (Map Id LT.RuntimeTypeInfo) -- ^runtime env. at each statement
 localTypes gr env typeAliases =  visibleEnvs
   where f (id, Nothing) = Just (id, LT.TUnreachable)
         f (id, Just (tDec, _, _)) = Just (id, asRuntimeType typeAliases tDec)
@@ -28,7 +28,7 @@ localTypes gr env typeAliases =  visibleEnvs
         visibleEnvs = LT.localTypes gr decEnv
 
 
-refineEnvWithRuntime :: Map Id Type -> Env -> Map Id LT.Type -> Env
+refineEnvWithRuntime :: Map Id Type -> Env -> Map Id LT.RuntimeTypeInfo -> Env
 refineEnvWithRuntime typeAliases env rt = env'
   where toStatic id rt = case M.lookup id  env of
           Nothing -> error $ printf "TypedJS.LocalTypes: %s is unbound" id
@@ -38,40 +38,40 @@ refineEnvWithRuntime typeAliases env rt = env'
         env' = M.mapWithKey toStatic rt
 
 
-injBaseType :: LT.BaseType -> LT.Type
-injBaseType bt = LT.TKnown (S.singleton bt)
+injRuntimeType :: LT.RuntimeType -> LT.RuntimeTypeInfo
+injRuntimeType bt = LT.TKnown (S.singleton bt)
 
 
-projBaseType :: LT.Type -> Maybe LT.BaseType
-projBaseType (LT.TKnown set) = case S.toList set of
+projRuntimeType :: LT.RuntimeTypeInfo -> Maybe LT.RuntimeType
+projRuntimeType (LT.TKnown set) = case S.toList set of
   [t] -> Just t
   otherwise -> Nothing
-projBaseType _ = Nothing
+projRuntimeType _ = Nothing
 
 
-projUnionType  :: LT.Type -> Maybe [LT.Type]
+projUnionType  :: LT.RuntimeTypeInfo -> Maybe [LT.RuntimeTypeInfo]
 projUnionType (LT.TKnown set) = case S.toList set of
   ts@(_:_:_) -> Just (map (\t -> LT.TKnown (S.singleton t)) ts)
   otherwise -> Nothing
 projUnionType _ = Nothing
 
 
-asRuntimeType :: Map Id Type -> Type -> LT.Type
+asRuntimeType :: Map Id Type -> Type -> LT.RuntimeTypeInfo
 asRuntimeType aliases t = case t of
-  TObject {} ->  injBaseType LT.TObject
+  TObject {} ->  injRuntimeType LT.RTObject
   TAny -> LT.TUnk
   TRec _ _ ->  asRuntimeType aliases (unRec t)
-  TSequence _ _ ->  injBaseType LT.TObject
-  TFunc {} ->  injBaseType LT.TFunction
-  TId "string" ->  injBaseType LT.TString
-  TId "bool" ->  injBaseType LT.TBoolean
-  TId "double" ->  injBaseType LT.TNumber
-  TId "int" ->  injBaseType LT.TNumber
-  TId "undefined" ->  injBaseType LT.TUndefined
+  TSequence _ _ ->  injRuntimeType LT.RTObject
+  TFunc {} ->  injRuntimeType LT.RTFunction
+  TId "string" ->  injRuntimeType LT.RTString
+  TId "bool" ->  injRuntimeType LT.RTBoolean
+  TId "double" ->  injRuntimeType LT.RTNumber
+  TId "int" ->  injRuntimeType LT.RTNumber
+  TId "undefined" ->  injRuntimeType LT.RTUndefined
   --TId s -> error $ printf "asRuntimeType aliases: unexpected (TId %s)" s
   TId s -> LT.TUnk --a parametrized type (like in a forall)
-  TApp "Array" _ ->  injBaseType LT.TObject
-  TPrototype {} ->  injBaseType LT.TObject
+  TApp "Array" _ ->  injRuntimeType LT.RTObject
+  TPrototype {} ->  injRuntimeType LT.RTObject
   TApp _ _ -> error $ "asRuntimeType aliases: unxpected TApp"
   TForall _ _ t' ->  asRuntimeType aliases t'
   TEnvId id -> case M.lookup id aliases of
@@ -84,7 +84,7 @@ asRuntimeType aliases t = case t of
     [rt] -> rt
     (rt:rts) -> let x = (foldr LT.unionType rt rts) in x
 
-maybeAsStaticType :: Map Id Type -> LT.Type -> Type -> Maybe Type
+maybeAsStaticType :: Map Id Type -> LT.RuntimeTypeInfo -> Type -> Maybe Type
 maybeAsStaticType aliases rt st = case (rt, st) of
   (_, TRec id st') -> do
     t <- maybeAsStaticType (M.insert id (TId id) aliases) rt st'
@@ -95,24 +95,24 @@ maybeAsStaticType aliases rt st = case (rt, st) of
     return (TForall ids constraints type_') 
   (_, TEnvId id) -> case M.lookup id aliases of
     Just (TRec _ (TObject {})) -> case rt of
-      (projBaseType -> Just LT.TObject) -> Just st
+      (projRuntimeType -> Just LT.RTObject) -> Just st
       otherwise -> Nothing
     Just (TObject {}) -> case rt of
-      (projBaseType -> Just LT.TObject) -> Just st
+      (projRuntimeType -> Just LT.RTObject) -> Just st
       otherwise -> Nothing
     Just st' -> maybeAsStaticType aliases rt st'
     Nothing -> error $ printf "maybeAsStaticType: unbound (TEnvId %s)" id
   (LT.TUnk, st) -> Just st
   
   (_, TId id) | id `M.member` aliases -> Just (TId id)
-  (projBaseType -> Just LT.TString, TId "string") -> Just st
-  (projBaseType -> Just LT.TBoolean, TId "bool") -> Just st
-  (projBaseType -> Just LT.TNumber, TId "double") -> Just st
-  (projBaseType -> Just LT.TNumber, TId "int") -> Just st
-  (projBaseType -> Just LT.TFunction, TFunc {}) -> Just st
-  (projBaseType -> Just LT.TUndefined, TId "undefined") -> Just st
-  (projBaseType -> Just (LT.TFixedString _), TId "string") -> Just st
-  (projBaseType -> Just LT.TObject, _) -> case st of
+  (projRuntimeType -> Just LT.RTString, TId "string") -> Just st
+  (projRuntimeType -> Just LT.RTBoolean, TId "bool") -> Just st
+  (projRuntimeType -> Just LT.RTNumber, TId "double") -> Just st
+  (projRuntimeType -> Just LT.RTNumber, TId "int") -> Just st
+  (projRuntimeType -> Just LT.RTFunction, TFunc {}) -> Just st
+  (projRuntimeType -> Just LT.RTUndefined, TId "undefined") -> Just st
+  (projRuntimeType -> Just (LT.RTFixedString _), TId "string") -> Just st
+  (projRuntimeType -> Just LT.RTObject, _) -> case st of
     TObject {} -> Just st
     TSequence {} -> Just st
     TApp "Array" _ -> Just st
