@@ -29,7 +29,7 @@ import Paths_TypedJavaScript
 import Text.ParserCombinators.Parsec (parseFromFile)
 import TypedJavaScript.Parser (parseToplevels)
 import BrownPLT.TypedJS.LocalTypes
-import qualified BrownPLT.JavaScript.Analysis.LocalTypes as LT
+import qualified BrownPLT.TypedJS.LocalFlows as LT
 import System.Directory
 import System.FilePath
 

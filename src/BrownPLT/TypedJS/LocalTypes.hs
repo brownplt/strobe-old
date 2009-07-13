@@ -7,7 +7,7 @@ import TypedJavaScript.Types
 import TypedJavaScript.PrettyPrint
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.JavaScript.Analysis.ANF
-import qualified BrownPLT.JavaScript.Analysis.LocalTypes as LT
+import qualified BrownPLT.TypedJS.LocalFlows as LT
 import qualified Data.Map as M
 import qualified Data.Set as S
 import BrownPLT.JavaScript.Analysis.Intraprocedural (Graph)
