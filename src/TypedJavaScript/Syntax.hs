@@ -5,6 +5,7 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          ForInit(..),ForInInit(..),Type(..)
   , ToplevelStatement(..)
   , LValue (..)
+  , ArgType (..)
   , showSp, propToString, unId, eqLit,
          TypeConstraint (..), Access) where
 
@@ -14,7 +15,7 @@ import BrownPLT.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..),
   PostfixOp (..))
 import BrownPLT.JavaScript.Analysis.ANF (Lit, eqLit)
 import BrownPLT.TypedJS.LocalFlows (RuntimeType (..))
-
+import BrownPLT.TypedJS.TypeDefinitions
 
 data JavaScript a
   -- |A script in <script> ... </script> tags.  This may seem a little silly,
@@ -28,33 +29,6 @@ unId (Id _ s) = s
 data Id a = Id a String 
   deriving (Show, Ord, Data, Typeable)
 
-data TypeConstraint
-  = TCSubtype String Type
-  deriving (Show, Eq,Ord, Data, Typeable)
-
-type Access = (Bool, Bool) --Access canRead? canWrite?
-
-data Type
-  = TObject Bool --hasSlack
-            Bool --isOpenObject ('this' inside a constructor, and f.prototype)
-            [(String, (Type, Access))]
-  | TAny
-  | TRec String Type
-  | TSequence [Type] (Maybe Type) -- sequence of types (e.g. arguments array)
-  | TFunc (Maybe Type) --Nothing if function, Just prototype_type if constr
-          [Type]
-          Type {- ret type for func, final 'this' type for constr -}
-  | TId String -- identifier bound by a TForall or a TRec
-  | TApp String [Type]
-  | TUnion [Type]
-  | TForall [String] [TypeConstraint] Type
-  -- | TIndex Type Type String --obj[x] --> TIndex <obj> <x> "x"
-  --the first type, 'refined' to the 2nd
-  | TEnvId String -- ^a reference to an identifier in the environment
-  | TIterator String -- ^iterator for the object referred to by the string
-  | TProperty String -- ^property of object given by string, accessed by iter
-  | TPrototype String -- ^prototype of the constructor given by string.
-  deriving (Show, Eq, Ord, Data, Typeable)
 
 -- the following are constructs which just assign types to IDs, either
 -- in the variable environment (ExternalStmt) or in the type
@@ -170,6 +144,7 @@ data Statement a
       (Maybe (Statement a)) {-finally-}
   | ThrowStmt a (Expression a)
   | ReturnStmt a (Maybe (Expression a))
+  -- TODO: we HAVE to support with statements looolololooolllloll!!!11one
   -- | WithStmt a (Expression a) (Statement a)
   | VarDeclStmt a [VarDecl a]
   -- FunctionStatements turn into expressions with an assignment. 

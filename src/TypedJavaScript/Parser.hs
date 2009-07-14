@@ -19,7 +19,7 @@ module TypedJavaScript.Parser
   , parseTypedJavaScript
   ) where
 
-import qualified TypedJavaScript.Types as Types
+import BrownPLT.TypedJS.TypeTheory (undefType)
 import qualified BrownPLT.JavaScript.Analysis.ANF as ANF
 import TypedJavaScript.Lexer hiding (identifier)
 import qualified TypedJavaScript.Lexer as Lexer
@@ -32,7 +32,6 @@ import Numeric(readDec,readOct,readHex)
 import Data.Char(chr)
 import Data.Char
 import Data.List
-import BrownPLT.TypedJS.TypeFunctions (openObject)
  
 -- We parameterize the parse tree over source-locations.
 type ParsedStatement = Statement SourcePos
@@ -109,12 +108,12 @@ Disambiguation:
  type ::= forall identifier+ . type_fn
         | forall identifier+ : typeConstraint+ . type
         | rec identifier . type
-        | '[' type ']' type' [,*] -> type?
-        | '[' type ']' type' [,+] ... -> type?
         | type_fn
 
  type_fn ::= type' [,*] -> type?
            | type' [,+] ... -> type?
+           | '[' type ']' type' [,*] -> type?
+           | '[' type ']' type' [,+] ... -> type?
            | type'
 
  type' ::= type''?
@@ -153,7 +152,7 @@ type_ = do
               reservedOp "..."
               reservedOp "->"
               p' <- getPosition
-              r <- type_ <|> (return Types.undefType)
+              r <- type_ <|> (return undefType)
               let arguments = TSequence (init ts) (Just (last ts))
               return (TFunc Nothing (thisType:arguments:ts) r)
         let constr = do
@@ -171,14 +170,14 @@ type_ = do
                             (thisType:arguments:ts) r)
         let func = do
               reservedOp "->"
-              r <- type_ <|> (return Types.undefType)
+              r <- type_ <|> (return undefType)
               let arguments = TSequence ts Nothing
               return (TFunc Nothing (thisType:arguments:ts) r)
         case ts of
           []  -> constr <|> func -- function of zero arguments
           [t] -> vararity <|> constr <|> func <|> (return t)
           ts  -> vararity <|> constr <|> func
-  forall <|> rec <|> explicitThis <|> type_fn
+  forall <|> rec <|> type_fn
 
 type_fn :: CharParser st (Type)
 type_fn = do
@@ -192,7 +191,7 @@ type_fn = do
         reservedOp "..."
         reservedOp "->"
         let arguments = TSequence (init ts) (Just (last ts))
-        r <- type_ <|> (return Types.undefType)
+        r <- type_ <|> (return undefType)
         return (TFunc Nothing (thisType:arguments:ts) r)
   let constr = do
         reservedOp "~~>"
@@ -204,12 +203,8 @@ type_fn = do
                       ((TObject True False []):arguments:ts) r)
   let func = do
         reservedOp "->"
-        let arguments = TSequence ts Nothing
-        r <- type_ <|> (return Types.undefType)
-        return (TFunc Nothing (thisType:arguments:ts) r)
-        --Note: latent predicates really aren't part of the syntax,
-        --but the parser has to deal with them. type checker should fill
-        --them in properly.
+        r <- type_
+        return (TArrow (TObject False False []) (ArgType ts Nothing) r)
   case ts of
     []  -> constr <|> func -- function of zero arguments
     [t] -> vararity <|> constr <|> func <|> (return t)
@@ -220,14 +215,17 @@ type_' = do
   t <- type_''
   let nullable = do
         reservedOp "?"
-        return (TUnion [t, Types.undefType])
+        return (TUnion t undefType)
   nullable <|> (return t) <?> "possibly nullable type"
 
 type_'' :: CharParser st (Type)
 type_'' =
   let union = do 
         reservedOp "U";
-        liftM TUnion (parens (type_'' `sepEndBy` comma))
+        elts <- parens (type_'' `sepBy1` comma)
+        case elts of
+          [t] -> return t
+          (t:ts) -> return (foldr TUnion t ts)
       object = do
         (fields, hasSlack) <- braces $ do
           fs <- field `sepEndBy` comma
@@ -246,11 +244,14 @@ type_'' =
 
 constrOrId :: CharParser st (Type)
 constrOrId = do
-  id <- (identifier >>= \(Id _ id) -> return id)
-  let constr = do
-        args <- (angles $ type_' `sepBy` comma) <?> "type application"
-        return (TApp id args)
-  constr <|> (return (TId id))
+  id <- Lexer.identifier
+  case isUpper (head id) of
+    False -> return (TId id)
+    True -> do 
+      let app = do
+            args <- (angles $ type_' `sepBy` comma) <?> "type application"
+            return (TApp id args)
+      app <|> (return $ TApp id [])
 
 field :: CharParser st (String, (Type, Access))
 field = do

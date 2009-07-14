@@ -78,11 +78,7 @@ type_ t = case t of
           access (True, False) =  text "readonly "
           access (False, True) = text "writeonly "
           access (True, True) = text ""
-  TUnion ts -> text "U" <+> parens (commas (map type_ ts'))
-                 where ts' = if elem undefType ts
-                               then (undefType:(delete undefType ts))
-                               else ts 
-                       undefType = TId "undefined"
+  TUnion t1 t2 -> text "U" <> parens (type_ t1 <> comma <+> type_ t2)
   TId v -> text v
   TForall ids cs t' ->
     text "forall" <+> (commas (map text ids)) <+> constraintsDoc <+> 

@@ -8,7 +8,7 @@ import System.Exit
 import qualified Data.Graph.Inductive as G
 import qualified Data.GraphViz as GV
 
-import BrownPLT.TypedJS.InitialEnvironment
+-- import BrownPLT.TypedJS.InitialEnvironment
 import BrownPLT.JavaScript.Analysis
 import BrownPLT.JavaScript.Analysis.ANFPrettyPrint (prettyANF, prettyLit)
 import BrownPLT.JavaScript.Analysis.Intraprocedural
@@ -19,11 +19,13 @@ import qualified BrownPLT.JavaScript as JS
 import TypedJavaScript.Syntax
 import TypedJavaScript.Parser
 import TypedJavaScript.Lexer
-import TypedJavaScript.Contracts
+-- import TypedJavaScript.Contracts
 import TypedJavaScript.TypeErasure
 import TypedJavaScript.PrettyPrint
-import TypedJavaScript.TypeCheck
+import BrownPLT.TypedJS.TypeCheck (typeCheck)
 
+
+import BrownPLT.TypedJS.TypeCheck()
 
 pretty :: [ParsedStatement] -> String
 pretty = renderStatements
@@ -74,15 +76,15 @@ data Action = RequireInput (([ToplevelStatement SourcePos],
 
 getAction (ANF:args) = return (RequireInput action, args) where
   action (_, prog) = do
-    let (topDecls, anfProg) = jsToCore (simplify (eraseTypes prog))
+    let (topDecls, anfProg) = toANF (simplify (eraseTypes prog))
     putStrLn (prettyANF anfProg)
 getAction (TypeCheck:args) = return (RequireInput action, args) where
   action (toplevels, prog) = do
-    typeCheck toplevels prog
+    typeCheck prog
     putStrLn "Type-checking successful."
 getAction (Graphs:args) = return (RequireInput action, args) where
   action (_, prog) = do
-    let anf = jsToCore (simplify (eraseTypes prog))
+    let anf = toANF (simplify (eraseTypes prog))
     let (clusterFn,gr) = clusteredIntraproceduralGraphs anf
     let clusterAttrFn :: Int -> [GV.Attribute] -- avoid ambiguity
         clusterAttrFn = const []
@@ -94,6 +96,7 @@ getAction (Graphs:args) = return (RequireInput action, args) where
                 (\(n,s) -> [GV.Label (show s)]) -- node atributes
                 edgeFn -- edge attributes
     hPutStrLn stdout (show dot)
+{-
 getAction ((PrintType name):args) = return (RequireInput action, args) where
   action (toplevs, prog) = do
     domTypeEnv <- makeInitialEnv
@@ -101,9 +104,10 @@ getAction ((PrintType name):args) = return (RequireInput action, args) where
     case M.lookup name tenv of
       Just t -> putStrLn (renderType t)
       Nothing -> fail $ printf "%s is not a type name" name
+-}
 getAction args = return (RequireInput action, args) where
   action (toplevels, prog) = do
-    typeCheck toplevels prog
+    typeCheck prog
     putStrLn "Type-checking successful."
 
 main = do

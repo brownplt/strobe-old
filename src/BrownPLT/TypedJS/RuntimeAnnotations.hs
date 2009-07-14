@@ -153,10 +153,11 @@ runtimeAnnotations :: Map Id RuntimeTypeInfo
                    -- ^body with @VarRef@s transformed to @AnnotatedVarRef@s
                    -- where possible.
 runtimeAnnotations env body = do
-  let (vars, anf) = toANF (eraseTypes [body])
+  let (vars, anf) = toANF (simplify (eraseTypes [body]))
   let (anf', _) = numberStmts 0 (SeqStmt noPos anf)
   let vars' = map (\(x,p) -> (x, (0, p))) vars
   let (_, _, gr) = intraproc (FuncLit (0, noPos) [] vars' anf')
-  let stmtEnvs = localTypes gr env
+  let localEnv = M.fromList (map (\(x, _) -> (x, TUnreachable)) vars)
+  let stmtEnvs = localTypes gr (M.union localEnv env)
   localEnv <- stmt stmtEnvs anf'
   return (everywhere (mkT (annotateVarRef localEnv)) body)
