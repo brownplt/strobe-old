@@ -14,7 +14,7 @@ module TypedJavaScript.Parser
   , parseStatement
   , StatementParser
   , ExpressionParser
-  , parseAssignExpr
+  , assignExpr
   , parseToplevel, parseToplevels
   , parseTypedJavaScript
   ) where
@@ -680,7 +680,7 @@ parseObjectLit =
                 <|> (liftM2 PropNum getPosition (do x<-decimal; whiteSpace; return x))
         typeannot <- parseMaybeType
         colon
-        val <- parseAssignExpr
+        val <- assignExpr
         return (name,typeannot,val)
     in do pos <- getPosition
           props <- braces (parseProp `sepEndBy` comma) <?> "object literal"
@@ -883,9 +883,9 @@ parseExpression' =
 parseTernaryExpr':: CharParser st (ParsedExpression,ParsedExpression)
 parseTernaryExpr' = do
     reservedOp "?"
-    l <- parseAssignExpr
+    l <- assignExpr
     colon
-    r <- parseAssignExpr
+    r <- assignExpr
     return $(l,r)
 
 parseTernaryExpr:: ExpressionParser st
@@ -896,32 +896,46 @@ parseTernaryExpr = do
     Nothing -> return e
     Just (l,r) -> do p <- getPosition
                      return $ CondExpr p e l r
---}}}
-
--- Parsing assignment operations.
-makeAssignExpr str constr = Infix parser AssocRight where
-  parser:: CharParser st (ParsedExpression -> ParsedExpression -> ParsedExpression)
-  parser = do
-    pos <- getPosition
-    reservedOp str
-    return (AssignExpr pos constr)
-
-assignTable:: [[Operator Char st ParsedExpression]]
-assignTable = [
-  [makeAssignExpr "=" OpAssign, makeAssignExpr "+=" OpAssignAdd, 
-    makeAssignExpr "-=" OpAssignSub, makeAssignExpr "*=" OpAssignMul,
-    makeAssignExpr "/=" OpAssignDiv, makeAssignExpr "%=" OpAssignMod,
-    makeAssignExpr "<<=" OpAssignLShift, makeAssignExpr ">>=" OpAssignSpRShift,
-    makeAssignExpr ">>>=" OpAssignZfRShift, makeAssignExpr "&=" OpAssignBAnd,
-    makeAssignExpr "^=" OpAssignBXor, makeAssignExpr "|=" OpAssignBOr
-  ]]
 
 
-parseAssignExpr:: ExpressionParser st
-parseAssignExpr = buildExpressionParser assignTable parseTernaryExpr  
+assignOp :: CharParser st AssignOp
+assignOp = 
+  (reservedOp "=" >> return OpAssign) <|>
+  (reservedOp "+=" >> return OpAssignAdd) <|>
+  (reservedOp "-=" >> return OpAssignSub) <|>
+  (reservedOp "*=" >> return OpAssignMul) <|>
+  (reservedOp "/=" >> return OpAssignDiv) <|>
+  (reservedOp "%=" >> return OpAssignMod) <|>
+  (reservedOp "<<=" >> return OpAssignLShift) <|>
+  (reservedOp ">>=" >> return OpAssignSpRShift) <|>
+  (reservedOp ">>>=" >> return OpAssignZfRShift) <|>
+  (reservedOp "&=" >> return OpAssignBAnd) <|>
+  (reservedOp "^=" >> return OpAssignBXor) <|>
+  (reservedOp "|=" >> return OpAssignBOr)
 
+
+assignExpr :: ExpressionParser st
+assignExpr = do
+  lhs <- parseTernaryExpr
+  let assign = do
+        op <- assignOp
+        p1 <- getPosition
+        case lhs of
+          VarRef p2 (Id _ x) -> do
+            rhs <- assignExpr
+            return (AssignExpr p1 op (LVar p2 x) rhs)
+          DotRef p2 e (Id _ x) -> do
+            rhs <- assignExpr
+            return (AssignExpr p1 op (LDot p2 e x) rhs)
+          BracketRef p2 e1 e2 -> do
+            rhs <- assignExpr 
+            return (AssignExpr p1 op (LBracket p2 e1 e2) rhs)
+          otherwise ->
+            unexpected $ "invalid left-hand side of assignment at " ++ show p1
+  assign <|> (return lhs)
+  
 parseExpression:: ExpressionParser st
-parseExpression = parseAssignExpr
+parseExpression = assignExpr
 
 
 externalStmt = do
@@ -958,7 +972,7 @@ parseToplevels = do
   parseToplevel `sepBy` whiteSpace
 
 parseListExpr =
-  liftM2 ListExpr getPosition (parseAssignExpr `sepBy1` comma)
+  liftM2 ListExpr getPosition (assignExpr `sepBy1` comma)
 
 --}}}
 

@@ -48,6 +48,12 @@ prop (prop, mtype, e) = case mtype of
   Just type_ -> expr e +++ single (proploc prop) type_
 
 
+lvalue :: LValue SourcePos -> ErasedEnvTree
+lvalue (LVar _ _) = empty
+lvalue (LDot _ e _) = expr e
+lvalue (LBracket _ e1 e2) = expr e1 +++ expr e2
+
+
 expr :: Expression SourcePos -> ErasedEnvTree
 expr e = case e of
   StringLit{} -> empty
@@ -66,7 +72,7 @@ expr e = case e of
   PrefixExpr _ _ e -> expr e
   InfixExpr _ _ e1 e2 -> unions [expr e1, expr e2]
   CondExpr _ e1 e2 e3 -> unions [expr e1, expr e2, expr e3]
-  AssignExpr _ _ e1 e2 -> unions [expr e1, expr e2]
+  AssignExpr _ _ e1 e2 -> unions [lvalue e1, expr e2]
   ParenExpr _ e -> expr e
   ListExpr _ es -> unions $ map expr es
   CallExpr pos e ts es -> multi pos ts +++ expr e +++ unions (map expr es)

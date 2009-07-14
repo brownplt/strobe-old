@@ -23,6 +23,12 @@ prop (PropId p x) = JS.PropId p (id x)
 prop (PropString p s) = JS.PropString p s
 prop (PropNum p n) = JS.PropNum p n
 
+
+lvalue (LVar p x) = JS.VarRef p (JS.Id p x)
+lvalue (LDot p e x) = JS.DotRef p (expr e) (JS.Id p x)
+lvalue (LBracket p e1 e2) = JS.BracketRef p (expr e1) (expr e2)
+
+
 expr (StringLit p s) = JS.StringLit p s
 expr (RegexpLit p s g ci) = JS.RegexpLit p s g ci
 expr (NumLit p n) = JS.NumLit p n
@@ -41,7 +47,7 @@ expr (PostfixExpr p op e) = JS.PostfixExpr p op (expr e)
 expr (PrefixExpr p op e) = JS.PrefixExpr p op (expr e)
 expr (InfixExpr p op e1 e2) = JS.InfixExpr p op (expr e1) (expr e2)
 expr (CondExpr p e1 e2 e3) = JS.CondExpr p (expr e1) (expr e2) (expr e3)
-expr (AssignExpr p op e1 e2) = JS.AssignExpr p op (expr e1) (expr e2)
+expr (AssignExpr p op e1 e2) = JS.AssignExpr p op (lvalue e1) (expr e2)
 expr (ParenExpr p e) = JS.ParenExpr p (expr e)
 expr (ListExpr p es) = JS.ListExpr p (map expr es)
 expr (CallExpr p e _ es) = JS.CallExpr p (expr e) (map expr es)

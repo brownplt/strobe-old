@@ -3,8 +3,9 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
          ForInit(..),ForInInit(..),Type(..), LatentPred(..),         
-         ToplevelStatement(..),
-         showSp, propToString, unId, eqLit,
+         ToplevelStatement(..)
+  , LValue (..)
+  , showSp, propToString, unId, eqLit,
          TypeConstraint (..), Access) where
 
 import TypedJavaScript.Prelude
@@ -85,6 +86,12 @@ propToString (PropNum _ i)       = show i
 instance Eq (Prop a) where
   x == y = (propToString x) == (propToString y) where
 
+data LValue a
+  = LVar a String
+  | LDot a (Expression a) String
+  | LBracket a (Expression a) (Expression a)
+  deriving (Show, Eq, Ord, Data, Typeable)
+
 data Expression a
   = StringLit a String
   | RegexpLit a String Bool {- global? -} Bool {- case-insensitive? -}
@@ -103,7 +110,7 @@ data Expression a
   | PrefixExpr a PrefixOp (Expression a)
   | InfixExpr a InfixOp (Expression a) (Expression a)
   | CondExpr a (Expression a) (Expression a) (Expression a) --ternary operator
-  | AssignExpr a AssignOp (Expression a) (Expression a)
+  | AssignExpr a AssignOp (LValue a) (Expression a)
   | ParenExpr a (Expression a)
   | ListExpr a [Expression a] -- expressions separated by ',' 
   | CallExpr a (Expression a) [Type] [Expression a]

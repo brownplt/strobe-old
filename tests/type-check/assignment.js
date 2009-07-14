@@ -1,9 +1,4 @@
 function (x) :: (double -> double) { 
-  var z = 4;
-  "haha" = 3;
-  return z;
-} @@ fails; //invalid lvalue
-function (x) :: (double -> double) { 
   b = x * 3;
   return b;
 } @@ fails; //var not declared

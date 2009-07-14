@@ -277,6 +277,12 @@ yExpr Nothing = empty
 yExpr (Just e) = expr e
 
 
+lvalue :: LValue a -> Doc
+lvalue (LVar _ x) = text x
+lvalue (LDot _ e x) = expr e <> text "." <> text x
+lvalue (LBracket _ e1 e2) = expr e1 <> brackets (expr e2)
+
+
 expr :: Expression a -> Doc
 expr e = case e of
   StringLit _ str -> doubleQuotes (text (jsEscape str))
@@ -313,7 +319,7 @@ expr e = case e of
   CondExpr _ test cons alt ->
     expr test <+> text "?" <+> expr cons <+> colon <+> expr alt
   AssignExpr _ op l r ->
-    expr l <+> assignOp op <+> expr r
+    lvalue l <+> assignOp op <+> expr r
   ParenExpr _ e ->
     parens (expr e)
   ListExpr _ es -> commas (map expr es)
