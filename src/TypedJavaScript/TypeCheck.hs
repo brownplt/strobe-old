@@ -8,8 +8,7 @@ import qualified Data.Set as S
 import qualified Data.Graph.Inductive as G
 import Control.Monad.State.Strict
 import qualified TypedJavaScript.Syntax as TJS
-import TypedJavaScript.Syntax (Type (..), TypeConstraint (..), 
-  LatentPred (..))
+import TypedJavaScript.Syntax (Type (..), TypeConstraint (..))
 import TypedJavaScript.Types
 import TypedJavaScript.Graph
 import BrownPLT.JavaScript.Analysis (toANF, simplify)
@@ -327,7 +326,7 @@ doFuncConstr (<:) (<:$) p env ee cs r_v f_v args_v isNewStmt =
     Nothing -> do
       typeError p ("expected function; received " ++ renderType f)
       noop
-    Just (vs, cs', formals'', vararg, er, latentPred, ptype) -> do
+    Just (vs, cs', formals'', vararg, er, ptype) -> do
       when (isNewStmt && isNothing ptype) $
         typeError p "cannot call a function with 'new'"
       when (not isNewStmt && isJust ptype) $
@@ -560,7 +559,7 @@ stmt env ee cs erettype node s = do
           TPrototype constrid -> do
            --TODO: use deconstrfntype here instead of this stuff.
            let (Just (Just (tDec,(TFunc (Just (TObject hs io protprops)) 
-                                        cargs ctt' lp),
+                                        cargs ctt'),
                             loc))) = M.lookup constrid env
            ctt <- return $ unRec ctt'
            let (TObject _ _ cttprops) = ctt
@@ -572,7 +571,7 @@ stmt env ee cs erettype node s = do
                                                   hs io 
                                                   ((prop,(t_rhs,(True,True)))
                                                    :protprops)))
-                                          cargs ctt lp),
+                                          cargs ctt),
                                    loc)) env
                --make sure adding this to the prototype won't violate
                --what we expect the constructed thistype to be.
@@ -642,7 +641,7 @@ stmt env ee cs erettype node s = do
                           "property %s has type %s, received %s" prop
                           (renderType t'') (renderType t_rhs)
                         noop
-          TFunc (Just pt) _ _ _ 
+          TFunc (Just pt) _ _ 
             | prop == "prototype" -> do
                 typeError p $ "assigning entire object to .prototype NYI"
                 noop
@@ -903,7 +902,7 @@ expr env ee cs e = do
      Nothing -> catastrophe p "function lit is not in the erased environment"
      Just [t] -> do
       case deconstrFnType t of
-       Just (_, _, argTypes, _, _, _, Nothing)  --functions
+       Just (_, _, argTypes, _, _, Nothing)  --functions
          --argtypes is ("thistype", argarraytype, real args)
          --args should be is ("this", "arguments", real args)
          | length argTypes == length args -> 
@@ -915,7 +914,7 @@ expr env ee cs e = do
                  (show (length args - 2)) (show (length argTypes - 2))
                  (renderType t) (show $ map renderType argTypes)
              return t
-       Just (_, _, argTypes, _, _, _, (Just _))  --constructors. is hacked atm.
+       Just (_, _, argTypes, _, _, (Just _))  --constructors. is hacked atm.
          --argtypes is (this, args, real args)
          --args should be (real args), but is currently (this, args, real args)
          | length argTypes == length args -> 
@@ -978,7 +977,7 @@ operator env cs loc op args = do
       --this doesn't seem to work in the gammaMinus case. 
       let t=args!!1
       case unRec t of
-        (TFunc (Just (TObject _ _ ptprops)) _ (TObject _ _ ttprops) _) -> 
+        TFunc (Just (TObject _ _ ptprops)) _ (TObject _ _ ttprops) -> 
           return boolType
         _ -> do
           typeError loc "RHS of instanceof must be constructor"
@@ -1041,7 +1040,7 @@ uneraseEnv env tenv kindEnv ee (FuncLit (_, pos) args locals _) = do
           fail $ printf "uneraseEnv: multiple types for the function at %s, \
                          \types were %s" (show pos) (show ts)
 
-  let Just (tVars, cs, types, vararg, rettype, lp, pt)= deconstrFnType functype
+  let Just (tVars, cs, types, vararg, rettype, pt)= deconstrFnType functype
   let localKindEnv = M.union (freeTypeVariables functype) kindEnv  
 
   let lookupEE p name = case M.lookup p ee of

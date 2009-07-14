@@ -2,8 +2,8 @@
 module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
-         ForInit(..),ForInInit(..),Type(..), LatentPred(..),         
-         ToplevelStatement(..)
+         ForInit(..),ForInInit(..),Type(..)
+  , ToplevelStatement(..)
   , LValue (..)
   , showSp, propToString, unId, eqLit,
          TypeConstraint (..), Access) where
@@ -44,7 +44,6 @@ data Type
   | TFunc (Maybe Type) --Nothing if function, Just prototype_type if constr
           [Type]
           Type {- ret type for func, final 'this' type for constr -}
-          LatentPred {- latent predicate -} 
   | TId String -- identifier bound by a TForall or a TRec
   | TApp String [Type]
   | TUnion [Type]

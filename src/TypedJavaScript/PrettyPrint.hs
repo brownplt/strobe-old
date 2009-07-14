@@ -48,7 +48,7 @@ type_ :: Type -> Doc
 type_ t = case t of
   TPrototype str ->
     text ("TPrototype " ++ str)
-  TFunc ptype (this:arguments:args) ret _ -> 
+  TFunc ptype (this:arguments:args) ret -> 
     brackets (type_ this) <+> commas (map arg args) <> varargDoc <+> 
     
     (if (isJust ptype) then text "~~>" else text "->") <+> type_ ret

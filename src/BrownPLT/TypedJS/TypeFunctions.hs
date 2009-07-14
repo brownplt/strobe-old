@@ -27,7 +27,7 @@ import TypedJavaScript.Syntax (Access (..))
 --use everything in the prototype.
 globalizeEnv :: Env -> Env
 globalizeEnv env = M.map f env
-  where f (Just (_, t@(TFunc (Just _) _ _ _), _)) = Just (t,t,False)
+  where f (Just (_, t@(TFunc (Just _) _ _ ), _)) = Just (t,t,False)
         f (Just (t1, _, _)) = Just (t1, t1, False)
         f Nothing = Nothing
         
@@ -36,7 +36,7 @@ freeTypeVariables :: Type -> Map String Kind
 freeTypeVariables t = fv t where
   -- type variables in the constructor are applied
   fv (TApp _ ts) = M.unions (map fv ts)
-  fv (TFunc _ args r _) = M.unions (map fv (r:args))
+  fv (TFunc _ args r) = M.unions (map fv (r:args))
   fv (TSequence args Nothing) = M.unions (map fv args)
   fv (TSequence args (Just opt)) = M.unions (map fv (opt:args))
   fv (TId _) = M.empty
@@ -57,24 +57,24 @@ fieldType env id (TUnion ts) = do
 fieldType env "length" (TApp "Array" [_]) = return (intType, (True, True))
 fieldType env "push" (TApp "Array" [t]) = return ( 
   TFunc Nothing [TApp "Array" [t], TSequence [t] Nothing, t] 
-        undefType LPNone, (True, True))
+        undefType , (True, True))
 --splice and concat are vararg, but ignore that for now.
 fieldType env "splice" (TApp "Array" [t]) = return (
   TFunc Nothing [TApp "Array" [t], TSequence [TId "int", TId "int"] Nothing, 
                  TId "int", TId "int"] 
-        (TApp "Array" [t]) LPNone, (True, True))
+        (TApp "Array" [t]) , (True, True))
 fieldType env "concat" (TApp "Array" [t]) = return ( 
   TFunc Nothing [TApp "Array" [t], TSequence [t'] Nothing, t']
-        (TApp "Array" [t]) LPNone, (True, True))
+        (TApp "Array" [t]) , (True, True))
     where t' = TUnion [t, TApp "Array" [t]]
 
 --shift really returns U(t, undefined)
 fieldType env "shift" (TApp "Array" [t]) = return (
-  TFunc Nothing [TApp "Array" [t], TSequence [] Nothing] t LPNone,
+  TFunc Nothing [TApp "Array" [t], TSequence [] Nothing] t ,
   (True, True))
   
 fieldType env f (TPrototype c) = case M.lookup c env of
-  Just (Just (_, TFunc (Just (TObject _ _ protprops)) _ _ _, _)) ->
+  Just (Just (_, TFunc (Just (TObject _ _ protprops)) _ _ , _)) ->
     lookup f protprops 
   _ -> Nothing
 fieldType _ _ _ = Nothing
@@ -89,7 +89,7 @@ isObject (TObject _ _ _) = True
 isObject _ = False
 
 isConstr :: Type -> Bool
-isConstr (TFunc (Just _) _ _ _) = True
+isConstr (TFunc (Just _) _ _) = True
 isConstr _ = False
 
 isSlackObject :: Type -> Bool

@@ -134,5 +134,4 @@ buildErasedEnvTree stmts =
         topLevel = single (initialPos "Intraprocedural.hs")
                           (TFunc Nothing [TObject True False [], 
                                           TSequence [] Nothing]
-                                 (TId "undefined")
-                                 LPNone)
+                                 (TId "undefined"))

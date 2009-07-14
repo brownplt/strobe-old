@@ -155,7 +155,7 @@ type_ = do
               p' <- getPosition
               r <- type_ <|> (return Types.undefType)
               let arguments = TSequence (init ts) (Just (last ts))
-              return (TFunc Nothing (thisType:arguments:ts) r (LPNone))
+              return (TFunc Nothing (thisType:arguments:ts) r)
         let constr = do
               reservedOp "~~>"
               p' <- getPosition
@@ -168,12 +168,12 @@ type_ = do
               -- the empty object, and can be augmented later to match
               -- what 'this' is expected to start as.
               return (TFunc (Just (TObject True False []))
-                            (thisType:arguments:ts) r LPNone)
+                            (thisType:arguments:ts) r)
         let func = do
               reservedOp "->"
               r <- type_ <|> (return Types.undefType)
               let arguments = TSequence ts Nothing
-              return (TFunc Nothing (thisType:arguments:ts) r LPNone)
+              return (TFunc Nothing (thisType:arguments:ts) r)
         case ts of
           []  -> constr <|> func -- function of zero arguments
           [t] -> vararity <|> constr <|> func <|> (return t)
@@ -193,7 +193,7 @@ type_fn = do
         reservedOp "->"
         let arguments = TSequence (init ts) (Just (last ts))
         r <- type_ <|> (return Types.undefType)
-        return (TFunc Nothing (thisType:arguments:ts) r LPNone)
+        return (TFunc Nothing (thisType:arguments:ts) r)
   let constr = do
         reservedOp "~~>"
         p' <- getPosition
@@ -201,12 +201,12 @@ type_fn = do
         let arguments = TSequence ts Nothing
         --default: this is an empty object with slack.
         return (TFunc (Just (TObject True False [])) 
-                      ((TObject True False []):arguments:ts) r LPNone)
+                      ((TObject True False []):arguments:ts) r)
   let func = do
         reservedOp "->"
         let arguments = TSequence ts Nothing
         r <- type_ <|> (return Types.undefType)
-        return (TFunc Nothing (thisType:arguments:ts) r LPNone)
+        return (TFunc Nothing (thisType:arguments:ts) r)
         --Note: latent predicates really aren't part of the syntax,
         --but the parser has to deal with them. type checker should fill
         --them in properly.

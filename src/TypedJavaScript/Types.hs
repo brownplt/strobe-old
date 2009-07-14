@@ -21,7 +21,6 @@ module TypedJavaScript.Types
   , unaliasType, realiasType
   , Type (..)
   , TypeConstraint (..)
-  , LatentPred (..)
   , flattenUnion
   ) where
 
@@ -33,8 +32,7 @@ import qualified Data.Map as M
 import qualified Data.List as L
 
 -- we don't want TJS expressions here
-import TypedJavaScript.Syntax (Type (..), TypeConstraint(..), LatentPred(..),
-  Access(..))
+import TypedJavaScript.Syntax (Type (..), TypeConstraint(..), Access(..))
 import qualified TypedJavaScript.Syntax as TJS
 
 
@@ -76,7 +74,7 @@ checkKinds kinds t = case t of
       | otherwise -> fail "kind error (arg mismatch)"
     Just KindStar -> fail "kind error (expected * ... -> *)"
     Nothing -> fail $ printf "undefined type constructor %s" s
-  TFunc _ args result _ -> do
+  TFunc _ args result -> do
     mapM_ (assertKinds kinds) (zip args (repeat KindStar))
     assertKinds kinds (result, KindStar)
     return KindStar
@@ -143,8 +141,7 @@ unaliasType kinds types type_ = case type_ of
           vararg' = case vararg of
             Nothing -> Nothing
             Just t -> Just (unaliasType kinds types t)
-  TFunc ptype args ret lp -> 
-   TFunc ptype' args' ret' lp
+  TFunc ptype args ret -> TFunc ptype' args' ret'
     where args' = map (unaliasType kinds types) args
           ret' = unaliasType kinds types ret
           ptype' = case ptype of
@@ -193,21 +190,21 @@ boolType = TId "bool"
 -- type-checker to handle more of a function type, include them here.
 deconstrFnType :: Type 
                -> Maybe ([String], [TypeConstraint], [Type], Maybe Type, 
-                         Either Type Type, LatentPred, Maybe Type)
+                         Either Type Type, Maybe Type)
 deconstrFnType t@(TRec id t'@(TFunc{})) = -- Hack to avoid infinite recursion
   deconstrFnType (substType id t t')
 --function:
-deconstrFnType (TFunc Nothing args@(_:(TSequence _ vararg):_) result latentP) = 
-  Just ([],[],args,vararg,Left result,latentP, Nothing)
+deconstrFnType (TFunc Nothing args@(_:(TSequence _ vararg):_) result) = 
+  Just ([],[],args,vararg,Left result, Nothing)
 deconstrFnType (TForall ids cs 
-                        (TFunc Nothing args@(_:(TSequence _ vararg):_) r lp))=
-  Just (ids, cs, args, vararg, Left r, lp, Nothing)
+                        (TFunc Nothing args@(_:(TSequence _ vararg):_) r))=
+  Just (ids, cs, args, vararg, Left r, Nothing)
 --constructor:
-deconstrFnType (TFunc (Just pt) args@(_:(TSequence _ vararg):_) result latentP)=
-  Just ([],[],args,vararg,Right result,latentP, (Just pt))
+deconstrFnType (TFunc (Just pt) args@(_:(TSequence _ vararg):_) result)=
+  Just ([],[],args,vararg,Right result, (Just pt))
 deconstrFnType (TForall ids cs 
-                        (TFunc (Just pt) args@(_:(TSequence _ vararg):_) r lp))=
-  Just (ids, cs, args, vararg, Right r, lp, (Just pt))
+                        (TFunc (Just pt) args@(_:(TSequence _ vararg):_) r))=
+  Just (ids, cs, args, vararg, Right r, (Just pt))
 deconstrFnType _ = Nothing
 
 unRec :: Type -> Type
@@ -235,11 +232,10 @@ substType var sub (TId var')
 substType var sub (TSequence args vararg) = 
   TSequence (map (substType var sub) args)
             (liftM (substType var sub) vararg)
-substType var sub (TFunc mpt args ret latentP) =
+substType var sub (TFunc mpt args ret) =
   TFunc (maybe Nothing (Just . substType var sub) mpt)
         (map (substType var sub) args)
         (substType var sub ret)
-        latentP
 substType var sub (TObject hasSlack isOpen fields) =
   TObject hasSlack isOpen (map (\(v,(t,x)) -> (v,(substType var sub t,x))) 
                                fields)
@@ -347,10 +343,9 @@ st env rel (t1, t2)
       --now check the varargs
       st env rel' (vararg1, vararg2)
 
-    (TFunc pt2 args2 ret2 lp2, TFunc pt1 args1 ret1 lp1) -> do
+    (TFunc pt2 args2 ret2, TFunc pt1 args1 ret1) -> do
       
       --when (isJust pt2 || isJust pt1) (fail "constr subtype NYI")
-      assert "in function: LPs are wrong" (lp1 == lp2 || lp1 == LPNone)
       case st env (S.insert (t1, t2) rel) (ret2, ret1) of
         Left msg -> fail $ 
           "in function: covariance of return types:\n" ++ msg

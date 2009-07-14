@@ -1,6 +1,5 @@
 module BrownPLT.TypedJS.TypeDefinitions
   ( Type(..)
-  , LatentPred(..)
   , TypeConstraint (..)
   , RuntimeType (..)
   ) where
