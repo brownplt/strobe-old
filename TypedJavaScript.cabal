@@ -36,7 +36,7 @@ Executable tjs
   ghc-options:
     -fwarn-incomplete-patterns
   Extensions:     
-    Generics Rank2Types MultiParamTypeClasses ViewPatterns
+    Generics Rank2Types 
     DeriveDataTypeable FlexibleInstances
   if !flag(compiler)
     Buildable: False
@@ -55,7 +55,7 @@ Executable typedjs-tests
   ghc-options:
     -fwarn-incomplete-patterns
   Extensions:     
-    Generics Rank2Types MultiParamTypeClasses ViewPatterns
+    Generics Rank2Types 
     DeriveDataTypeable FlexibleInstances ScopedTypeVariables
   if !flag(tests)
     Buildable: False

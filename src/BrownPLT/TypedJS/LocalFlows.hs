@@ -390,15 +390,17 @@ expr env e = case e of
           t1 <- expr env lhs
           t2 <- expr env rhs
           return (injRuntimeType RTBoolean)
-    let equality' t1 t2 = case (unRef t1 env, unRef t2 env) of
-          (Typeof id, projRuntimeType -> Just (RTFixedString s)) -> 
-            case stringToType s of
-              Nothing -> return (injRuntimeType RTBoolean)
+    let equality' t1 t2 = case unRef t1 env of
+          Typeof id -> case projRuntimeType (unRef t2 env) of
+            Just (RTFixedString s) -> case stringToType s of
+              Nothing -> 
+                return (injRuntimeType RTBoolean)
               Just localType -> 
                 return (TypeIs id (TKnown (S.singleton localType)))
-          (projRuntimeType -> Just (RTFixedString _), Typeof _) ->
-            equality' t2 t1
-          otherwise -> return (injRuntimeType RTBoolean)
+            otherwise -> return (injRuntimeType RTBoolean)
+          otherwise -> case unRef t2 env of
+            Typeof _ -> equality' t2 t1
+            otherwise -> return (injRuntimeType RTBoolean)
     let equality = do
           t1 <- expr env lhs
           t2 <- expr env rhs
@@ -456,14 +458,10 @@ expr env e = case e of
       OpAdd -> do
         t1 <- expr env lhs
         t2 <- expr env rhs
-        case (unRef t1 env, unRef t2 env) of
-          (projRuntimeType -> Just RTString, _) -> 
-            return (injRuntimeType RTString)
-          (_, projRuntimeType -> Just RTString) -> 
-            return (injRuntimeType RTString)
-          (projRuntimeType -> Just RTNumber, 
-           projRuntimeType -> Just RTNumber) ->
-            return (injRuntimeType RTNumber)
+        case (projRuntimeType (unRef t1 env), projRuntimeType (unRef t2 env)) of
+          (Just RTString, _) -> return (injRuntimeType RTString)
+          (_,Just RTString) -> return (injRuntimeType RTString)
+          (Just RTNumber, Just RTNumber) -> return (injRuntimeType RTNumber)
           otherwise -> return (Type TUnk)
 
 
