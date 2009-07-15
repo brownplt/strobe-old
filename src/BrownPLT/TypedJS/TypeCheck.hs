@@ -5,6 +5,7 @@ module BrownPLT.TypedJS.TypeCheck
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.LocalVars (localVars, Binding)
 import BrownPLT.TypedJS.RuntimeAnnotations (runtimeAnnotations)
+import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.TypeTheory
 import TypedJavaScript.PrettyPrint
 import TypedJavaScript.Syntax
@@ -81,6 +82,13 @@ ok :: TypeCheck ()
 ok = return ()
 
 
+fieldType :: String -> [Field] -> Maybe (Bool, Type)
+fieldType _ [] = Nothing
+fieldType x ((y, ro, t):fs) | x == y = Just (ro, t)
+                            | x > y = fieldType x fs
+                            | otherwise = Nothing
+
+
 -- |Calculates the type of a local variable that does not have a type
 -- type annotation.  Extends the environment with the type of the variable.
 -- Expects the environment to contain the preceding local variables.
@@ -93,12 +101,48 @@ ok = return ()
 calcType :: Env
          -> Binding
          -> TypeCheck Env
-calcType env (id, Right t) = return (extendEnv env id t)
+calcType env (id, Right t) = return (extendEnv env id (canonize t))
 calcType env (id, Left (FuncExpr _ _ t _)) = return (extendEnv env id t)
 calcType env (id, Left e) = do
   t <- expr env e
   return (extendEnv env id t)
 
+
+field :: Env
+      -> (Prop SourcePos, Maybe Type, Expression SourcePos)
+      -> TypeCheck Field
+field env f = case f of
+  (PropId p (Id _ x), Nothing, e) -> do
+    t <- expr env e
+    return (x, False, t) -- fields are mutable by default
+  (PropId p (Id _ x), Just s, e) -> do
+    t <- expr env e
+    case isSubtype t s of
+      True -> return (x, False, s)
+      False -> do
+        typeError p $ printf 
+          "field %s :: %s, but the expression has type %s"
+          x (renderType s) (renderType t)
+        return (x, False, s)
+          
+numericOp :: SourcePos -> Type -> Type -> Bool -> Bool -> TypeCheck Type
+numericOp loc lhs rhs requireInts returnDouble = do
+  let result = return $ case returnDouble of
+                 True -> doubleType
+                 False -> if isSubtype lhs intType then rhs else lhs
+  case requireInts of
+    True -> do
+      unless (isSubtype lhs intType && isSubtype rhs intType) $
+        typeError loc $ printf 
+          "operator expects int arguments, given %s and %s" 
+          (renderType lhs) (renderType rhs)
+      result
+    False -> do
+      unless (isSubtype lhs doubleType && isSubtype rhs doubleType) $
+        typeError loc $ printf 
+          "operator expects double/int arguments, given %s and %s" 
+          (renderType lhs) (renderType rhs)
+      result
 
 expr :: Env 
      -> Expression SourcePos 
@@ -126,14 +170,43 @@ expr env e = case e of
       otherwise -> fail $ printf "%s applied to an expression of type %s"
                                         (show op) (renderType t)
   InfixExpr p op e1 e2 -> do
-    t1 <- expr env e1
-    t2 <- expr env e2
+    lhs <- expr env e1
+    rhs <- expr env e2
+    let cmp = do
+          unless ((isSubtype lhs stringType && isSubtype rhs stringType) ||
+                  (isSubtype lhs doubleType && isSubtype rhs doubleType)) $
+            typeError p $ printf "%s may only be applied to numbers and strings"
+                                 (show op)
+          return boolType
     case op of
+      OpLT -> cmp
+      OpLEq -> cmp
+      OpGT -> cmp
+      OpGEq -> cmp
+      OpIn -> fail "OpIn NYI"
+      OpInstanceof -> return boolType
       OpEq -> return boolType
-      otherwise -> fail $ show op ++ " NYI"
+      OpNEq -> return boolType
+      OpStrictEq -> return boolType
+      OpStrictNEq -> return boolType
+      OpMul -> numericOp p lhs rhs False False
+      OpDiv -> numericOp p lhs rhs False True
+      OpMod -> numericOp p lhs rhs False True
+      OpSub -> numericOp p lhs rhs False False
+      OpLShift -> numericOp p lhs rhs True False
+      OpSpRShift -> numericOp p lhs rhs True False
+      OpZfRShift -> numericOp p lhs rhs True False
+      OpBAnd -> numericOp p lhs rhs True False
+      OpBXor -> numericOp p lhs rhs True False
+      OpBOr -> numericOp p lhs rhs True False
+      OpAdd | isSubtype lhs stringType -> return stringType
+            | isSubtype rhs stringType -> return stringType
+            | otherwise -> numericOp p lhs rhs False False
+      OpLAnd -> return (canonicalUnion rhs boolType)
+      OpLOr -> return (canonicalUnion lhs rhs)
   CondExpr p e1 e2 e3 -> fail "condExpr NYI"
   AssignExpr p OpAssign lhs rhs -> do
-    t <- expr env e
+    t <- expr env rhs
     case lhs of
       LVar p2 x -> do
         (s, n) <- lookupScopeEnv p2 env x
@@ -148,14 +221,33 @@ expr env e = case e of
                       "error assigning to local variable of type %s, given an \
                       \expression of type %s" (renderType s) (renderType t)
                     return s
+      LDot p2 obj f -> do
+        tObj <- expr env obj
+        case tObj of
+          TObject brand fields -> case fieldType f fields of
+            Just (True, s) -> do
+              typeError p2 $ printf "the field %s is readonly" f
+              return s       
+            Nothing -> do
+              typeError p2 $ printf "object does not have the field %s" f
+              return t
+            Just (False, s) 
+              | s == t -> return s
+              | otherwise -> do
+                  typeError p2 $ printf
+                    "the field %s :: %s, but the expression has the type %s"
+                    f (renderType s) (renderType t)
+                  return s
   ParenExpr _ e -> expr env e
   ListExpr p [] -> catastrophe p "empty ListExpr"
   ListExpr p es -> 
-    foldM (\_ e -> expr env e) 
-          undefined
-          es -- type of the last expression
+    foldM (\_ e -> expr env e) undefined es -- type of the last expression
+  ObjectLit p fields -> do
+    ts <- mapM (field env) fields
+    -- TODO: ensure fields are unique
+    return (canonize (TObject "Object" ts))
   CallExpr p f ts args -> fail "CallExpr NYI"
-  FuncExpr p args t body -> case t of
+  FuncExpr p args t body -> case canonize t of
     TArrow thisType (ArgType argTypes optArgType) resultType -> do
       unless (length args == length argTypes) $
         fail $ "argument count mismatch at " ++ show p
@@ -173,7 +265,7 @@ expr env e = case e of
             fail $ "duplicate names in a scope at " ++ show p
           envWithLocals <- foldM calcType envWithArgs localBinds
           stmt envWithLocals (Just resultType) body
-          return t
+          return (canonize t)
     -- annotation on the function is not a function type
     otherwise -> do
       typeError p $ printf "expected a function type, received %s" 
@@ -242,14 +334,14 @@ stmt env returnType s = case s of
           False -> typeError p $ printf "statement returns %s, expected %s"
                      (renderType t) (renderType returnType)
   VarDeclStmt p decls -> do
-    let decl (VarDecl _ (Id _ x) t) = case isSubtype undefType t of
+    let decl (VarDecl _ (Id _ x) t) = case isSubtype undefType (canonize t) of
           True -> ok
           False -> do typeError p "uninitalized variable declarations must \
                                   \have type undefined"
                       ok
         decl (VarDeclExpr _ (Id _ x) (Just t) e) = do
           s <- expr env e
-          case isSubtype s t of
+          case isSubtype s (canonize t) of
             True -> ok
             False -> do typeError p $ printf 
                           "expression has type %s, expected a subtype of %s"

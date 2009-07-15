@@ -8,6 +8,7 @@ module BrownPLT.TypedJS.TypeTheory
   , canonize
   , runtime
   , static
+  , canonicalUnion
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -35,7 +36,7 @@ areSubtypes (s:ss) (t:ts) = isSubtype s t && areSubtypes ss ts
 areSubTypes _ _ = False
 
 
--- |Canonizes types such as int U int to int.
+-- |Canonizes types such as int U int to int.  Orders fields lexicographically.
 canonize:: Type -> Type
 canonize t = case t of
   TAny -> t
@@ -46,6 +47,10 @@ canonize t = case t of
     TArrow (canonize this) (ArgType (map canonize args) (liftM canonize opt))
            (canonize r)
   TUnion t1 t2 -> canonicalUnion (canonize t1) (canonize t2)
+  TObject brand fields -> TObject brand (sortBy cmp (map f fields))
+    where f (x, ro, t) = (x, ro, canonize t)
+          cmp (x, _, _) (y, _, _) = compare x y
+  otherwise -> error $ " canonize NYI " ++ show t
 
 -- |Assumes that the components are already canonized.
 canonicalUnion :: Type -> Type -> Type
@@ -56,6 +61,20 @@ canonicalUnion t1 t2
   | otherwise = TUnion t2 t1
 
 
+-- Width and subsumption.  'canonize' handles permutations.
+areFieldsSubtypes :: [Field] -> [Field] -> Bool
+areFieldsSubtypes _ [] = True
+areFieldsSubtypes [] _ = False
+areFieldSubtypes ((x1, ro1, t1):fs1) ((x2, ro2, t2):fs2)
+  | x1 < x2 = areFieldsSubtypes fs1 ((x2, ro2, t2):fs2)
+  | x1 == x2 = case (ro1, ro2) of
+      (_, True) -> isSubtype t1 t2 && areFieldsSubtypes fs1 fs2
+      (False, False) -> t1 == t2 && areFieldsSubtypes fs1 fs2
+      otherwise -> False
+  | otherwise = False
+
+
+-- |Assumes the arguments are in canonical forms.
 isSubtype :: Type
           -> Type
           -> Bool
@@ -64,6 +83,8 @@ isSubtype s t = case (s, t) of
     True
   (TApp "Int" [], TApp "Double" []) ->
     True
+  (TObject brand1 fs1, TObject brand2 fs2) -> -- TODO: support brands
+    areFieldsSubtypes fs1 fs2
   (TApp c1 args1, TApp c2 args2) ->
     c1 == c2 && areSubtypes args1 args2
   (TArguments (ArgType args1 optArg1), TArguments (ArgType args2 optArg2)) ->
@@ -91,6 +112,7 @@ runtime t = case t of
   TApp "Double" [] ->  injRT RTNumber
   TApp "Int" [] ->  injRT RTNumber
   TApp "Undefined" [] ->  injRT RTUndefined
+  TObject _ _ -> injRT RTObject
   TArguments _ -> injRT RTObject -- the type of the arguments array
   TArrow _ _ _ -> injRT RTFunction
   TUnion t1 t2 -> case (runtime t1, runtime t2) of
@@ -105,11 +127,12 @@ runtime t = case t of
 -- |If the supplied type is canonical, the result is canonical.
 static :: Set RuntimeType -> Type -> Maybe Type
 static rt st = case st of
-  TApp "String" []| S.member RTString rt -> Just st
+  TApp "String" [] | S.member RTString rt -> Just st
   TApp "Bool" [] | S.member RTBoolean rt -> Just st
   TApp "Double" [] | S.member RTNumber rt -> Just st
   TApp "Int" [] | S.member RTNumber rt -> Just st
   TApp "Undefined" [] | S.member RTUndefined rt -> Just st
+  TObject _ _ | S.member RTObject rt -> Just st
   TArrow _ _ _ | S.member RTFunction rt -> Just st
   TUnion t1 t2 -> case (static rt t1, static rt t2) of
     (Just u1, Just u2) -> Just (canonicalUnion u1 u2)

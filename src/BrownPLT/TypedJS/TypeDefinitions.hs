@@ -5,6 +5,7 @@ module BrownPLT.TypedJS.TypeDefinitions
   , RuntimeTypeInfo (..)
   , ArgType (..)
   , Access (..)
+  , Field
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -21,10 +22,12 @@ data ArgType
   = ArgType [Type] (Maybe Type)
   deriving (Show, Eq, Ord, Data, Typeable)
 
+type Brand = String
+
+type Field = (String, Bool, Type) -- 'True' indicates immutable field
+
 data Type
-  = TObject Bool --hasSlack
-            Bool --isOpenObject ('this' inside a constructor, and f.prototype)
-            [(String, (Type, Access))]
+  = TObject Brand [Field]
   | TAny
   | TRec String Type
   | TArguments ArgType

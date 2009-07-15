@@ -28,10 +28,14 @@ unionEnv env1 env2 = foldM f env1 (M.toList env2)
   where f :: Env -> ((Id, SourcePos), RuntimeTypeInfo) -> Either String Env
         f env (x, t) = case M.lookup x env of
           Nothing -> return (M.insert x t env)
-          Just t' | t == t' -> return env
-                  | otherwise -> fail $
-                      printf "RuntimeAnnotations.hs : %s has distinct types \
-                             \ %s and %s" (show x) (show t) (show t')
+          Just TUnreachable -> return (M.insert x t env)
+          Just t' -> case t of
+            TUnreachable -> return env
+            otherwise -> case t == t' of
+              True -> return env
+              False -> fail $ printf 
+                "RuntimeAnnotations.hs : %s has distinct types %s and %s"
+                (show x) (show t) (show t')
 
 
 unionEnvs = foldM unionEnv M.empty

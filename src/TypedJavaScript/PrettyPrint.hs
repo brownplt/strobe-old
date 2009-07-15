@@ -44,6 +44,10 @@ renderStatements :: [Statement a] -> String
 renderStatements ss = render $ vcat (map (\s -> stmt s <> semi) ss)
 
 
+field :: (String, Bool, Type) -> Doc
+field (x, True, t) = text "readonly" <+> text x <+> text "::" <+> type_ t
+field (x, False, t) = text x <+> text "::" <+> type_ t 
+
 type_ :: Type -> Doc
 type_ t = case t of
   TPrototype str ->
@@ -67,17 +71,9 @@ type_ t = case t of
   TApp s ts -> text s <> text "<" <> commas (map type_ ts) <> text ">"
   TAny -> text "any"
   TRec id t -> hang (text "rec" <+> text id <+> text ".") 2 (type_ t)
-  TObject hasSlack isOpen fields -> 
-   braces $ open <> nest 2 (commas (map field fields) <> s)
-    where field (id, (t', x)) = access x <> text id <+> text "::" <+> type_ t'
-          open = text $ if isOpen then "(open)" else ""                  
-          s = case hasSlack of
-                True -> text ", ..."
-                False -> empty
-          access (False, False) = text "noaccess "
-          access (True, False) =  text "readonly "
-          access (False, True) = text "writeonly "
-          access (True, True) = text ""
+  TObject "Object" fields -> braces (nest 2 (commas (map field fields)))
+  TObject brand fields ->
+    text brand <> braces (nest 2 (commas (map field fields)))
   TUnion t1 t2 -> text "U" <> parens (type_ t1 <> comma <+> type_ t2)
   TId v -> text v
   TForall ids cs t' ->

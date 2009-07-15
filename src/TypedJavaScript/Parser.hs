@@ -121,7 +121,8 @@ Disambiguation:
 
  type'' ::= identifier
           | ( type )
-          | { id: type' [,* }
+          | identifier { [readonly] id: type' [,*] }
+          | { [readonly] id: type' [,*] } ; implicitly branded Object
           | constr<type [,*]>
           | 'literal
           | any
@@ -166,7 +167,7 @@ type_ = do
               -- leaving the constructor. the prototype starts off as
               -- the empty object, and can be augmented later to match
               -- what 'this' is expected to start as.
-              return (TFunc (Just (TObject True False []))
+              return (TFunc (Just (TObject "Window" []))
                             (thisType:arguments:ts) r)
         let func = do
               reservedOp "->"
@@ -182,11 +183,9 @@ type_ = do
 type_fn :: CharParser st (Type)
 type_fn = do
   p <- getPosition
-  let globalThis = TObject True False [] -- TODO: make this the global
-                                         -- this. also - should it be
-                                         -- open?
+  let globalThis = TObject "Window" []
   ts <- type_' `sepBy` comma
-  let thisType = TObject True False []
+  let thisType = TObject "Window" []
   let vararity = do
         reservedOp "..."
         reservedOp "->"
@@ -199,12 +198,12 @@ type_fn = do
         r <- type_ <?> "type that 'this' will become"
         let arguments = TSequence ts Nothing
         --default: this is an empty object with slack.
-        return (TFunc (Just (TObject True False [])) 
-                      ((TObject True False []):arguments:ts) r)
+        return (TFunc (Just (TObject "" [])) 
+                      ((TObject "" []):arguments:ts) r)
   let func = do
         reservedOp "->"
         r <- type_
-        return (TArrow (TObject False False []) (ArgType ts Nothing) r)
+        return (TArrow (TObject "Window" []) (ArgType ts Nothing) r)
   case ts of
     []  -> constr <|> func -- function of zero arguments
     [t] -> vararity <|> constr <|> func <|> (return t)
@@ -219,57 +218,53 @@ type_' = do
   nullable <|> (return t) <?> "possibly nullable type"
 
 type_'' :: CharParser st (Type)
-type_'' =
+type_'' = do
   let union = do 
         reservedOp "U";
         elts <- parens (type_'' `sepBy1` comma)
         case elts of
           [t] -> return t
           (t:ts) -> return (foldr TUnion t ts)
-      object = do
-        (fields, hasSlack) <- braces $ do
-          fs <- field `sepEndBy` comma
-          hasSlack <- (reservedOp "..." >> return True) <|> (return False)
-          return (fs, hasSlack)
-        fields' <- noDupFields fields
-        return (TObject hasSlack False fields')
-      noDupFields fields
-        | length (nub $ map fst fields) == length fields = return fields
-        | otherwise = fail "duplicate fields in an object type specification"
-      any = do
+  let any = do
         reserved "any"
         return TAny
-    in (parens type_) <|> any <|> (try union) <|> object <|> constrOrId
+  let noDupFields fields
+        | length (nub $ map (\(x, _, _) -> x) fields) == 
+          length fields = return fields
+        | otherwise = fail "duplicate fields in an object type specification"
+  let object = do
+        fields <- braces (field `sepBy` comma)
+        fields <- noDupFields fields
+        return (TObject "Object" fields)
+  -- free type variables, type constructors and objects
+  let app constr = do
+        args <- (angles $ type_' `sepBy` comma) <?> "type application"
+        return (TApp constr args)
+  let brandedObject brand = do
+        fields <- braces (field `sepBy` comma)
+        fields <- noDupFields fields
+        return (TObject brand fields)
+  -- If the first letter is upper-case, an unapplied identifier is a nullary
+  -- type constructor.  If it is lower-case, it is a free type variable.
+  -- Therefore, basic types such as integers, booleans, etc. must be "Int",
+  -- "Bool", etc.  Furthermore, if we support type aliases, they must begin
+  -- with an upper-case letter too.
+  let other = do
+        id <- Lexer.identifier
+        case isUpper (head id) of
+          True -> (app id) <|> (brandedObject id) <|> (return $ TApp id [])
+          False -> (app id) <|> (brandedObject id) <|> (return $ TId id)
+    in (parens type_) <|> any <|> (try union) <|> object <|> other
 
 
-constrOrId :: CharParser st (Type)
-constrOrId = do
-  id <- Lexer.identifier
-  case isUpper (head id) of
-    False -> return (TId id)
-    True -> do 
-      let app = do
-            args <- (angles $ type_' `sepBy` comma) <?> "type application"
-            return (TApp id args)
-      app <|> (return $ TApp id [])
-
-field :: CharParser st (String, (Type, Access))
+field :: CharParser st (String, Bool, Type)
 field = do
-  let readonly = reservedOp "readonly" >> return (True, False)
-      wronly   = reservedOp "writeonly" >> return (False, True)
-  (r,w) <- readonly <|> wronly <|> return (True, True)
-  --handle the case where a field is called "readonly"
-  id <- case (r,w) of
-          (True, False) -> Lexer.identifier <|> return "readonly"
-          (False,True)  -> Lexer.identifier <|> return "writeonly"
-          _ -> Lexer.identifier
-  reservedOp "::"
+  ro <- (reserved "readonly" >> return True) <|> (return False)
+  name <- Lexer.identifier
   t <- type_'
-  case t of
-    --slack implies not writable and over-rides the access type:
-    TObject True i f -> return (id, (TObject True i f, (r, False)))
-    _ -> return (id,(t,(r,w)))
-  
+  return (name, ro, t)
+ 
+ 
 parseType :: TypeParser st
 parseType = do
   reservedOp "::" <?> "type annotation (:: followed by a type)"
@@ -955,12 +950,11 @@ typeStmt = do
   t' <- parseType
   t <- case (isSealed, t') of
     (False, _) -> return t'
-    (True, TRec v (TObject p opn ps)) -> 
-      return $ TRec v (TObject p opn 
-        (("@sealed_"++idn, (TObject True False [], (False, False))):ps))
-    (True, TObject p opn ps) -> 
-      return $ TObject p opn 
-        (("@sealed_"++idn, (TObject True False [], (False, False))):ps)
+    (True, TRec v (TObject brand ps)) -> 
+      return $ TRec v (TObject brand
+                              (("@sealed_"++idn, True, TObject "__" []):ps))
+    (True, TObject brand ps) -> 
+      return $ TObject brand (("@sealed_"++idn, True, TObject "__" []):ps)
     (True, t) -> fail "can only seal object types"
   semi
   return (TypeStmt pos id t)
