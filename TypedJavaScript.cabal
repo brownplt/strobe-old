@@ -17,12 +17,6 @@ Data-Files:
   idl/xmlhttprequest.idl
   tests/type-check/*.js
 Description:
-Flag tests
-  Description: Build the test suite.
-  Default: True
-Flag compiler
-  Description: Build the Typed JavaScript compiler
-  Default: False
 
 
 Executable tjs
@@ -38,24 +32,3 @@ Executable tjs
   Extensions:     
     Generics Rank2Types 
     DeriveDataTypeable FlexibleInstances
-  if !flag(compiler)
-    Buildable: False
-
-
-Executable typedjs-tests
-  Main-Is: TestSuite.hs
-  Hs-Source-Dirs:
-    src
-  Build-Depends:
-    base >= 4, mtl >= 1.1.0.1, parsec < 3.0.0, pretty >= 0.1, containers >= 0.1,
-    syb >= 0.1, filepath >= 1.1.0.1, JsContracts >= 0.4, WebBits == 0.15,
-    javascript-analysis == 0.7.2, directory >= 1.0.0.2, fgl, graphviz,
-    regex-posix >= 0.72.0.3, HUnit >= 1.2.0.3, bytestring >= 0.9.1.4,
-    process >= 1.0.1.0, ansi-terminal >= 0.5.0
-  ghc-options:
-    -fwarn-incomplete-patterns
-  Extensions:     
-    Generics Rank2Types 
-    DeriveDataTypeable FlexibleInstances ScopedTypeVariables
-  if !flag(tests)
-    Buildable: False
