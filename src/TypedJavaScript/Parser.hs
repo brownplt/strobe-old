@@ -2,6 +2,7 @@ module TypedJavaScript.Parser
   ( parseScript
   , parseExpression
   , parseType
+  , parseType'
   , parseString
   , parseFuncExpr
   , parseScriptFromString
@@ -97,11 +98,13 @@ normalizeTForall t = return t
         | '[' type ']' type [,+] ... -> type? ; explicit this
         | type [,*] -> type?
         | type [,+] ... -> type?
-        | constr<type [,*]>
+        | constr '[' type [,*] ']'
         | forall identifier+ . type
         | forall identifier+ : typeConstraint+ . type
         | rec identifier . type
         | ( type )
+        | identifier:{ [readonly] id: type' [,*] }
+        | { [readonly] id: type' [,*] } ; implicitly branded Object
 
 Disambiguation:
 
@@ -121,9 +124,9 @@ Disambiguation:
 
  type'' ::= identifier
           | ( type )
-          | identifier { [readonly] id: type' [,*] }
+          | identifier:{ [readonly] id: type' [,*] }
           | { [readonly] id: type' [,*] } ; implicitly branded Object
-          | constr<type [,*]>
+          | constr '[' type [,*] ']'
           | 'literal
           | any
 
@@ -238,9 +241,10 @@ type_'' = do
         return (TObject "Object" fields)
   -- free type variables, type constructors and objects
   let app constr = do
-        args <- (angles $ type_' `sepBy` comma) <?> "type application"
+        args <- (brackets $ type_' `sepBy` comma) <?> "type application"
         return (TApp constr args)
   let brandedObject brand = do
+        colon
         fields <- braces (field `sepBy` comma)
         fields <- noDupFields fields
         return (TObject brand fields)
@@ -264,6 +268,8 @@ field = do
   t <- type_'
   return (name, ro, t)
  
+parseType' :: CharParser st Type
+parseType' = type_
  
 parseType :: TypeParser st
 parseType = do

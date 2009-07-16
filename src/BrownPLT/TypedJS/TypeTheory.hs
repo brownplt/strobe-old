@@ -93,11 +93,11 @@ isSubtype s t = case (s, t) of
     isSubtype this2 this1 &&
     isSubtype (TArguments args2) (TArguments args1) &&
     isSubtype r1 r2
-  (_, TUnion t1 t2) ->
-    isSubtype s t1 || isSubtype s t2
   (TUnion s1 s2, _) -> 
     isSubtype s1 t && isSubtype s2 t
-  otherwise -> error $ "isSubtype NYI " ++ show (s, t)
+  (_, TUnion t1 t2) ->
+    isSubtype s t1 || isSubtype s t2
+  otherwise -> False
 
 
 injRT :: RuntimeType -> RuntimeTypeInfo

@@ -1,5 +1,6 @@
 module BrownPLT.TypedJS.TypeCheck
   ( typeCheck
+  , typeCheckExpr
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -9,7 +10,6 @@ import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.TypeTheory
 import TypedJavaScript.PrettyPrint
 import TypedJavaScript.Syntax
-import Control.Monad.State.Strict
 import qualified Data.Map as M
 
 
@@ -17,16 +17,36 @@ data S = S {
   stateErrors :: [(SourcePos, String)]
 }
 
+data TypeCheck a = TypeCheck { runTypeCheck :: S  -> (S, Either String a) }
 
-type TypeCheck a = State S a
+instance Monad TypeCheck where
 
+  return a = TypeCheck $ \s -> (s, Right a)
+
+  fail str = TypeCheck $ \s -> (s, Left str)
+
+  (TypeCheck f) >>= g = TypeCheck $ \s -> case f s of
+    (s', Left str) -> (s', Left str)
+    (s', Right a) -> runTypeCheck (g a) s'
+
+
+getState :: TypeCheck S
+getState = TypeCheck $ \s -> (s, Right s)
+
+
+putState :: S -> TypeCheck ()
+putState s = TypeCheck $ \_ -> (s, Right ())
+  
 
 typeError :: SourcePos
           -> String
           -> TypeCheck ()
 typeError loc msg = do
-  s <- get
-  put $ s { stateErrors = (loc, msg):(stateErrors s) }
+  s <- getState
+  putState $ s { stateErrors = (loc, msg):(stateErrors s) }
+
+fatalTypeError :: SourcePos -> String -> TypeCheck a
+fatalTypeError p msg = fail (printf "%s: %s" (show p) msg)
 
 
 data Env = Env Int (Map String (Type, Int))
@@ -204,7 +224,11 @@ expr env e = case e of
             | otherwise -> numericOp p lhs rhs False False
       OpLAnd -> return (canonicalUnion rhs boolType)
       OpLOr -> return (canonicalUnion lhs rhs)
-  CondExpr p e1 e2 e3 -> fail "condExpr NYI"
+  CondExpr p e1 e2 e3 -> do
+    t1 <- expr env e1
+    t2 <- expr env e2
+    t3 <- expr env e3
+    return (canonicalUnion t2 t3)
   AssignExpr p OpAssign lhs rhs -> do
     t <- expr env rhs
     case lhs of
@@ -246,9 +270,25 @@ expr env e = case e of
     ts <- mapM (field env) fields
     -- TODO: ensure fields are unique
     return (canonize (TObject "Object" ts))
-  CallExpr p f ts args -> fail "CallExpr NYI"
+  CallExpr p f ts args -> do
+    f_t <- expr env f
+    args_t <- mapM (expr env) args
+    case f_t of
+      TArrow thisType (ArgType argTypes optArgType) resultType -> do
+        unless (length args == length argTypes) $ 
+          typeError p "argument count mismatch"
+        unless (all (uncurry isSubtype) (zip args_t argTypes)) $
+          typeError p "argument type mismatch"
+        return resultType
+      otherwise -> do
+        typeError p $ printf "expected a function; expression has type %s"
+          (renderType f_t)
+        fail "type error"
   FuncExpr p args t body -> case canonize t of
     TArrow thisType (ArgType argTypes optArgType) resultType -> do
+      unless (length args == length (nub $ map unId args)) $
+        fatalTypeError p "function argument names must be unique"
+
       unless (length args == length argTypes) $
         fail $ "argument count mismatch at " ++ show p
       let envWithArgs = extendsEnv (nestEnv env) (zip (map unId args) argTypes)
@@ -365,8 +405,19 @@ topLevel globals body = do
       stmt envWithGlobals Nothing body
 
 
-typeCheck :: [Statement SourcePos] -> IO ()
-typeCheck body = case execState (topLevel emptyEnv body) (S []) of
-  S [] -> return ()
-  S errs -> mapM_ (putStrLn.show) errs
-  
+typeCheck :: [Statement SourcePos] -> Either String ()
+typeCheck body = case runTypeCheck (topLevel emptyEnv body) (S []) of
+  (S [], Right ()) -> return ()
+  (S errs, Left err) -> Left (show errs ++ "\n\n" ++ err)
+  (S errs, _) -> Left (show errs)
+
+
+typeCheckExpr :: Expression SourcePos -> Either String Type
+typeCheckExpr e = do
+  body <- runtimeAnnotations M.empty (ExprStmt noPos e)
+  case body of
+    ExprStmt _ e -> case runTypeCheck (expr emptyEnv e) (S []) of
+      (S [], Right t) -> return t
+      (S errs, Left err) -> fail (show errs ++ "\n\n" ++ err)
+      (S errs, _) -> fail (show errs)
+    otherwise -> error "typeCheckExpr: expression shape error"

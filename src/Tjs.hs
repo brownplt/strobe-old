@@ -22,10 +22,10 @@ import TypedJavaScript.Lexer
 -- import TypedJavaScript.Contracts
 import TypedJavaScript.TypeErasure
 import TypedJavaScript.PrettyPrint
-import BrownPLT.TypedJS.TypeCheck (typeCheck)
-
-
-import BrownPLT.TypedJS.TypeCheck()
+import BrownPLT.TypedJS.TestParser
+import Test.HUnit
+import BrownPLT.Testing
+import BrownPLT.TypedJS.TypeCheck
 
 pretty :: [ParsedStatement] -> String
 pretty = renderStatements
@@ -36,6 +36,8 @@ data Flag
   | TypeCheck
   | Graphs
   | PrintType String
+  | InteractiveTesting
+  | Testing
   deriving (Eq, Ord)
 
 options :: [OptDescr Flag]
@@ -50,38 +52,39 @@ options =
       "print the interprocedural graphs of the program"
   , Option ['y'] ["type"] (ReqArg PrintType "NAME")
       "prints the type named NAME"
+  , Option [] ["testing"] (NoArg Testing)
+      "reads in multiple test files"
   ]
 
-checkHelp (Help:_) = do
-  putStrLn "Typed JavaScript Compiler"
-  putStrLn (usageInfo "Usage: jst [OPTION ...] [file]" options)
-  putStrLn ""
-  putStrLn "If you do not specify any options, the type-checker will run."
-  putStrLn "If you do not specify a filename, the program will read from"
-  putStrLn "standard input."
-  exitSuccess
-checkHelp _ = return ()
 
-getInput [] = return (stdin, "stdin")
-getInput [file] = do
-  h <- openFile file ReadMode
-  return (h, file)
-getInput files = do
-  hPutStrLn stderr "multiple input files are not yet supported"
-  exitFailure
 
-data Action = RequireInput (([ToplevelStatement SourcePos], 
-                             [Statement SourcePos]) -> IO ())
-            | NoInput (IO ())
+
+
+type Action = [Flag] -> [String] -> IO ()
+
+
+typeCheckAction :: Action
+typeCheckAction [] [path] = do
+  src <- readFile path
+  let (_, script) = parseTypedJavaScript path src
+  case typeCheck script of
+    Right () -> putStrLn "Type-checking successful."
+    Left errs -> putStrLn errs
+typeCheckAction _ _ = fail "invalid command-line arguments"
+
+
+testingAction [] paths = do
+  tests <- mapM parseTestFile paths
+  runTest (TestList tests)
+testingAction _ _ = fail "invalid command-line arguments"
+
+
+{-
 
 getAction (ANF:args) = return (RequireInput action, args) where
   action (_, prog) = do
     let (topDecls, anfProg) = toANF (simplify (eraseTypes prog))
     putStrLn (prettyANF anfProg)
-getAction (TypeCheck:args) = return (RequireInput action, args) where
-  action (toplevels, prog) = do
-    typeCheck prog
-    putStrLn "Type-checking successful."
 getAction (Graphs:args) = return (RequireInput action, args) where
   action (_, prog) = do
     let anf = toANF (simplify (eraseTypes prog))
@@ -96,7 +99,6 @@ getAction (Graphs:args) = return (RequireInput action, args) where
                 (\(n,s) -> [GV.Label (show s)]) -- node atributes
                 edgeFn -- edge attributes
     hPutStrLn stdout (show dot)
-{-
 getAction ((PrintType name):args) = return (RequireInput action, args) where
   action (toplevs, prog) = do
     domTypeEnv <- makeInitialEnv
@@ -105,10 +107,6 @@ getAction ((PrintType name):args) = return (RequireInput action, args) where
       Just t -> putStrLn (renderType t)
       Nothing -> fail $ printf "%s is not a type name" name
 -}
-getAction args = return (RequireInput action, args) where
-  action (toplevels, prog) = do
-    typeCheck prog
-    putStrLn "Type-checking successful."
 
 main = do
   args <- getArgs
@@ -117,19 +115,12 @@ main = do
     mapM_ (hPutStrLn stderr) errors
     exitFailure
 
-  let args = sort permutedArgs
-  checkHelp args
-
-  (inputHandle, inputName) <- getInput files
-  (action, args) <- getAction args
-
-  unless (null args) $ do
-    hPutStrLn stderr "superfluous arguments"
-    exitFailure
-
-  case action of
-    RequireInput action -> do
-      str <- hGetContents inputHandle
-      let script = parseTypedJavaScript inputName str
-      action script
-    NoInput action -> action
+  case sort permutedArgs of
+    [] -> typeCheckAction [] files
+    (TypeCheck:args) -> typeCheckAction args files
+    (Testing:args) -> testingAction args files
+    [Help] -> do
+      putStrLn "Typed JavaScript Compiler"
+      putStrLn (usageInfo "Usage: jst [OPTION ...] [file]" options)
+    otherwise -> do
+      fail "invalid command-line arguments (try --help)"

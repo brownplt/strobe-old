@@ -148,6 +148,17 @@ annotateVarRef env (Stx.VarRef p (Stx.Id p' x)) = case M.lookup (x, p) env of
 annotateVarRef _ e = e
 
 
+removeFunction :: Stx.Expression SourcePos -> Stx.Expression SourcePos
+removeFunction (Stx.FuncExpr p args t body) = 
+  Stx.FuncExpr p [] t (Stx.EmptyStmt p)
+removeFunction e = e
+
+
+isNotFunction :: Stx.Expression SourcePos -> Bool
+isNotFunction (Stx.FuncExpr {}) = False
+isNotFunction e = True
+
+
 runtimeAnnotations :: Map Id RuntimeTypeInfo
                    -- ^types of formal arguments and identifiers in the 
                    -- enclosing environment
@@ -157,11 +168,14 @@ runtimeAnnotations :: Map Id RuntimeTypeInfo
                    -- ^body with @VarRef@s transformed to @AnnotatedVarRef@s
                    -- where possible.
 runtimeAnnotations env body = do
-  let (vars, anf) = toANF (simplify (eraseTypes [body]))
+  let body' = everywhere' (mkT removeFunction) body
+  let (vars, anf) = toANF (simplify (eraseTypes [body']))
   let (anf', _) = numberStmts 0 (SeqStmt noPos anf)
   let vars' = map (\(x,p) -> (x, (0, p))) vars
   let (_, _, gr) = intraproc (FuncLit (0, noPos) [] vars' anf')
   let localEnv = M.fromList (map (\(x, _) -> (x, TUnreachable)) vars)
   let stmtEnvs = localTypes gr (M.union localEnv env)
   localEnv <- stmt stmtEnvs anf'
-  return (everywhere (mkT (annotateVarRef localEnv)) body)
+  return (everywhereBut (mkQ True isNotFunction) 
+                        (mkT (annotateVarRef localEnv)) 
+                        body)
