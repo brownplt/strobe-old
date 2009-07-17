@@ -154,9 +154,9 @@ removeFunction (Stx.FuncExpr p args t body) =
 removeFunction e = e
 
 
-isNotFunction :: Stx.Expression SourcePos -> Bool
-isNotFunction (Stx.FuncExpr {}) = False
-isNotFunction e = True
+isFunction :: Stx.Expression SourcePos -> Bool
+isFunction (Stx.FuncExpr {}) = True
+isFunction e = False
 
 
 runtimeAnnotations :: Map Id RuntimeTypeInfo
@@ -176,6 +176,6 @@ runtimeAnnotations env body = do
   let localEnv = M.fromList (map (\(x, _) -> (x, TUnreachable)) vars)
   let stmtEnvs = localTypes gr (M.union localEnv env)
   localEnv <- stmt stmtEnvs anf'
-  return (everywhereBut (mkQ True isNotFunction) 
+  return (everywhereBut (mkQ False isFunction) 
                         (mkT (annotateVarRef localEnv)) 
                         body)

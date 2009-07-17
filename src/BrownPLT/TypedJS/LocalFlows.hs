@@ -398,8 +398,10 @@ expr env e = case e of
               Just localType -> 
                 return (TypeIs id (TKnown (S.singleton localType)))
             otherwise -> return (injRuntimeType RTBoolean)
-          otherwise -> case unRef t2 env of
-            Typeof _ -> equality' t2 t1
+          otherwise -> case projRuntimeType (unRef t1 env) of
+            Just (RTFixedString _) -> case unRef t2 env of
+              Typeof _ -> equality' t2 t1
+              otherwise -> return (injRuntimeType RTBoolean) 
             otherwise -> return (injRuntimeType RTBoolean)
     let equality = do
           t1 <- expr env lhs

@@ -181,7 +181,7 @@ expr env e = case e of
   PrefixExpr p op e -> do
     t <- expr env e
     case op of
-      PrefixLNot | isSubtype t boolType -> return boolType
+      PrefixLNot -> return boolType
       PrefixBNot | isSubtype t doubleType -> return t
       PrefixPlus | isSubtype t doubleType -> return t
       PrefixMinus | isSubtype t doubleType -> return t
