@@ -205,14 +205,14 @@ expressions {
   };
   
   function (x) :: (U(String, Bool) -> String) {
-    if (typeof x == "String") {
+    if (typeof x == "string") {
       return x;
     }
     return "was not a String";
   } :: (U(String, Bool) -> String);
   
   function (x) :: (U(Int, Bool) -> Bool) {
-    if (typeof x == "Boolean") {
+    if (typeof x == "boolean") {
       if (x) { return false; }
     }
     return true;
@@ -220,14 +220,14 @@ expressions {
   
   //!= instead of ==:
   function (x) :: (U(Int, Bool) -> Bool) {
-    if (typeof x == "Boolean") {
+    if (typeof x == "boolean") {
       if (x) { return false; }
     }
     return true;
   } :: (U(Int, Bool) -> Bool);
   
   function (x) :: (U(Int, Bool) -> Bool) {
-    if (typeof x != "Boolean") {
+    if (typeof x != "boolean") {
       var f :: Int = 0;
       f = x >> 3;
       return true;
@@ -239,7 +239,7 @@ expressions {
     return true;
   } :: (U(Int, Bool) -> Bool);
   function (x) :: (U(Int, Bool) -> Bool) {
-    if (typeof x != "Boolean") {
+    if (typeof x != "boolean") {
       var f :: Int = 0;
       f = x >> 3;
       return true;
@@ -320,7 +320,7 @@ expressions {
   } :: U(Int, Bool) -> Bool;
   
   function (x) :: (U(Int, Bool) -> Bool) {
-     if (typeof x != "Boolean") {
+     if (typeof x != "boolean") {
        return false;
      }
      if (x) {
@@ -329,7 +329,7 @@ expressions {
      return x; //x should be Bool
   } :: U(Int, Bool) -> Bool;
   function (x) :: (U(Int, Bool) -> Bool) {
-     if (typeof x != "Boolean") {
+     if (typeof x != "boolean") {
        var ppzzr = 9;
        return false;
      }
@@ -341,7 +341,7 @@ expressions {
   
   
   function (x) :: (U(Int, Bool) -> Bool) {
-    if ((typeof x) != "Boolean") {
+    if ((typeof x) != "boolean") {
       var f :: Int = 0;
       f = x >> 3;
       return true;
@@ -351,7 +351,7 @@ expressions {
   } :: (U(Int, Bool) -> Bool);
   
   function (x) :: (U(Int, Bool) -> Bool) {
-    if (!((typeof x) == "Boolean")) {
+    if (!((typeof x) == "boolean")) {
       var f :: Int = 0;
       f = x >> 3;
       return true;
@@ -373,14 +373,14 @@ expressions {
   } :: (U(Int, Bool) -> Bool);
   
   function (x) :: (U(Int, Bool) -> Bool) {
-    if (typeof x == "Boolean") {
+    if (typeof x == "boolean") {
       if (x) { return false; }
     }
     return true;
   } :: (U(Int, Bool) -> Bool);
   
   function (x) :: (any -> Bool) {
-    if (typeof x == "Boolean") {
+    if (typeof x == "boolean") {
       if (x) { return false; }
     }
     return true;
@@ -388,7 +388,7 @@ expressions {
   
   //what if we return on the if statement branch?
   function (x) :: (U(Int, Bool) -> String) {
-    if (typeof x == "Boolean") {
+    if (typeof x == "boolean") {
       return "x was a Boolean";
     }
     //now, x should be an Integer
@@ -417,7 +417,7 @@ expressions {
   
   //these should work even with var decls:
   function (x) :: (U(String, Bool) -> String) {
-    if (typeof x == "String") {
+    if (typeof x == "string") {
       //TODO: change var processing so that occurrence typing has an effect
       //on it!
       var z = x;
@@ -427,7 +427,7 @@ expressions {
   } :: (U(String, Bool) -> String);
   
   function (x) :: (U(Int, Bool) -> String) {
-    if (typeof x == "Boolean") {
+    if (typeof x == "boolean") {
       return "x was a Boolean";
     }
     //now, x should be an Integer
@@ -453,7 +453,7 @@ expressions {
   
   //magic
   fail function (x) :: U(Int, Bool, String) -> U(Int, Bool) {
-    if ((typeof x == "number") || (typeof x == "Boolean"))
+    if ((typeof x == "number") || (typeof x == "boolean"))
     var isInt :: Int = 3;
     if ((typeof x == "number") || 3) //(typeof x == "Bool"))
     {
@@ -465,7 +465,7 @@ expressions {
   
   function (x) :: U(Int, Bool, String) -> U(Int, Bool) {
     var isUIntBool :: U(Int, Bool) = 3;
-    if ((typeof x == "number") || (typeof x == "Boolean"))
+    if ((typeof x == "number") || (typeof x == "boolean"))
     {
       isUIntBool = x;
       return x;
@@ -475,7 +475,7 @@ expressions {
   function (x) :: U(Int, Bool, String) -> U(Int, Bool) {
     var isUIntBool :: U(Int, Bool) = 3;
     var isStr :: String = "HAHA";
-    if ((typeof x == "number") || (typeof x == "Boolean"))
+    if ((typeof x == "number") || (typeof x == "boolean"))
     {
       isUIntBool = x;
       return x;
@@ -522,7 +522,7 @@ expressions {
   function() :: (-> Undefined) {
     var x :: U(Double, String, Bool) = "hello";
     var y :: String =
-      (typeof ((typeof x == "number") ? "x is a number" : x) == "Boolean")
+      (typeof ((typeof x == "number") ? "x is a number" : x) == "boolean")
         ? "x is a Boolean"
         : x;
   
@@ -579,7 +579,7 @@ expressions {
     if (typeof x == "number") {
       z = x;
     } else {
-      if (typeof x == "String") {
+      if (typeof x == "string") {
         s = x;
       } else {
         b = x;
@@ -671,14 +671,14 @@ expressions {
   //restricting 'any':
   function (x) :: (any -> Bool) {
     var rez :: Bool = false;
-    if (typeof x == "Boolean")
+    if (typeof x == "boolean")
       rez = x;
     return rez;
   } :: (any -> Bool);
   
   function (x) :: (any -> Bool) {
     var tx = typeof x;
-    if (typeof tx == "String")
+    if (typeof tx == "string")
       return false;
     return false;
   } :: any -> Bool
