@@ -562,7 +562,7 @@ expressions {
       case 'number':
        z = x;
        break;
-      case 'String':
+      case 'string':
        s = x;
        break;
       default:
@@ -628,6 +628,7 @@ expressions {
     }
     return x;
   } :: U(Int, Bool) -> Int;
+
   function (x) :: U(Int, Bool) -> Int {
     var b :: Bool = true;
     if (x == 3)

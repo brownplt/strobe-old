@@ -127,6 +127,7 @@ runtime t = case t of
 -- |If the supplied type is canonical, the result is canonical.
 static :: Set RuntimeType -> Type -> Maybe Type
 static rt st = case st of
+  TAny | not (S.null rt) -> Just st
   TApp "String" [] | S.member RTString rt -> Just st
   TApp "Bool" [] | S.member RTBoolean rt -> Just st
   TApp "Double" [] | S.member RTNumber rt -> Just st
