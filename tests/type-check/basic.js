@@ -694,7 +694,7 @@ expressions {
   
   function() :: -> Undefined {
     var x = 5;
-    var y = function() :: -> int { return x + 5; }
+    var y = function() :: -> Int { return x + 5; }
   } :: -> Undefined;
   
   fail function() :: -> Undefined {
@@ -1210,7 +1210,7 @@ expressions {
   	}
   };
   
-  fail function (x) :: (U(Int, bool) -> bool) {
+  fail function (x) :: (U(Int, Bool) -> Bool) {
   	 if (typeof x == "number") {
   		 return false;
   	 }
@@ -1223,8 +1223,7 @@ expressions {
   	var d = "ANOTHeR STRING";
   	var e = (a*4 == (b - 23)) ? c : d;
   
-  	if (a*b == 4)
-  	{
+  	if (a*b == 4) {
   			if (e == c) {
   				return d;
   			}

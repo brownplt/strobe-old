@@ -65,7 +65,7 @@ canonicalUnion t1 t2
 areFieldsSubtypes :: [Field] -> [Field] -> Bool
 areFieldsSubtypes _ [] = True
 areFieldsSubtypes [] _ = False
-areFieldSubtypes ((x1, ro1, t1):fs1) ((x2, ro2, t2):fs2)
+areFieldsSubtypes ((x1, ro1, t1):fs1) ((x2, ro2, t2):fs2)
   | x1 < x2 = areFieldsSubtypes fs1 ((x2, ro2, t2):fs2)
   | x1 == x2 = case (ro1, ro2) of
       (_, True) -> isSubtype t1 t2 && areFieldsSubtypes fs1 fs2
@@ -124,10 +124,24 @@ runtime t = case t of
     (_, TUnreachable) -> error "runtime: recursive call produced TUnreachable"
 
 
+flatStatic :: RuntimeType -> Type
+flatStatic rt = case rt of
+  RTBoolean -> boolType
+  RTNumber -> doubleType
+  RTUndefined -> undefType
+  RTString -> stringType
+  RTObject -> TAny
+  RTFunction -> TAny
+  RTFixedString _ -> stringType
+
+
 -- |If the supplied type is canonical, the result is canonical.
 static :: Set RuntimeType -> Type -> Maybe Type
 static rt st = case st of
-  TAny | not (S.null rt) -> Just st
+  TAny -> case map flatStatic (S.toList rt) of
+    [] -> Nothing
+    [t] -> Just t
+    (t:ts) -> Just (foldr canonicalUnion t ts)
   TApp "String" [] | S.member RTString rt -> Just st
   TApp "Bool" [] | S.member RTBoolean rt -> Just st
   TApp "Double" [] | S.member RTNumber rt -> Just st

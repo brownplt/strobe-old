@@ -3,7 +3,6 @@ module BrownPLT.TypedJS.TypeCheck
   , typeCheckExpr
   ) where
 
-import BrownPLT.TypedJS.FreeVars
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.LocalVars (localVars, Binding)
 import BrownPLT.TypedJS.RuntimeAnnotations (runtimeAnnotations)
@@ -12,6 +11,8 @@ import BrownPLT.TypedJS.TypeTheory
 import TypedJavaScript.PrettyPrint
 import TypedJavaScript.Syntax
 import qualified Data.Map as M
+import BrownPLT.TypedJS.PreTypeCheck
+import BrownPLT.TypedJS.Environment
 
 
 data S = S {
@@ -48,55 +49,6 @@ typeError loc msg = do
 
 fatalTypeError :: SourcePos -> String -> TypeCheck a
 fatalTypeError p msg = fail (printf "%s: %s" (show p) msg)
-
-
-data Env = Env Int (Map String (Type, Int))
-
-
-emptyEnv :: Env
-emptyEnv = Env 0 M.empty
-
-domEnv :: Env -> [String]
-domEnv (Env _ dict) = M.keys dict
-
-lookupEnv :: Monad m
-          => SourcePos 
-          -> Env
-          -> String
-          -> m Type
-lookupEnv loc env x = do
-  (t, n) <- lookupScopeEnv loc env x
-  return t
-
-
-lookupScopeEnv :: Monad m
-               => SourcePos
-               -> Env
-               -> String
-               -> m (Type, Int)
-lookupScopeEnv loc (Env _ dict) x = case M.lookup x dict of
-  Nothing -> fail $ printf "unbound identifier %s at %s" x (show loc)
-  Just (t, n) -> return (t, n)
-
-
-scopeEnv :: Env -> Int
-scopeEnv (Env n _) = n
-
-
-extendEnv :: Env -> String -> Type -> Env
-extendEnv (Env n dict) x t = Env n (M.insert x (t, n) dict)
-
-
-extendsEnv :: Env -> [(String, Type)] -> Env
-extendsEnv env binds = foldr (\(x, t) env -> extendEnv env x t) env binds
-
-
--- runtimeEnv :: Env -> Map String RuntimeTypeInfo
-runtimeEnv (Env _ dict) = M.map (runtime.fst) dict
-
-
-nestEnv :: Env -> Env
-nestEnv (Env n dict) = Env (n + 1) dict
 
 
 ok :: TypeCheck ()
@@ -290,14 +242,14 @@ expr env e = case e of
     TArrow thisType (ArgType argTypes optArgType) resultType -> do
       unless (length args == length (nub $ map unId args)) $
         fatalTypeError p "function argument names must be unique"
-
       unless (length args == length argTypes) $
-        fail $ "argument count mismatch at " ++ show p
+        fatalTypeError p "argument count mismatch"
+
       let envWithArgs = extendsEnv (nestEnv env) (zip (map unId args) argTypes)
-      -- TODO: Check is allPathsReturn.  If not, it must be that
-      -- undefType <: returnType.
-      -- When we get to constructors, omit this test but use stmt with
-      -- returnType = Nothing
+      
+      unless (allPathsReturn body || isSubtype undefType resultType) $
+        typeError p "all control paths in function to not return a result"
+
       case runtimeAnnotations (runtimeEnv envWithArgs) body of
         Left s -> catastrophe p s
         Right body -> do
@@ -358,7 +310,18 @@ stmt env returnType s = case s of
   ContinueStmt _ _ -> ok
   LabelledStmt _ _ s -> stmt env returnType s
   ForInStmt _ init e s -> fail "ForInStmt NYI"
-  ForStmt _ init test incr s -> fail "ForStmt NYI"
+  ForStmt _ init test incr s -> do
+    case init of
+      NoInit -> ok
+      VarInit decls -> mapM_ (decl env) decls
+      ExprInit e -> expr env e >> ok
+    case test of
+      Nothing -> ok
+      Just e -> expr env e >> ok
+    case incr of
+      Nothing -> ok
+      Just e -> expr env e >> ok
+    stmt env returnType s
   TryStmt _ body catches finally -> fail "TryStmt NYI"
   ThrowStmt _ e -> expr env e >> ok
   ReturnStmt p ret -> case returnType of
@@ -375,35 +338,37 @@ stmt env returnType s = case s of
           True -> ok
           False -> typeError p $ printf "statement returns %s, expected %s"
                      (renderType t) (renderType returnType)
-  VarDeclStmt p decls -> do
-    let decl (VarDecl _ (Id _ x) t) = case isSubtype undefType (canonize t) of
-          True -> ok
-          False -> do typeError p "uninitalized variable declarations must \
-                                  \have type undefined"
-                      ok
-        decl (VarDeclExpr _ (Id _ x) (Just t) e) = do
-          s <- expr env e
-          case isSubtype s (canonize t) of
-            True -> ok
-            False -> do typeError p $ printf 
-                          "expression has type %s, expected a subtype of %s"
-                          (renderType s) (renderType t)
-        -- e may contain a function, therefore we must recompute the type.
-        decl (VarDeclExpr p (Id _ x) Nothing e) = do
-          t <- lookupEnv p env x
-          s <- expr env e
-          case s == t of
-            True -> ok
-            False -> catastrophe p $ printf 
-              "%s :: %s, but was calculated to have type %s"
-              x (renderType s) (renderType t)
-    mapM_ decl decls
+  VarDeclStmt p decls -> mapM_ (decl env) decls
+    
+
+decl :: Env -> VarDecl SourcePos -> TypeCheck ()
+decl env (VarDecl p (Id _ x) t) = case isSubtype undefType (canonize t) of
+  True -> ok
+  False -> do typeError p "uninitalized variable declarations must \
+                          \have type undefined"
+              ok
+decl env (VarDeclExpr p (Id _ x) (Just t) e) = do
+  s <- expr env e
+  case isSubtype s (canonize t) of
+    True -> ok
+    False -> do typeError p $ printf 
+                  "expression has type %s, expected a subtype of %s"
+                  (renderType s) (renderType t)
+-- e may contain a function, therefore we must recompute the type.
+decl env (VarDeclExpr p (Id _ x) Nothing e) = do
+  t <- lookupEnv p env x
+  s <- expr env e
+  case s == t of
+    True -> ok
+    False -> catastrophe p $ printf 
+      "%s :: %s, but was calculated to have type %s"
+      x (renderType s) (renderType t)
 
 
 -- |This code should be almost identical to the code for function bodies.
 topLevel :: Env -> [Statement SourcePos] -> TypeCheck ()
-topLevel globals body = case freeVars (domEnv globals) body of
-  [] -> case runtimeAnnotations (runtimeEnv globals) (BlockStmt noPos body) of
+topLevel globals body = case preTypeCheck globals body of
+  Right e -> case runtimeAnnotations (runtimeEnv globals) (BlockStmt noPos e) of
     Left s -> catastrophe noPos s
     Right body -> do
       let localBinds = localVars body
@@ -412,8 +377,7 @@ topLevel globals body = case freeVars (domEnv globals) body of
         fail $ "duplicate names at top level at "
       envWithGlobals <- foldM calcType globals localBinds
       stmt envWithGlobals Nothing body
-  freeVars -> fatalTypeError noPos $ printf "Undeclared identifiers: %s"
-    (show freeVars)
+  Left str -> fatalTypeError noPos str
 
 
 typeCheck :: [Statement SourcePos] -> Either String ()
@@ -424,13 +388,13 @@ typeCheck body = case runTypeCheck (topLevel emptyEnv body) (S []) of
 
 
 typeCheckExpr :: Expression SourcePos -> Either String Type
-typeCheckExpr e = case freeVars [] [ExprStmt noPos e] of
-  [] -> do
-    body <- runtimeAnnotations M.empty (ExprStmt noPos e)
-    case body of
-      ExprStmt _ e -> case runTypeCheck (expr emptyEnv e) (S []) of
-        (S [], Right t) -> return t
-        (S errs, Left err) -> fail (show errs ++ "\n\n" ++ err)
-        (S errs, _) -> fail (show errs)
-      otherwise -> error "typeCheckExpr: expression shape error"
-  freeVars -> fail $ printf "unbound identifiers: %s" (show freeVars)
+typeCheckExpr e = do
+  [e] <- preTypeCheck emptyEnv [ExprStmt noPos e]
+  body <- runtimeAnnotations M.empty e
+  case body of
+    ExprStmt _ e -> case runTypeCheck (expr emptyEnv e) (S []) of
+      (S [], Right t) -> return t
+      (S errs, Left err) -> fail (show errs ++ "\n\n" ++ err)
+      (S errs, _) -> fail (show errs)
+    otherwise -> fail "typeCheckExpr: expression shape error"
+
