@@ -388,8 +388,15 @@ stmt env returnType s = case s of
             False -> do typeError p $ printf 
                           "expression has type %s, expected a subtype of %s"
                           (renderType s) (renderType t)
-        -- calcType has already called 'expr' on 'e' below
-        decl (VarDeclExpr _ (Id _ x) Nothing e) = ok
+        -- e may contain a function, therefore we must recompute the type.
+        decl (VarDeclExpr p (Id _ x) Nothing e) = do
+          t <- lookupEnv p env x
+          s <- expr env e
+          case s == t of
+            True -> ok
+            False -> catastrophe p $ printf 
+              "%s :: %s, but was calculated to have type %s"
+              x (renderType s) (renderType t)
     mapM_ decl decls
 
 

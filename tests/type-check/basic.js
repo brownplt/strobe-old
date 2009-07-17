@@ -550,8 +550,7 @@ expressions {
        if (x) return 0; else return 1;
        break;
     };
-    //we only get here if something is whacked out
-    return 13;
+    return 13; // this statement is unreachable
   };
   
   function (x) :: (U(Int, String, Bool) -> Int) {
@@ -683,4 +682,29 @@ expressions {
       return false;
     return false;
   } :: any -> Bool
+}
+
+// type-systems 101
+expressions {
+
+  function() :: (-> Undefined) {
+    var x :: Int = 5;
+    var y = function() :: -> Int { return x + 5; }
+  } :: -> Undefined;
+  
+  function() :: -> Undefined {
+    var x = 5;
+    var y = function() :: -> int { return x + 5; }
+  } :: -> Undefined;
+  
+  fail function() :: -> Undefined {
+    var f = function() :: -> String {
+      return x;
+    };
+    
+    var x :: U(Int, String) = 42;
+  
+    if (typeof x == "number") { x = "make me a string"; }
+    f();
+  }
 }
