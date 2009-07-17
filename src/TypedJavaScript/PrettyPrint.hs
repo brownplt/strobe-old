@@ -52,8 +52,16 @@ field :: (String, Bool, Type) -> Doc
 field (x, True, t) = text "readonly" <+> text x <+> text "::" <+> type_ t
 field (x, False, t) = text x <+> text "::" <+> type_ t 
 
+argType :: ArgType -> Doc
+argType (ArgType args Nothing) = 
+  commas (map type_ args)
+argType (ArgType args (Just opt)) = 
+  commas (map type_ args) <> comma <+> type_ opt <+> text "..."
+
 type_ :: Type -> Doc
 type_ t = case t of
+  TArguments at -> argType at
+  TArrow this at r -> argType at <+> text "->" <+> type_ r
   TPrototype str ->
     text ("TPrototype " ++ str)
   TFunc ptype (this:arguments:args) ret -> 
