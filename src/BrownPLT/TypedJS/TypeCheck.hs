@@ -3,6 +3,7 @@ module BrownPLT.TypedJS.TypeCheck
   , typeCheckExpr
   ) where
 
+import BrownPLT.TypedJS.FreeVars
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.LocalVars (localVars, Binding)
 import BrownPLT.TypedJS.RuntimeAnnotations (runtimeAnnotations)
@@ -394,8 +395,8 @@ stmt env returnType s = case s of
 
 -- |This code should be almost identical to the code for function bodies.
 topLevel :: Env -> [Statement SourcePos] -> TypeCheck ()
-topLevel globals body = do
-  case runtimeAnnotations (runtimeEnv globals) (BlockStmt noPos body) of
+topLevel globals body = case freeVars (domEnv globals) body of
+  [] -> case runtimeAnnotations (runtimeEnv globals) (BlockStmt noPos body) of
     Left s -> catastrophe noPos s
     Right body -> do
       let localBinds = localVars body
@@ -404,6 +405,8 @@ topLevel globals body = do
         fail $ "duplicate names at top level at "
       envWithGlobals <- foldM calcType globals localBinds
       stmt envWithGlobals Nothing body
+  freeVars -> fatalTypeError noPos $ printf "Undeclared identifiers: %s"
+    (show freeVars)
 
 
 typeCheck :: [Statement SourcePos] -> Either String ()
@@ -414,11 +417,13 @@ typeCheck body = case runTypeCheck (topLevel emptyEnv body) (S []) of
 
 
 typeCheckExpr :: Expression SourcePos -> Either String Type
-typeCheckExpr e = do
-  body <- runtimeAnnotations M.empty (ExprStmt noPos e)
-  case body of
-    ExprStmt _ e -> case runTypeCheck (expr emptyEnv e) (S []) of
-      (S [], Right t) -> return t
-      (S errs, Left err) -> fail (show errs ++ "\n\n" ++ err)
-      (S errs, _) -> fail (show errs)
-    otherwise -> error "typeCheckExpr: expression shape error"
+typeCheckExpr e = case freeVars [] [ExprStmt noPos e] of
+  [] -> do
+    body <- runtimeAnnotations M.empty (ExprStmt noPos e)
+    case body of
+      ExprStmt _ e -> case runTypeCheck (expr emptyEnv e) (S []) of
+        (S [], Right t) -> return t
+        (S errs, Left err) -> fail (show errs ++ "\n\n" ++ err)
+        (S errs, _) -> fail (show errs)
+      otherwise -> error "typeCheckExpr: expression shape error"
+  freeVars -> fail $ printf "unbound identifiers: %s" (show freeVars)
