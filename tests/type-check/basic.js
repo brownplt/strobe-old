@@ -531,7 +531,7 @@ expressions {
   //switch statements:
   function (x) :: (U(String, Bool) -> String) {
     switch (typeof x) {
-      case 'String':
+      case 'string':
         return x;
       default:
         return "was not a String";
@@ -543,10 +543,10 @@ expressions {
       case 'number':
        return x;
        break;
-      case 'String':
+      case 'string':
        return 33;
        break;
-      case 'Bool':
+      case 'bool':
        if (x) return 0; else return 1;
        break;
     };

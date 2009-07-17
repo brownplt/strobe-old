@@ -159,6 +159,8 @@ isFunction (Stx.FuncExpr {}) = True
 isFunction e = False
 
 
+
+
 runtimeAnnotations :: Map Id RuntimeTypeInfo
                    -- ^types of formal arguments and identifiers in the 
                    -- enclosing environment
@@ -170,7 +172,8 @@ runtimeAnnotations :: Map Id RuntimeTypeInfo
 runtimeAnnotations env body = do
   let body' = everywhere' (mkT removeFunction) body
   let (vars, anf) = toANF (simplify (eraseTypes [body']))
-  let (anf', _) = numberStmts 0 (SeqStmt noPos anf)
+  let wrapped = SeqStmt noPos ((EnterStmt noPos) : (anf ++ [ExitStmt noPos]))
+  let (anf', _) = numberStmts 0 wrapped
   let vars' = map (\(x,p) -> (x, (0, p))) vars
   let (_, _, gr) = intraproc (FuncLit (0, noPos) [] vars' anf')
   let localEnv = M.fromList (map (\(x, _) -> (x, TUnreachable)) vars)
