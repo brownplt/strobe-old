@@ -708,3 +708,643 @@ expressions {
     f();
   }
 }
+
+// variables
+expressions {
+
+  function (x) :: (Double -> Double) {
+    var z :: Double = 23;
+    return z * x;
+  } :: (Double -> Double);
+
+  //both expr and type:
+  function (x) :: (Double -> Double) {
+    var z :: Double = 13;
+    return z * x;
+  } :: (Double -> Double);
+
+  //mismatching expr and type:
+  fail function (x) :: (Double -> Double) {
+    var z :: Double = "HAHAHAHAHAHAHA";
+    return z * x;
+  };
+
+  //just exprs:
+  function (x) :: (Double -> Double) {
+    var z = 15;
+    return z * x;
+  } :: (Double -> Double);
+
+  function (x) :: (Double -> Double) {
+    var y = 43;
+    var z = y;
+    return z * x;
+  } :: (Double -> Double);
+  
+  fail function (x) :: (Double -> Double) {
+    var z = y; // free
+    var y = 13;
+    return z * x;
+  };
+  
+  function (ignore) :: (Int -> String) {
+    var a = 3;
+    var b = 19 + a;
+    var c = "A String";
+    var d = "ANOTHeR String";
+    var e = (a*4 == (b - 23)) ? c : d;
+  
+    if (a*b == 4)
+    {
+        if (e == c) {
+          return d;
+        }
+        return c;
+    }
+    else
+        return c+d;
+  } :: (Int -> String);
+
+  function (ignore) :: (Int -> String) {
+    var a = 3;
+    var b = 19 + a;
+    var c = "A String";
+    var d = "ANOTHeR String";
+    var e = (a*4 == (b - 23)) ? c : d;
+  
+    if (a*b == 4)
+    {
+        if (e == c) {
+          return d;
+        }
+        return c;
+    }
+    return c+d;
+  } :: (Int -> String);
+  
+  function (mult) :: (Double -> (Double -> Double)) {
+    function inner(a) :: (Double -> Double) {
+        return mult * a;
+    }
+    return inner;
+  } :: (Double -> (Double -> Double));
+  
+  fail function (x) :: (Double -> Double) {
+    var z = y + 9; // use-before-define error
+    var y = 13;
+    return y;
+  };
+  
+  fail function (x) :: (Double -> String) {
+    var y = 5;
+    var y = "Stringy";
+    return y;
+  };
+  
+  fail function (x) :: (Double -> String) {
+    var y = 5;
+    if (true)
+    {
+      var y = "Stringy"; // { } do not introduce a new block
+      y += "4aaa";
+    }
+    return y; // use before definition here
+  };
+  
+  fail function (x) :: (Double -> String) {
+    var y = 5;
+    var z :: U(String,Undefined) = Undefined;
+    if (true) // our dataflow analysis does not determine that the branch
+              // is always taken ...
+    {
+      z = "Stringy";
+      z += y;
+    }
+    // ... so, here z :: U(String, Undefined)
+    return z;
+  };
+  
+  fail function (x) :: (Double -> String?) {
+    var y = 5;
+    var z :: U(String,Undefined);
+    if (true)
+    {
+      var z = "Stringy"; // duplicate declaration!
+      z += y;
+    }
+    return z;
+  };
+  
+  fail function (x) :: (Double -> String) {
+    var x = "A String it";
+    return x;
+  };
+  
+  fail function (x) :: (Double -> String) {
+    var y = "String1";
+    var y = "Stringy";
+    return y;
+  };
+  
+  fail function (x) :: (Double -> String) {
+    var x = x + 9;
+    return x + "s";
+  };
+  
+  function (x) :: (Double -> Double) {
+    var f :: String = "captain planet";
+    function doit(ahahah) :: (String -> Double) {
+      var f :: Double = 15.3;
+      return f * 5;
+    }
+    return doit(f);
+  } :: (Double -> Double)
+}
+
+expressions {
+  1 :: U(Int, Double);
+
+  "hey" :: U(Double, Bool, String);
+  
+  function(x) :: (U(Int, Bool) -> Undefined) {
+    var z = x;
+    z = 34;
+    z = true;
+    z = false;
+    z = 19;
+  } :: (U(Int, Bool) -> Undefined);
+  
+  //magical local inference infers "bool", not "true"!
+  function() :: (-> Undefined) {
+    var z = true;
+    z = false;
+  } :: -> Undefined
+}
+
+// control flow
+expressions {
+  
+  function() :: (-> Undefined) {
+    {
+      var x = 5;;;;
+      var z :: Int = 23;;;
+      z = x + 39;;;
+    };;;;{};;{;;{;;{};}};;
+  } :: (-> Undefined);
+
+  function() :: (-> Undefined) {
+    3; 9; 4 > 5; 6; 17; "string";
+  } :: (-> Undefined);
+
+  function(loop) :: (Bool -> Undefined) {
+    while (loop) {
+      if (4 == 9) loop = false;
+      loop = true;
+    }
+    while(true);
+    while(true){}
+  } :: (Bool -> Undefined);
+
+  function() :: (-> Undefined) {
+    do { var x = 39 + 14 + "strnk"; } while (4==5 ? true : false);
+  } :: (-> Undefined);
+
+  function() :: (-> Undefined) {
+    for (var i = 0; i < 2000; ++i)
+    {
+      //Hi Bob!
+      0-0|    808;
+    }
+  } :: (-> Undefined);
+  
+  fail function() :: -> Undefined { break; };
+  
+  fail function() :: (-> Undefined) { stmt: for (;;) { break invalid; }};
+
+  function() :: (-> Undefined) { 
+    stmt: for (;;) { break stmt; }} :: (-> Undefined);
+
+  fail function() :: (-> Undefined) { 
+    stmt: for (;;) { continue invalid; }};
+
+ function() :: (-> Undefined) { 
+    stmt: for (;;) { continue stmt; }} :: (-> Undefined);
+  
+  function() :: (-> Undefined) {
+    for (var a=1,b=2,c=false; c; a+=1, b-=2)
+    {
+      if (b < 300 && a > 45) c = true;
+      if (b+a==5) continue;
+      var pyu = a*b-3;
+      if (pyu+"string" == "49string") break;   
+    }
+  } :: (-> Undefined);
+
+  fail function() :: (-> Undefined) {
+    for (i = 0; i < 300; ++i) {}
+  }
+}
+
+// nullable
+expressions {
+  function (a) :: (Int? -> Int) {
+    if (typeof a == "undefined")
+      return 0;
+    else
+      return a * 15;
+  } :: Int? -> Int;
+  
+  function (a) :: (Int? -> Int) {
+    var x :: Int?;
+    x = undefined;
+    x = 5;
+    x = undefined;
+    if (typeof x == "undefined") {
+      return 4;
+    }
+    else
+      return x;
+  } :: Int? -> Int;
+  
+  function (x) :: (Int? -> Int) {
+    if (typeof x == "undefined") {
+      return 4;
+    }
+    else
+      return x;
+  } :: Int? -> Int;
+  
+  fail function (a) :: (Int? -> Int) {
+    var x :: Int?;
+    if (typeof x == "undefined") {
+      x = undefined;
+      return x;
+    }
+    else
+      return 4;
+  };
+
+  fail function () :: (-> Undefined) {
+    var z :: Int = 5;
+    z = undefined;
+  };
+  
+  //works on unions:
+  fail function (a) :: (U(Int, Bool)? -> U(Int, Bool)) {
+    return a;
+  };
+
+  function (a) :: (U(Int, Bool)? -> U(Int, Bool)) {
+    if (typeof a != "undefined")
+      return a;
+    return 5;
+  } :: (U(Int, Bool)? -> U(Int, Bool));
+  
+  fail function (a) :: (Int -> Int) {
+    var procInt :: (Int -> Int)?;
+    return procInt(a);
+  };
+  
+  function (a) :: (Int -> Int) {
+    var procInt :: (Int -> Int)?;
+    procInt = function (v) :: (Int -> Int) { return v*2; };
+    return procInt(a);
+  } :: (Int -> Int);
+  
+  function (a) :: (Int -> Int) {
+    var procInt :: (Int -> Int)?;
+    procInt = function (v) :: (Int -> Int) { return v*2; };
+    if (typeof procInt != "undefined")
+        return procInt(a);
+    return 0;
+  } :: (Int -> Int);
+  
+  //can't declare a function as nullable:
+  fail function (a) :: (Int -> Int) {
+    var procInt :: (Int -> Int)?;
+    procInt = function (v) :: (Int -> Int)? { return v*2; };
+  }
+}
+
+expressions {
+
+  //declare before use stuff
+  function () :: (-> Undefined) {
+    var x :: Int = 10;
+    function zorro() :: (-> Int) { return x; }
+  } :: -> Undefined;
+  
+  function () :: (-> Undefined) {
+    var x = 10;
+    function zorro() :: (-> Int) { return x; }
+  } :: -> Undefined;
+  
+  function () :: (-> Undefined) {
+    var x :: Int = 10;
+    function zorro() :: (-> Int) { return x; }
+  } :: -> Undefined;
+
+  fail function () :: (-> Undefined) {
+    function zorro() :: (-> Int) { return x; }
+    zorro();
+    var x = 10;
+  };
+  
+  fail function () :: (-> Undefined) {
+    function zorro() :: (-> Int) { return x; }
+    zorro();
+    var x :: Int = 10;
+  }
+
+}
+
+expressions {
+
+  //can't assign to global 'anys'
+  fail function () :: (-> Int) {
+    var x :: any = 4;
+    function inner() :: (-> Undefined) {
+      x = "AHAH";
+    };
+    inner();
+    return x;
+  };
+  
+  function () :: (-> Int) {
+    var x :: any = 4;
+    function inner() :: (-> Undefined) {
+    };
+    return x;
+  } :: -> Int;
+  
+  function () :: (-> Int) {
+    var x :: any = 4;
+    function inner(x) :: (any -> Undefined) {
+      x = "FRFR";
+    };
+    inner(x);
+    return x;
+  } :: -> Int;
+  
+  function () :: (-> Int) {
+    var x :: any = 4;
+    function inner(x) :: (string -> Undefined) {
+      x = "FRFR";
+    };
+    x = "he";
+    inner(x);
+    x = 3;
+    return x;
+  } :: -> Int;
+  
+  function () :: (-> Int) {
+    var x :: U(Int, string) = 4;
+    return x;
+  } :: -> Int;
+  
+  function () :: (-> Int) {
+    var x :: any = 4;
+    return x;
+  } :: -> Int
+}
+
+// function subtyping
+expressions {
+  function (b,a) :: ((Int -> Int), (Int -> Int) -> Undefined) { a = b; }
+  :: (Int -> Int), (Int -> Int) -> Undefined;
+
+  function (b,a) :: ((Int -> Int), (Int -> Double) -> Undefined) { a = b; }
+  :: ((Int -> Int), (Int -> Double) -> Undefined);
+  
+  fail function (b,a) :: ((Int -> Double), (Int -> Int) -> Undefined) { a = b; }
+}
+
+expressions {
+  function (x) :: (Double -> Double) {
+  	if (x == 0)
+  		return 49;
+  	else if (x == 12)
+  		return 15;
+  	else
+  		return 5;
+  } :: (Double -> Double);
+  
+  function (x) :: (Double -> Undefined ) {
+  	if (x == 0)
+  		return;
+  	else if (x == 12)
+  		return;
+  	else
+  		return;
+  } :: (Double -> Undefined );
+  
+  fail function (x) :: (Double -> Double) {
+  	if (x == 0)
+  		return 49;
+  	else if (x == 12)
+  		return;
+  	else
+  		return 5;
+  };
+  
+  fail function (x) :: (Double -> Undefined ) {
+  	if (x == 0)
+  		return;
+  	else if (x == 12)
+  		return;
+  	else
+  		return 5;
+  };
+  
+  function (x) :: (Double -> Undefined ) {
+  } :: (Double -> Undefined );
+  
+  function (x) :: (Double -> Undefined ) {
+  	return;
+  } :: (Double -> Undefined );
+  
+  function (x) :: (Double -> Double ) {
+  	if (x == 12)
+  		x++;
+  	if (x == 9)
+  		--x;
+  
+  	return x;
+  } :: (Double -> Double);
+  
+  function (x) :: (Double -> Undefined ) {
+  } :: (Double -> Undefined);
+  
+  fail function (x) :: (Double -> Double ) {
+  };
+  
+  fail function (x) :: (Double -> Double ) {
+  	return;
+  };
+  
+  fail function (x) :: (Double -> Double ) {
+  	if (x == 5) return 20;
+  };
+  
+  fail function(x) :: (Double -> Int) {
+   // the type of the function is irrelevant when a path does not return
+  };
+  
+  fail function(x) :: (Double -> Int) {
+  foo: {
+  	if (x == 12.0) { return 500; }
+  	else { break; }
+  	return 700; // unreachable, but we do not care about that right now
+  }
+  };
+  
+  fail function(x) :: (Double -> Int) {
+  bar: { break;
+  			 return 500; }
+  };
+  
+  fail function (x) :: (Double -> Double ) {
+  	switch (x) {
+  		case 3: return 2;
+  		case 4: return 12;
+  	}
+  };
+  
+  fail function (x) :: (U(Int, bool) -> bool) {
+  	 if (typeof x == "number") {
+  		 return false;
+  	 }
+  };
+  
+  fail function (ignore) :: (Int -> String) {
+  	var a = 3;
+  	var b = 19 + a;
+  	var c = "A STRING";
+  	var d = "ANOTHeR STRING";
+  	var e = (a*4 == (b - 23)) ? c : d;
+  
+  	if (a*b == 4)
+  	{
+  			if (e == c) {
+  				return d;
+  			}
+  			return c;
+  	}
+  };
+  
+  fail function (x) :: (Double -> Undefined ) {
+  	return;
+  	return;
+  };
+  
+  fail function (x) :: (Double -> Undefined ) {
+  	return;
+  	return;
+  	("hithere"=="" ? 'how' : 'areyou?');
+  } ;
+  
+  fail function (x) :: (Double -> Double) {
+  	if (x==3)
+  		return 4;
+  	else
+  		return 3;
+  	("hithere"=="" ? 'how' : 'areyou?');
+  } ;
+  
+  fail function (x) :: (Double -> Double) {
+  	if (x==3)
+  		return 4;
+  	else
+  		return 3;
+  	("hithere"=="" ? 'how' : 'areyou?');
+  	return 2;
+  } ;
+
+  fail function (x) :: (Double -> Undefined ) {
+  	if (x==3)
+  		return;
+  	else
+  		return;
+  	("hithere"=="" ? 'how' : 'areyou?');
+  }
+}
+
+expressions {
+
+  fail function () ::  -> Undefined {
+    var z = myadder(3, 2);
+    function myadder(a, b) :: Int, Int -> Int {
+      return a+b;
+    }
+  };
+  
+  //variables assignments are not:
+  fail function () ::  -> Undefined {
+    var z = myadder(3, 2);
+    var myadder :: Int, Int -> Int = function (a,b) :: Int, Int -> Int {
+      return a+b;
+    }
+  };
+
+  fail function () ::  -> Undefined {
+    var z = myadder(3, 2);
+    var myadder = function (a,b) :: Int, Int -> Int {
+      return a+b;
+    }
+  };
+  
+  function(x) :: U(Int, String) -> String {
+    var y = x;
+    if (typeof y == "number")
+      y = "bookr";
+    return y;
+  } :: U(Int, String) -> String;
+  
+  
+  //recursive function declarations:
+  function() ::  -> Undefined {
+    function lawl(x) :: (Int -> Int) { return lawl(3); }
+  } ::  -> Undefined;
+  
+  //mutually recursive function declarations:
+  function() ::  -> Undefined {
+    function lawl1(x) :: (Int -> Int) { return lawl2(3); }
+    function lawl2(x) :: (Int -> Int) { return lawl1(3); }
+  } ::  -> Undefined;
+  
+  fail function() ::  -> Undefined {
+    function lawl1(x) :: (Int -> Int) { return lawl2(3); }
+    lawl1(3);
+    function lawl2(x) :: (Int -> Int) { return lawl1(3); }
+  };
+  
+  fail function() ::  -> Undefined {
+    function add(a,b) :: Int, Int -> Int {
+      return a + b;
+    }
+    add(v, q); // use before definition
+    var v = 5;
+    var q = 6;
+  };
+  
+  //vars are nullable if declared inside an if:
+  fail function() :: (-> Int) {
+    function add(a,b) :: Int, Int -> Int {
+      return a + b;
+    }
+    if (false)
+      var v = 10;
+    if (false)
+      var q = 15;
+    return add(v, q);
+  };
+  
+  function () :: -> Undefined { 
+    function () ::  -> Undefined { var a = 4; }; 
+  } :: -> Undefined;
+  
+  
+  function () :: -> Undefined { 
+    function () ::  -> Undefined { var a = 4; }();
+  } :: -> Undefined
+}

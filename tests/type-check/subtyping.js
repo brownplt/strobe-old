@@ -1,9 +1,3 @@
-function (b,a) :: ((int -> int), (int -> int) ->) { a = b; } @@ succeeds;
-//function sub-typing.
-//a = b works iff b is a subtype of a
-//co-variant return types:
-function (b,a) :: ((int -> int), (int -> double) ->) { a = b; } @@ succeeds;
-function (b,a) :: ((int -> double), (int -> int) ->) { a = b; } @@ fails;
 function (b,a) :: ((int -> {x::string}), (int -> { ... }) ->) { a = b; } @@ succeeds;
 function (b,a) :: ((int -> {}), (int -> {x::string}) ->) { a = b; } @@ fails;
 
@@ -61,7 +55,12 @@ function (b,a) :: ({x::int,y::int}, {x::int, ... }->) {
 function (b,a) :: ({x::int,y::int}, {x::int }->) {
     a = b;
     a.x = 3;
-} @@ fails;
+} @@ fails;Message from syslogd@peabody at Thu Jul 16 04:06:31 2009 ...
+peabody kernel: [1946468.602631] unregister_netdevice: waiting for vmnet8 to become free. Usage count = 3
+
+Message from syslogd@peabody at Thu Jul 16 04:06:41 2009 ...
+peabody kernel: [1946479.311495] unregister_netdevice: waiting for vmnet8 to become free. Usage count = 3
+
 
 function () :: (->) {
   var arrb :: Array<{x::int,y::int}> = [{x:5,y:6}];
