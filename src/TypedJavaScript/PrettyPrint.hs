@@ -3,6 +3,7 @@ module TypedJavaScript.PrettyPrint
   ( showSp
   , renderType
   , renderStatements
+  , renderExpr
   ) where
 
 import Prelude hiding (id)
@@ -35,6 +36,9 @@ typeConstraint :: TypeConstraint -> Doc
 typeConstraint tc = case tc of
   TCSubtype v t2 ->  text v <+> text "<:" <+> type_ t2
 
+
+renderExpr :: Expression a -> String
+renderExpr e = render (expr e)
 
 renderType :: Type -> String
 renderType t = render (type_ t)
@@ -296,6 +300,8 @@ expr e = case e of
         Nothing  -> empty
   ThisRef _ -> text "this"
   VarRef _ v -> id v
+  AnnotatedVarRef _ rt x -> 
+    text x <> braces (text (show rt))
   DotRef _ e v ->
     expr e <> text "." <> id v
   BracketRef _ container key ->

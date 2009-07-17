@@ -145,8 +145,9 @@ field env f = case f of
           x (renderType s) (renderType t)
         return (x, False, s)
           
-numericOp :: SourcePos -> Type -> Type -> Bool -> Bool -> TypeCheck Type
-numericOp loc lhs rhs requireInts returnDouble = do
+numericOp :: SourcePos -> Expression SourcePos
+          -> Type -> Type -> Bool -> Bool -> TypeCheck Type
+numericOp loc e lhs rhs requireInts returnDouble = do
   let result = return $ case returnDouble of
                  True -> doubleType
                  False -> if isSubtype lhs intType then rhs else lhs
@@ -154,14 +155,14 @@ numericOp loc lhs rhs requireInts returnDouble = do
     True -> do
       unless (isSubtype lhs intType && isSubtype rhs intType) $
         typeError loc $ printf 
-          "operator expects int arguments, given %s and %s" 
-          (renderType lhs) (renderType rhs)
+          "operator expects Int arguments, given %s and %s in expression %s" 
+          (renderType lhs) (renderType rhs) (renderExpr e)
       result
     False -> do
       unless (isSubtype lhs doubleType && isSubtype rhs doubleType) $
         typeError loc $ printf 
           "operator expects double/int arguments, given %s and %s" 
-          (renderType lhs) (renderType rhs)
+          (renderType lhs) (renderType rhs) (renderExpr e)
       result
 
 expr :: Env 
@@ -209,19 +210,19 @@ expr env e = case e of
       OpNEq -> return boolType
       OpStrictEq -> return boolType
       OpStrictNEq -> return boolType
-      OpMul -> numericOp p lhs rhs False False
-      OpDiv -> numericOp p lhs rhs False True
-      OpMod -> numericOp p lhs rhs False True
-      OpSub -> numericOp p lhs rhs False False
-      OpLShift -> numericOp p lhs rhs True False
-      OpSpRShift -> numericOp p lhs rhs True False
-      OpZfRShift -> numericOp p lhs rhs True False
-      OpBAnd -> numericOp p lhs rhs True False
-      OpBXor -> numericOp p lhs rhs True False
-      OpBOr -> numericOp p lhs rhs True False
+      OpMul -> numericOp p e lhs rhs False False
+      OpDiv -> numericOp p e lhs rhs False True
+      OpMod -> numericOp p e lhs rhs False True
+      OpSub -> numericOp p e lhs rhs False False
+      OpLShift -> numericOp p e lhs rhs True False
+      OpSpRShift -> numericOp p e lhs rhs True False
+      OpZfRShift -> numericOp p e lhs rhs True False
+      OpBAnd -> numericOp p e lhs rhs True False
+      OpBXor -> numericOp p e lhs rhs True False
+      OpBOr -> numericOp p e lhs rhs True False
       OpAdd | isSubtype lhs stringType -> return stringType
             | isSubtype rhs stringType -> return stringType
-            | otherwise -> numericOp p lhs rhs False False
+            | otherwise -> numericOp p e lhs rhs False False
       OpLAnd -> return (canonicalUnion rhs boolType)
       OpLOr -> return (canonicalUnion lhs rhs)
   CondExpr p e1 e2 e3 -> do

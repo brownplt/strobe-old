@@ -26,6 +26,7 @@ import BrownPLT.TypedJS.TestParser
 import Test.HUnit
 import BrownPLT.Testing
 import BrownPLT.TypedJS.TypeCheck
+import BrownPLT.TypedJS.RuntimeAnnotations
 
 pretty :: [ParsedStatement] -> String
 pretty = renderStatements
@@ -38,6 +39,7 @@ data Flag
   | PrintType String
   | InteractiveTesting
   | Testing
+  | Annotated
   deriving (Eq, Ord)
 
 options :: [OptDescr Flag]
@@ -54,6 +56,8 @@ options =
       "prints the type named NAME"
   , Option [] ["testing"] (NoArg Testing)
       "reads in multiple test files"
+  , Option [] ["annotated"] (NoArg Annotated)
+      "prints the program annotated with runtime type information"
   ]
 
 
@@ -77,6 +81,16 @@ testingAction [] paths = do
   tests <- mapM parseTestFile paths
   runTest (TestList tests)
 testingAction _ _ = fail "invalid command-line arguments"
+
+
+annotatedAction [path] = do
+  src <- readFile path
+  let (_, script) = parseTypedJavaScript path src
+  putStrLn "Successfully parsed..."
+  case runtimeAnnotations M.empty (BlockStmt noPos script) of
+    Left err -> putStrLn err
+    Right script' -> putStrLn (pretty [script'])
+annotatedAction _ = fail "invalid command-line arguments"
 
 
 {-
@@ -119,6 +133,7 @@ main = do
     [] -> typeCheckAction [] files
     (TypeCheck:args) -> typeCheckAction args files
     (Testing:args) -> testingAction args files
+    [Annotated] -> annotatedAction files
     [Help] -> do
       putStrLn "Typed JavaScript Compiler"
       putStrLn (usageInfo "Usage: jst [OPTION ...] [file]" options)
