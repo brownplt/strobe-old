@@ -42,6 +42,12 @@ unions ps = Partial (M.unions (map partialLocals ps))
                     (M.unions (map partialReferences ps))
                     (concatMap partialNested ps)
 
+lvalue :: LValue SourcePos -> Partial
+lvalue lv =  case lv of
+  LVar p x -> ref (Id p x)
+  LDot _ obj _ -> expr obj
+  LBracket _ obj prop -> unions [expr obj, expr prop]
+
 
 expr :: Expression SourcePos -> Partial
 expr e = case e of
@@ -59,14 +65,11 @@ expr e = case e of
   DotRef _ e _ -> expr e
   BracketRef _ e1 e2 -> unions [expr e1, expr e2]
   NewExpr _ e1 es -> unions [expr e1, unions $ map expr es]
-  PostfixExpr _ _ e -> expr e
+  UnaryAssignExpr _ _ lv -> lvalue lv
   PrefixExpr _ _ e -> expr e
   InfixExpr _ _ e1 e2 -> unions [expr e1, expr e2]
   CondExpr _ e1 e2 e3 -> unions [expr e1, expr e2, expr e3]
-  AssignExpr _ _ lhs rhs -> case lhs of
-    LVar p x -> unions [ref (Id p x), expr rhs]
-    LDot _ obj _ -> unions [expr obj, expr rhs]
-    LBracket _ obj prop -> unions [expr obj, expr prop, expr rhs]
+  AssignExpr _ _ lhs rhs -> unions [lvalue lhs, expr rhs]
   ParenExpr _ e -> expr e
   ListExpr _ es -> unions (map expr es)
   CallExpr _ e _ es -> unions [expr e, unions $ map expr es]

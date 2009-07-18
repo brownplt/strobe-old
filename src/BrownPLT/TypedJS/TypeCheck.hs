@@ -140,6 +140,33 @@ numericOp loc e lhs rhs requireInts returnDouble = do
           (renderType lhs) (renderType rhs) (renderExpr e)
       result
 
+
+-- Fails if the l-value is a union in an enclosing scope
+lvalue :: Env
+       -> LValue SourcePos
+       -> TypeCheck Type
+lvalue env lv = case lv of
+  LVar p x -> do
+    (s, n) <- lookupScopeEnv p env x
+    case n < scopeEnv env of
+      -- x is a variable in an enclosing scope.
+      True -> fail "assinging to enclosing scopes NYI"
+      -- x is a local variable.  The local scope may make assumptions about
+      -- its runtime type.
+      False -> return s
+  LDot p obj f -> do
+    tObj <- expr env obj
+    case tObj of
+      TObject brand fields -> case fieldType f fields of
+        Just (True, s) -> do
+          typeError p $ printf "the field %s is readonly" f
+          return s       
+        Nothing -> do
+          typeError p $ printf "object does not have the field %s" f
+          return TAny -- TODO: this will cause problems
+        Just (False, s)  -> return s
+
+
 expr :: Env 
      -> Expression SourcePos 
      -> TypeCheck Type
@@ -152,7 +179,6 @@ expr env e = case e of
   NullLit _ -> fail "NullLit NYI"
   ThisRef p -> lookupEnv p env "this"
   VarRef p (Id _ x) -> lookupEnv p env x
-  PostfixExpr p op e -> fail "PostfixExpr NYI"
   PrefixExpr p op e -> do
     t <- expr env e
     case op of
@@ -205,39 +231,25 @@ expr env e = case e of
     t2 <- expr env e2
     t3 <- expr env e3
     return (canonicalUnion t2 t3)
+  -- postfix/prefix increment/decrement
+  UnaryAssignExpr p op lv -> do
+    t <- lvalue env lv
+    case isSubtype t doubleType of
+      True -> return t
+      False -> do
+        typeError p $ printf
+          "incrementing/decrementing an expression of type %s" (renderType t)
+        return doubleType
   AssignExpr p OpAssign lhs rhs -> do
     t <- expr env rhs
-    case lhs of
-      LVar p2 x -> do
-        (s, n) <- lookupScopeEnv p2 env x
-        case n < scopeEnv env of
-          -- x is a variable in an enclosing scope.
-          True -> fail "assinging to enclosing scopes NYI"
-          -- x is a local variable.  The local scope may make assumptions about
-          -- its runtime type.
-          False | isSubtype t s -> return t
-                | otherwise -> do
-                    typeError p $ printf
-                      "error assigning to local variable of type %s, given an \
-                      \expression of type %s" (renderType s) (renderType t)
-                    return s
-      LDot p2 obj f -> do
-        tObj <- expr env obj
-        case tObj of
-          TObject brand fields -> case fieldType f fields of
-            Just (True, s) -> do
-              typeError p2 $ printf "the field %s is readonly" f
-              return s       
-            Nothing -> do
-              typeError p2 $ printf "object does not have the field %s" f
-              return t
-            Just (False, s) 
-              | s == t -> return s
-              | otherwise -> do
-                  typeError p2 $ printf
-                    "the field %s :: %s, but the expression has the type %s"
-                    f (renderType s) (renderType t)
-                  return s
+    s <- lvalue env lhs
+    case isSubtype t s of
+      True -> return t
+      False -> do
+        typeError p $ printf
+          "error assigning to local variable of type %s, given an \
+          \expression of type %s" (renderType s) (renderType t)
+        return t
   AssignExpr p op lhs rhs -> expr env $
     AssignExpr p OpAssign lhs (InfixExpr p (unAssignOp op) (unLVal lhs) rhs)
   ParenExpr _ e -> expr env e

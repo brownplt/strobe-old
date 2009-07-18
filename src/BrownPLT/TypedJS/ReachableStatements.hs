@@ -22,7 +22,7 @@ unreachableInGraph gr = map lab (S.toList nodes)
 
 unreachableStatements :: ([(Id, SourcePos)], [Stmt SourcePos])
                       -> [SourcePos]
-unreachableStatements anf = map (snd.stmtLabel) unreachableInANF
+unreachableStatements anf = map (snd.label) unreachableInANF
   where unreachableInANF = concatMap unreachableInGraph graphs
         (_, tree) = allIntraproceduralGraphs anf
         graphs = map (\(_, _, gr) -> gr) (flatten tree)

@@ -1,7 +1,7 @@
 -- |JavaScript's syntax.
 module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
-         AssignOp(..),Id(..),PrefixOp(..),PostfixOp(..),Prop(..),
+         AssignOp(..),Id(..),PrefixOp(..),UnaryAssignOp(..),Prop(..),
          ForInit(..),ForInInit(..),Type(..)
   , ToplevelStatement(..)
   , LValue (..)
@@ -12,7 +12,7 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
 import TypedJavaScript.Prelude
 import qualified Data.Foldable as F
 import BrownPLT.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..), 
-  PostfixOp (..))
+  UnaryAssignOp(..))
 import BrownPLT.JavaScript.Analysis.ANF (Lit, eqLit)
 import BrownPLT.TypedJS.LocalFlows (RuntimeType (..))
 import BrownPLT.TypedJS.TypeDefinitions
@@ -79,7 +79,7 @@ data Expression a
   | DotRef a (Expression a) (Id a)
   | BracketRef a (Expression a) {- container -} (Expression a) {- key -}
   | NewExpr a (Expression a) {- constructor -} [Expression a]
-  | PostfixExpr a PostfixOp (Expression a)
+  | UnaryAssignExpr a UnaryAssignOp (LValue a)
   | PrefixExpr a PrefixOp (Expression a)
   | InfixExpr a InfixOp (Expression a) (Expression a)
   | CondExpr a (Expression a) (Expression a) (Expression a) --ternary operator

@@ -815,28 +815,6 @@ makePrefixExpr str constr = Prefix parser where
     (reservedOp str <|> reserved str)
     return (PrefixExpr pos constr) -- points-free, returns a function
     
-mkPrefix operator constr = Prefix $ do
-  pos <- getPosition
-  operator
-  return (\operand -> PrefixExpr pos constr operand)
-
-makePostfixExpr str constr = Postfix parser where
-  parser = do
-    pos <- getPosition
-    (reservedOp str <|> reserved str)
-    return (PostfixExpr pos constr) -- points-free, returns a function
-
-prefixIncDecExpr = do
-  pos <- getPosition
-  op <- optionMaybe $ (reservedOp "++" >> return PrefixInc) <|>
-                      (reservedOp "--" >> return PrefixDec)
-  case op of
-    Nothing -> parseSimpleExpr Nothing
-    Just op -> do
-      innerExpr <- parseSimpleExpr Nothing -- TODO: must be an l-val, I think
-      return (PrefixExpr pos op innerExpr)
-
--- apparently, expression tables can't handle immediately-nested prefixes
 
 parsePrefixedExpr = do
   pos <- getPosition
@@ -849,7 +827,7 @@ parsePrefixedExpr = do
                       (reserved "typeof" >> return PrefixTypeof) <|>
                       (reserved "delete" >> return PrefixDelete)
   case op of
-    Nothing -> prefixIncDecExpr  -- new is treated as a simple expr
+    Nothing -> unaryAssignExpr
     Just op -> do
       innerExpr <- parsePrefixedExpr
       return (PrefixExpr pos op innerExpr)
@@ -857,10 +835,6 @@ parsePrefixedExpr = do
 exprTable:: [[Operator Char st ParsedExpression]]
 exprTable =
   [
-   [makePrefixExpr "++" PrefixInc,
-    makePostfixExpr "++" PostfixInc],
-   [makePrefixExpr "--" PrefixDec,
-    makePostfixExpr "--" PostfixDec],
    [makeInfixExpr "*" OpMul, makeInfixExpr "/" OpDiv, makeInfixExpr "%" OpMod],
    [makeInfixExpr "+" OpAdd, makeInfixExpr "-" OpSub],
    [makeInfixExpr "<<" OpLShift, makeInfixExpr ">>" OpSpRShift,
@@ -899,6 +873,42 @@ parseTernaryExpr = do
     Just (l,r) -> do p <- getPosition
                      return $ CondExpr p e l r
 
+asLValue :: SourcePos
+         -> Expression SourcePos 
+         -> CharParser st (LValue SourcePos)
+asLValue p' e = case e of
+  VarRef p (Id _ x) -> return (LVar p x)
+  DotRef p e (Id _ x) -> return (LDot p e x)
+  BracketRef p e1 e2 -> return (LBracket p e1 e2)
+  otherwise -> fail $ "expeceted l-value at " ++ show p'
+ 
+lvalue :: CharParser st (LValue SourcePos)
+lvalue = do
+  p <- getPosition
+  e <- parseSimpleExpr Nothing
+  asLValue p e
+ 
+ 
+unaryAssignExpr :: CharParser st ParsedExpression
+unaryAssignExpr = do
+  p <- getPosition
+  let prefixInc = do
+        reservedOp "++"
+        liftM (UnaryAssignExpr p PrefixInc) lvalue
+  let prefixDec = do
+        reservedOp "--"
+        liftM (UnaryAssignExpr p PrefixDec) lvalue
+  let postfixInc e = do
+        reservedOp "++"
+        liftM (UnaryAssignExpr p PostfixInc) (asLValue p e)
+  let postfixDec e = do
+        reservedOp "--"
+        liftM (UnaryAssignExpr p PostfixDec) (asLValue p e)
+  let other = do
+        e <- parseSimpleExpr Nothing
+        postfixInc e <|> postfixDec e <|> return e
+  prefixInc <|> prefixDec <|> other
+
 
 assignOp :: CharParser st AssignOp
 assignOp = 
@@ -918,23 +928,15 @@ assignOp =
 
 assignExpr :: ExpressionParser st
 assignExpr = do
+  p <- getPosition
   lhs <- parseTernaryExpr
   let assign = do
         op <- assignOp
-        p1 <- getPosition
-        case lhs of
-          VarRef p2 (Id _ x) -> do
-            rhs <- assignExpr
-            return (AssignExpr p1 op (LVar p2 x) rhs)
-          DotRef p2 e (Id _ x) -> do
-            rhs <- assignExpr
-            return (AssignExpr p1 op (LDot p2 e x) rhs)
-          BracketRef p2 e1 e2 -> do
-            rhs <- assignExpr 
-            return (AssignExpr p1 op (LBracket p2 e1 e2) rhs)
-          otherwise ->
-            unexpected $ "invalid left-hand side of assignment at " ++ show p1
+        lhs <- asLValue p lhs
+        rhs <- assignExpr
+        return (AssignExpr p op lhs rhs)
   assign <|> (return lhs)
+
   
 parseExpression:: ExpressionParser st
 parseExpression = assignExpr

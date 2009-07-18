@@ -225,8 +225,6 @@ infix_ op = text $ case op of
 
 prefix :: PrefixOp -> Doc
 prefix op = text $ case op of
-  PrefixInc -> "++"
-  PrefixDec -> "--"
   PrefixLNot -> "!"
   PrefixBNot -> "~"
   PrefixPlus -> "+"
@@ -234,12 +232,6 @@ prefix op = text $ case op of
   PrefixVoid -> "void"
   PrefixTypeof -> "typeof"
   PrefixDelete -> "delete"
-
-
-postfix :: PostfixOp -> Doc
-postfix op = text $ case op of
-  PostfixInc -> "++"
-  PostfixDec -> "--"
 
 
 assignOp :: AssignOp -> Doc
@@ -318,8 +310,11 @@ expr e = case e of
     text "new" <+> expr constr <> (parens $ commas $ map expr args)
   PrefixExpr _ op e ->
     prefix op <+> expr e
-  PostfixExpr _ op e ->
-    expr e <+> postfix op
+  UnaryAssignExpr _ op e' -> case op of
+    PrefixInc -> text "++" <> lvalue e'
+    PrefixDec -> text "--" <> lvalue e'
+    PostfixInc -> lvalue e' <> text "++"
+    PostfixDec -> lvalue e' <> text "--"
   InfixExpr _ op left right -> 
     expr left <+> infix_ op <+> expr right
   CondExpr _ test cons alt ->
