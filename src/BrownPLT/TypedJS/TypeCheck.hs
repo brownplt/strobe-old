@@ -51,6 +51,28 @@ fatalTypeError :: SourcePos -> String -> TypeCheck a
 fatalTypeError p msg = fail (printf "%s: %s" (show p) msg)
 
 
+unAssignOp :: AssignOp -> InfixOp
+unAssignOp op = case op of
+  OpAssignAdd -> OpAdd
+  OpAssignSub -> OpSub
+  OpAssignMul -> OpMul
+  OpAssignDiv -> OpDiv
+  OpAssignMod -> OpMod
+  OpAssignLShift -> OpLShift
+  OpAssignSpRShift -> OpSpRShift
+  OpAssignZfRShift -> OpZfRShift
+  OpAssignBAnd -> OpBAnd
+  OpAssignBXor -> OpBXor
+  OpAssignBOr -> OpBOr
+  OpAssign -> error "TypeCheck.hs : unAssignOp received OpAssign"
+
+
+unLVal :: LValue SourcePos -> Expression SourcePos
+unLVal (LVar p x) = VarRef p (Id p x)
+unLVal (LDot p e x) = DotRef p e (Id p x)
+unLVal (LBracket p e1 e2) = BracketRef p e1 e2
+
+
 ok :: TypeCheck ()
 ok = return ()
 
@@ -216,6 +238,8 @@ expr env e = case e of
                     "the field %s :: %s, but the expression has the type %s"
                     f (renderType s) (renderType t)
                   return s
+  AssignExpr p op lhs rhs -> expr env $
+    AssignExpr p OpAssign lhs (InfixExpr p (unAssignOp op) (unLVal lhs) rhs)
   ParenExpr _ e -> expr env e
   ListExpr p [] -> catastrophe p "empty ListExpr"
   ListExpr p es -> 

@@ -244,18 +244,18 @@ postfix op = text $ case op of
 
 assignOp :: AssignOp -> Doc
 assignOp op = text $ case op of
-	  OpAssign -> "->"
-	  OpAssignAdd -> "+->"
-	  OpAssignSub -> "-->"
-	  OpAssignMul -> "*->"
-	  OpAssignDiv -> "/->"
-	  OpAssignMod -> "%->"
-	  OpAssignLShift -> "<<->"
-	  OpAssignSpRShift -> ">>->"
-	  OpAssignZfRShift -> ">>>->"
-	  OpAssignBAnd -> "&->"
-	  OpAssignBXor -> "^->"
-	  OpAssignBOr -> "|->"
+	  OpAssign -> "="
+	  OpAssignAdd -> "+="
+	  OpAssignSub -> "-="
+	  OpAssignMul -> "*="
+	  OpAssignDiv -> "/="
+	  OpAssignMod -> "%="
+	  OpAssignLShift -> "<<="
+	  OpAssignSpRShift -> ">>="
+	  OpAssignZfRShift -> ">>>="
+	  OpAssignBAnd -> "&="
+	  OpAssignBXor -> "^="
+	  OpAssignBOr -> "|="
 
 
 -- Based on:

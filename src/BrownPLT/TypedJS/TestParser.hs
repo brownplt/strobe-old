@@ -22,12 +22,20 @@ import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.TypeTheory
 import BrownPLT.TypedJS.TypeCheck
 import TypedJavaScript.PrettyPrint
+import Control.Exception as E
 
 
 xor :: Bool -> Bool -> Bool
 xor True False = True
 xor False True = True
 xor _ _ = False
+
+
+catchException :: SourcePos
+               -> Assertion
+               -> Assertion
+catchException p assert = E.catch assert $ 
+  \(E.ErrorCall e) -> fail $ printf "%s: %s" (show p) e
 
 
 testcase :: CharParser st Test
@@ -48,13 +56,13 @@ relation = do
   let eq = do
         reservedOp "="
         t2 <- Parser.parseType'
-        return $ TestCase $ do
+        return $ TestCase $ catchException p $ do
           assertBool (show p) $
             (canonize t1 == canonize t2) `xor` isFail
   let sub = do
         reservedOp "<:"
         t2 <- Parser.parseType'
-        return $ TestCase $ do
+        return $ TestCase $ catchException p $ do
           assertBool (show p) $
             (isSubtype (canonize t1) (canonize t2)) `xor` isFail
   eq <|> sub
@@ -69,11 +77,11 @@ expression = do
     False -> do
       reservedOp "::"
       t <- Parser.parseType'
-      return $ TestCase $ case typeCheckExpr e of
+      return $ TestCase $ catchException p $ case typeCheckExpr e of
         -- typeCheckExpr should return the type in canonical form
         Right s -> assertBool (show p) (isSubtype s (canonize t))
         Left err -> assertFailure (show p ++ ": " ++ err)
-    True -> return $ TestCase $ case typeCheckExpr e of
+    True -> return $ TestCase $ catchException p $ case typeCheckExpr e of
       Left err -> return ()
       Right s -> assertFailure $ printf 
         "%s: expected ill-typed expression; has type %s" (show p) (renderType s)

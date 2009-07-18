@@ -1069,12 +1069,12 @@ expressions {
     return x;
   };
   
-  function () :: (-> Int) {
+  function () :: (-> Double) {
     var x :: any = 4;
     function inner() :: (-> Undefined) {
     };
     return x;
-  } :: -> Int;
+  } :: -> Double;
   
   function () :: (-> Double) {
     var x :: any = 4;
@@ -1085,7 +1085,7 @@ expressions {
     return x;
   } :: -> Double;
   
-  function () :: (-> Int) {
+  function () :: (-> Double) {
     var x :: any = 4;
     function inner(x) :: (String -> Undefined) {
       x = "FRFR";
@@ -1094,7 +1094,7 @@ expressions {
     inner(x);
     x = 3;
     return x;
-  } :: -> Int;
+  } :: -> Double;
   
   function () :: (-> Int) {
     var x :: U(Int, String) = 4;
