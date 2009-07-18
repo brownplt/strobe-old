@@ -23,7 +23,7 @@ import TypedJavaScript.PrettyPrint
 import TypedJavaScript.Syntax
 import qualified Data.Map as M
 import qualified Data.Set as S
-import BrownPLT.JavaScript.Analysis (toANF, simplify, Stmt)
+import BrownPLT.JavaScript.Analysis (toANF, Stmt)
 import BrownPLT.JavaScript.Analysis.DefineBeforeUse
 import BrownPLT.TypedJS.Environment
 import TypedJavaScript.TypeErasure
@@ -35,7 +35,10 @@ type ANF = ([(String, SourcePos)], [Stmt SourcePos])
 
 allPathsReturn :: Statement SourcePos
                -> Bool
-allPathsReturn s = AllPathsReturn.allPathsReturn s'
+allPathsReturn s = case AllPathsReturn.allPathsReturn s' of
+  -- This should have been caught earlier.
+  Left err -> error ("PreTypeCheck.hs: " ++ err)
+  Right r -> r
   where s' = case eraseTypes [s] of
                [s''] -> s''
                otherwise -> 
@@ -58,7 +61,7 @@ preTypeCheck :: Env -- ^globals
              -> Either String [Statement SourcePos]
 preTypeCheck env body = do
   checkClosed (domEnv env) body
-  let anf = toANF (simplify (eraseTypes body))
+  anf <- toANF (eraseTypes body)
   checkReachability anf
   case defineBeforeUse (S.fromList ("this":(domEnv env))) anf of
     Right () -> Right body

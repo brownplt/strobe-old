@@ -26,6 +26,11 @@ caseClause cc = case cc of
 
 catchClause :: CatchClause SourcePos -> [Binding]
 catchClause (CatchClause _ id s) = stmt s
+
+
+forInit :: ForInit SourcePos -> [Binding]
+forInit (VarInit decls) = map varDecl decls
+forInit _ = []
  
  
 stmt :: Statement SourcePos -> [Binding]
@@ -42,7 +47,7 @@ stmt s = case s of
   ContinueStmt _ _ -> []
   LabelledStmt _ _ s -> stmt s
   ForInStmt _ _ _ s -> stmt s
-  ForStmt _ _ _ _ s -> stmt s
+  ForStmt _ fi _ _ s -> forInit fi ++ stmt s
   TryStmt _ s catches ms ->
     stmt s ++ (concatMap catchClause catches) ++ (maybe [] stmt ms)
   ThrowStmt _ _ -> []

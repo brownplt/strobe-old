@@ -510,7 +510,6 @@ expressions {
     return y;
   };
   
-  //pathological example that no one cares about:
   fail function () :: (-> Int) {
     var y :: U(Int, String) = 4;
     var z :: U(Int, String) = 19;
@@ -518,15 +517,15 @@ expressions {
     return y;
   };
   
-  
-  function() :: (-> Undefined) {
+  // HARD: this is unnecessary.
+  fail function() :: (-> Undefined) {
     var x :: U(Double, String, Bool) = "hello";
     var y :: String =
       (typeof ((typeof x == "number") ? "x is a number" : x) == "boolean")
         ? "x is a Boolean"
         : x;
   
-  } :: -> Undefined;
+  };
   
   //switch statements:
   function (x) :: (U(String, Bool) -> String) {
@@ -621,14 +620,14 @@ expressions {
     }
   };
 
-  function (x) :: U(Int, Bool) -> Int {
+  fail function (x) :: U(Int, Bool) -> Int {
     if (x != 3) {
       return 4;
     }
     return x;
-  } :: U(Int, Bool) -> Int;
+  };
 
-  function (x) :: U(Int, Bool) -> Int {
+  fail function (x) :: U(Int, Bool) -> Int {
     var b :: Bool = true;
     if (x == 3)
       return x;
@@ -640,7 +639,7 @@ expressions {
       }
       return 4;
     }
-  } :: U(Int, Bool) -> Int;
+  };
   
   function(x) :: U(Int, Undefined) -> Int {
     if (typeof(x) == "undefined") {
@@ -1077,18 +1076,18 @@ expressions {
     return x;
   } :: -> Int;
   
-  function () :: (-> Int) {
+  function () :: (-> Double) {
     var x :: any = 4;
     function inner(x) :: (any -> Undefined) {
-      x = "FRFR";
+      x = "FRFR"; // shadowed
     };
     inner(x);
     return x;
-  } :: -> Int;
+  } :: -> Double;
   
   function () :: (-> Int) {
     var x :: any = 4;
-    function inner(x) :: (string -> Undefined) {
+    function inner(x) :: (String -> Undefined) {
       x = "FRFR";
     };
     x = "he";
@@ -1098,14 +1097,22 @@ expressions {
   } :: -> Int;
   
   function () :: (-> Int) {
-    var x :: U(Int, string) = 4;
+    var x :: U(Int, String) = 4;
     return x;
   } :: -> Int;
   
-  function () :: (-> Int) {
+  function () :: (-> Double) {
     var x :: any = 4;
     return x;
-  } :: -> Int
+  } :: -> Double;
+
+  fail function () :: (-> Int) {
+    // We are no longer don't "refinement by assignment".  Therefore, although
+    // the RHS is a constant of type Int, the type of x at the return is
+    // static({ "number" }, any) = Double
+    var x :: any = 4;
+    return x;
+  }
 }
 
 // function subtyping

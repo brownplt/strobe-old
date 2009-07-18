@@ -171,7 +171,7 @@ runtimeAnnotations :: Map Id RuntimeTypeInfo
                    -- where possible.
 runtimeAnnotations env body = do
   let body' = everywhere' (mkT removeFunction) body
-  let (vars, anf) = toANF (simplify (eraseTypes [body']))
+  (vars, anf) <- toANF (eraseTypes [body'])
   let wrapped = SeqStmt noPos ((EnterStmt noPos) : (anf ++ [ExitStmt noPos]))
   let (anf', _) = numberStmts 0 wrapped
   let vars' = map (\(x,p) -> (x, (0, p))) vars
