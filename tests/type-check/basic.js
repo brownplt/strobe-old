@@ -1354,3 +1354,130 @@ expressions {
     function () ::  -> Undefined { var a = 4; }();
   } :: -> Undefined
 }
+
+// mostly composite assignment operators
+expressions {
+
+  fail function (x) :: (Double -> Double) { 
+    b = x * 3;
+    return b;
+  };
+  
+  function (x) :: (Double -> Double) { 
+    x = x + 3 * 9;
+    return x;
+  } :: (Double -> Double); 
+  
+  function (x) :: (Double -> Double) { 
+    x += 5;
+    x /= (6 - 3 * x);
+    return x;
+  } :: (Double -> Double); 
+  
+  function (x) :: (Double -> Double) { 
+    var z = x + 13;
+    var y = 14 - 7;
+    z /= x + y;
+    return z;
+  } :: (Double -> Double);
+  
+  //each of the operators succeeding:
+  function (x) :: (Double -> Double) { 
+    x += 3;
+    return x;
+  } :: (Double -> Double);
+  
+  function (x) :: (Double -> Double) { 
+    return (x -= x);
+  } :: (Double -> Double);
+  function (x) :: (Double -> Double) { 
+    x *= 93;
+    return x;
+  } :: (Double -> Double);
+  function (x) :: (Double -> Double) { 
+    x /= (x += 4) + 3;
+    return x;
+  } :: (Double -> Double);
+  function (x) :: (Double -> Double) { 
+    x %= 2.3;
+    x %= 1.4;
+    return x;
+  } :: (Double -> Double);
+  function (x) :: (Int -> Int) {
+    var f :: Int = 23; 
+    x <<= f;
+    return x;
+  } :: (Int -> Int);
+  function (x) :: (Int -> Int) { 
+    var f :: Int = 23; 
+    x >>= f;
+    x >>>= f;
+    return x;
+  } :: (Int -> Int);
+  function (x) :: (Int -> Int) { 
+    var f :: Int = 73; 
+    x &= f;
+    return x;
+  } :: (Int -> Int);
+  function (x) :: (Int -> Int) { 
+    var f :: Int = 342; 
+    x ^= f;
+    return x;
+  } :: (Int -> Int);
+  function (x) :: (Int -> Int) { 
+    var f :: Int = 9988; 
+    x |= f;
+    return x;
+  } :: (Int -> Int);
+  //the Int-required ones should fail on Doubles:
+  fail function (x) :: (Double -> Double) { 
+    x <<= 4;
+    return x;
+  } ;
+  fail function (x) :: (Double -> Double) { 
+    x >>= 3;
+    x >>>= 14;
+    return x;
+  } ;
+  fail function (x) :: (Double -> Double) { 
+    x &= 5;
+    return x;
+  } ;
+  fail function (x) :: (Double -> Double) { 
+    x ^= 13;
+    return x;
+  } ;
+  fail function (x) :: (Double -> Double) { 
+    x |= 29;
+    return x;
+  } ;
+  
+  // involving other types:
+  function (x) :: (Double -> String) {
+    var z = "15", y = "32";
+    z += y; //should result in "1532"
+    return z;
+  } :: (Double -> String);
+  
+  fail function (x) :: (Double -> Undefined) {
+    var z = true;
+    z *= 5;
+  };
+  
+  fail function (x) :: (Double -> Undefined) {
+    var z = "jimbababawe";
+    z *= 5;
+  };
+  
+  fail function (x) :: (Double -> String) {
+    x += "hah"; //the x + "hah" evaluates to a String, but then the actual assignment should fail.
+    return "h";
+  };
+  
+  //list expressions?
+  function (x) :: (Double -> String) {
+    var z = (4, 39, "haha", "sup dog? yes.. rather so."+x);
+    return z;
+  } :: (Double -> String)
+  
+}
