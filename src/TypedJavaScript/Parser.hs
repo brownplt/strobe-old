@@ -57,36 +57,7 @@ identifier =
    The obvious production, type <: type, conflicts with const<type [,*]> and is
    not LL-parsable.
  -}
-typeConstraint :: CharParser st TypeConstraint
-typeConstraint = do
-  v <- Lexer.identifier 
-  reservedOp "<:"
-  t <- type_
-  return (TCSubtype v t)
 
--- |Creates a constraint for each type variable in a TForall.  Unconstrained
--- variables x, are x <: Any.  Furthermore, constraints and variables are
--- ordered.  Fails if a variable is constrained multiple times.
-normalizeTForall :: Monad m => Type -> m Type
-normalizeTForall (TForall ids cs t) = do
-  let tcOrder (TCSubtype x _) (TCSubtype y _) = compare x y
-  let defaultConstraint v = (v, TCSubtype v TAny)
-  let check [] [] = return []
-      -- trailing list of unconstrained type variables; this is the common
-      -- case of unbounded polymorphism.
-      check vs [] = return (map defaultConstraint vs)
-      check [] cs = fail $ "duplicate / dangling constraints"
-      check (v:vs) ((TCSubtype v' t):cs) = case compare v v' of
-        -- Since both are ordered, v is missing a constraint.
-        LT -> do rest <- check vs ((TCSubtype v' t):cs)
-                 return ((defaultConstraint v):rest)
-        EQ -> do rest <- check vs cs
-                 return ((v, (TCSubtype v' t)):rest)
-        GT -> fail $ "duplicate / dangling constraint on " ++ v'
-  r <- check (sort ids) (sortBy tcOrder cs)
-  let (ids', cs') = unzip r
-  return (TForall ids' cs' t)
-normalizeTForall t = return t
 
 {- The syntax for types is:
 
@@ -134,54 +105,7 @@ Disambiguation:
 
 type_ :: CharParser st (Type)
 type_ = do
-  let forall = do
-        p <- getPosition
-        reserved "forall"
-        ids <- many1 Lexer.identifier
-        constraints <- (reservedOp ":" >> many1 typeConstraint) <|> (return [])
-        reservedOp "."
-        t <- type_fn
-        normalizeTForall (TForall ids constraints t)
-  let rec = do
-        p <- getPosition
-        reserved "rec"
-        id <- Lexer.identifier
-        reservedOp "."
-        t <- type_
-        return (TRec id t)
-  let explicitThis = do
-        thisType <- brackets type_
-        ts <- type_' `sepBy` comma
-        let vararity = do
-              reservedOp "..."
-              reservedOp "->"
-              p' <- getPosition
-              r <- type_ <|> (return undefType)
-              let arguments = TSequence (init ts) (Just (last ts))
-              return (TFunc Nothing (thisType:arguments:ts) r)
-        let constr = do
-              reservedOp "~~>"
-              p' <- getPosition
-              r <- type_ <?> "type that 'this' will become"
-              let arguments = TSequence ts Nothing
-              -- the 'this type' of the constructor is what 'this' is
-              -- expected to be upon entering the constructor. the
-              -- 'return type' is what 'this' is expected to have upon
-              -- leaving the constructor. the prototype starts off as
-              -- the empty object, and can be augmented later to match
-              -- what 'this' is expected to start as.
-              return (TFunc (Just (TObject "Window" []))
-                            (thisType:arguments:ts) r)
-        let func = do
-              reservedOp "->"
-              r <- type_ <|> (return undefType)
-              let arguments = TSequence ts Nothing
-              return (TFunc Nothing (thisType:arguments:ts) r)
-        case ts of
-          []  -> constr <|> func -- function of zero arguments
-          [t] -> vararity <|> constr <|> func <|> (return t)
-          ts  -> vararity <|> constr <|> func
-  forall <|> rec <|> type_fn
+  type_fn
 
 type_fn :: CharParser st (Type)
 type_fn = do
@@ -189,28 +113,14 @@ type_fn = do
   let globalThis = TObject "Window" []
   ts <- type_' `sepBy` comma
   let thisType = TObject "Window" []
-  let vararity = do
-        reservedOp "..."
-        reservedOp "->"
-        let arguments = TSequence (init ts) (Just (last ts))
-        r <- type_ <|> (return undefType)
-        return (TFunc Nothing (thisType:arguments:ts) r)
-  let constr = do
-        reservedOp "~~>"
-        p' <- getPosition
-        r <- type_ <?> "type that 'this' will become"
-        let arguments = TSequence ts Nothing
-        --default: this is an empty object with slack.
-        return (TFunc (Just (TObject "" [])) 
-                      ((TObject "" []):arguments:ts) r)
   let func = do
         reservedOp "->"
         r <- type_
         return (TArrow (TObject "Window" []) (ArgType ts Nothing) r)
   case ts of
-    []  -> constr <|> func -- function of zero arguments
-    [t] -> vararity <|> constr <|> func <|> (return t)
-    ts  -> vararity <|> constr <|> func
+    []  -> func -- function of zero arguments
+    [t] -> func <|> (return t)
+    ts  -> func
 
 type_' :: CharParser st (Type)
 type_' = do
@@ -958,8 +868,8 @@ typeStmt = do
   t' <- parseType
   t <- case (isSealed, t') of
     (False, _) -> return t'
-    (True, TRec v (TObject brand ps)) -> 
-      return $ TRec v (TObject brand
+    (True, TObject brand ps) -> 
+      return $ (TObject brand
                               (("@sealed_"++idn, True, TObject "__" []):ps))
     (True, TObject brand ps) -> 
       return $ TObject brand (("@sealed_"++idn, True, TObject "__" []):ps)

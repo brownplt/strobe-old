@@ -165,6 +165,9 @@ lvalue env lv = case lv of
           typeError p $ printf "object does not have the field %s" f
           return TAny -- TODO: this will cause problems
         Just (False, s)  -> return s
+      otherwise -> do
+        typeError p $ printf "expected object"
+        return TAny -- TODO: this will cause problems
 
 
 expr :: Env 

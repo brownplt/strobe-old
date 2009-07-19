@@ -6,8 +6,8 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
   , ToplevelStatement(..)
   , LValue (..)
   , ArgType (..)
-  , showSp, propToString, unId, eqLit,
-         TypeConstraint (..), Access) where
+  , showSp, propToString, unId, eqLit
+  ) where
 
 import TypedJavaScript.Prelude
 import qualified Data.Foldable as F

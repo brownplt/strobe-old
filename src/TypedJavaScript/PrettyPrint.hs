@@ -32,11 +32,6 @@ hangBraces :: Doc -> Doc
 hangBraces doc = lbrace $$ (nest 2 doc) $$ rbrace
 
 
-typeConstraint :: TypeConstraint -> Doc
-typeConstraint tc = case tc of
-  TCSubtype v t2 ->  text v <+> text "<:" <+> type_ t2
-
-
 renderExpr :: Expression a -> String
 renderExpr e = render (expr e)
 
@@ -62,40 +57,12 @@ type_ :: Type -> Doc
 type_ t = case t of
   TArguments at -> argType at
   TArrow this at r -> argType at <+> text "->" <+> type_ r
-  TPrototype str ->
-    text ("TPrototype " ++ str)
-  TFunc ptype (this:arguments:args) ret -> 
-    brackets (type_ this) <+> commas (map arg args) <> varargDoc <+> 
-    
-    (if (isJust ptype) then text "~~>" else text "->") <+> type_ ret
-      where arg t' = case t' of
-              TFunc{} -> parens (type_ t')
-              otherwise -> type_ t'
-            varargDoc = case arguments of
-              TSequence _ (Just t') -> comma <+> arg t' <+> text "..."
-              -- We ignore the case where arguments is not a TSequence.
-              otherwise -> empty 
-  TEnvId s -> text "*" <> text s <> text "*"
-  TSequence ts opt -> brackets $ (commas (map type_ ts)) <> optional
-    where optional = case opt of
-            Nothing -> empty
-            Just t -> text "," <+> type_ t <+> text "..."
   TApp s ts -> text s <> text "<" <> commas (map type_ ts) <> text ">"
   TAny -> text "any"
-  TRec id t -> hang (text "rec" <+> text id <+> text ".") 2 (type_ t)
   TObject "Object" fields -> braces (nest 2 (commas (map field fields)))
   TObject brand fields ->
     text brand <> braces (nest 2 (commas (map field fields)))
   TUnion t1 t2 -> text "U" <> parens (type_ t1 <> comma <+> type_ t2)
-  TId v -> text v
-  TForall ids cs t' ->
-    text "forall" <+> (commas (map text ids)) <+> constraintsDoc <+> 
-    text "." <+> type_ t'
-      where constraintsDoc = case cs of
-              [] -> empty
-              otherwise -> text ":" <+> commas (map typeConstraint cs)
-  TIterator i -> text "TIterator" <+> text i
-  TProperty i -> text "TProperty" <+> text i
 
 
 id :: Id a -> Doc
