@@ -222,7 +222,25 @@ remove id remove env = M.adjust f (idRoot id env)  env
              (_, TUnk) -> Type TUnk
              (_, TUnreachable) -> error "localTypes: removing from TUnreachable"
              (TUnreachable, _) -> error "localTypes: removing a TUnreacable"
-         f other = error $ "localTypes: root references " ++ show other
+         f (Typeof x) = case remove of
+           TUnreachable -> error "LocalFlows.hs : removing TUnreachable"
+           TUnk -> error "LocalFlows.hs : removing TUnk"
+           (TKnown rt) -> case S.member RTString rt of
+             True -> Type TUnk
+             False -> Typeof x
+         f (TypeIs x t) = case remove of
+           TUnreachable -> error "LocalFlows.hs : removing TUnreachable"
+           TUnk -> error "LocalFlows.hs : removing TUnk"
+           (TKnown rt) -> case S.member RTBoolean rt of
+             True -> Type TUnk
+             False -> TypeIs x t
+         f (TypeIsNot x t) = case remove of
+           TUnreachable -> error "LocalFlows.hs : removing TUnreachable"
+           TUnk -> error "LocalFlows.hs : removing TUnk"
+           (TKnown rt) -> case S.member RTBoolean rt of
+             True -> Type TUnk
+             False -> TypeIsNot x t
+         f (Ref _) = error "LocalFlows.hs: idRoot returned Ref to remove"
 
 
 unionType :: RuntimeTypeInfo -> RuntimeTypeInfo -> RuntimeTypeInfo
