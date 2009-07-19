@@ -3,8 +3,8 @@ module BrownPLT.TypedJS.LocalTypes
   , refineEnvWithRuntime
   ) where
 
-import TypedJavaScript.Types
-import TypedJavaScript.PrettyPrint
+import BrownPLT.TypedJS.Types
+import BrownPLT.TypedJS.PrettyPrint
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.JavaScript.Analysis.ANF
 import qualified BrownPLT.TypedJS.LocalFlows as LT

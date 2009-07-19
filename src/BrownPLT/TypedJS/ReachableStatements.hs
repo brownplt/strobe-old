@@ -9,7 +9,7 @@ import Data.Graph.Inductive.Query.BFS (bfs)
 import BrownPLT.JavaScript.Analysis
 import BrownPLT.JavaScript.Analysis.Intraprocedural
 import BrownPLT.JavaScript.Analysis.ANF
-import qualified TypedJavaScript.Syntax as Stx
+import qualified BrownPLT.TypedJS.Syntax as Stx
 
 unreachableInGraph :: Graph -> [Stmt (Int, SourcePos)]
 unreachableInGraph gr = map lab (S.toList nodes)

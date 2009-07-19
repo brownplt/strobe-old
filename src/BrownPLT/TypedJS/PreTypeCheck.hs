@@ -19,14 +19,14 @@ import BrownPLT.TypedJS.LocalVars (localVars, Binding)
 import BrownPLT.TypedJS.RuntimeAnnotations (runtimeAnnotations)
 import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.TypeTheory
-import TypedJavaScript.PrettyPrint
-import TypedJavaScript.Syntax
+import BrownPLT.TypedJS.PrettyPrint
+import BrownPLT.TypedJS.Syntax
 import qualified Data.Map as M
 import qualified Data.Set as S
 import BrownPLT.JavaScript.Analysis (toANF, Stmt)
 import BrownPLT.JavaScript.Analysis.DefineBeforeUse
 import BrownPLT.TypedJS.Environment
-import TypedJavaScript.TypeErasure
+import BrownPLT.TypedJS.TypeErasure
 import BrownPLT.TypedJS.ReachableStatements
 import qualified BrownPLT.JavaScript.Analysis.AllPathsReturn as AllPathsReturn
 

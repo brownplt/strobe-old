@@ -1,7 +1,7 @@
 {- This isn't a lexer in the sense that it provides a JavaScript token-stream.
  - This module provides character-parsers for various JavaScript tokens.
  -}
-module TypedJavaScript.Lexer(lexeme,identifier,reserved,operator,
+module BrownPLT.TypedJS.Lexer(lexeme,identifier,reserved,operator,
 	reservedOp,charLiteral, stringLiteral,natural,integer,float,naturalOrFloat,
   decimal,hexadecimal,octal,symbol,whiteSpace,parens,angles,
   braces,brackets,squares,semi,comma,colon,dot, identifierStart) where

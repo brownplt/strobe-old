@@ -6,7 +6,7 @@ module BrownPLT.TypedJS.FreeVars
   ) where
 
 import BrownPLT.TypedJS.Prelude
-import TypedJavaScript.Syntax
+import BrownPLT.TypedJS.Syntax
 import qualified Data.Map as M
 import qualified Data.Set as S
 

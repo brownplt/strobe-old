@@ -1,5 +1,5 @@
 -- |Pretty-printing Typed JavaScript.
-module TypedJavaScript.PrettyPrint
+module BrownPLT.TypedJS.PrettyPrint
   ( showSp
   , renderType
   , renderStatements
@@ -8,7 +8,7 @@ module TypedJavaScript.PrettyPrint
 
 import Prelude hiding (id)
 import Text.PrettyPrint.HughesPJ
-import TypedJavaScript.Syntax
+import BrownPLT.TypedJS.Syntax
 import BrownPLT.JavaScript.Analysis.ANFPrettyPrint (prettyLit)
 import BrownPLT.TypedJS.Prelude
 

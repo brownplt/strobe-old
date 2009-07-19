@@ -1,5 +1,5 @@
 -- |JavaScript's syntax.
-module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
+module BrownPLT.TypedJS.Syntax(Expression(..),CaseClause(..),Statement(..),
          InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
          AssignOp(..),Id(..),PrefixOp(..),UnaryAssignOp(..),Prop(..),
          ForInit(..),ForInInit(..),Type(..)
@@ -9,7 +9,7 @@ module TypedJavaScript.Syntax(Expression(..),CaseClause(..),Statement(..),
   , showSp, propToString, unId, eqLit
   ) where
 
-import TypedJavaScript.Prelude
+import BrownPLT.TypedJS.Prelude
 import qualified Data.Foldable as F
 import BrownPLT.JavaScript (InfixOp (..), AssignOp (..), PrefixOp (..), 
   UnaryAssignOp(..))

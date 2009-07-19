@@ -7,7 +7,7 @@ module BrownPLT.TypedJS.LocalVars
   ) where
 
 import BrownPLT.TypedJS.Prelude
-import TypedJavaScript.Syntax
+import BrownPLT.TypedJS.Syntax
 
 type Binding = (String, Either (Expression SourcePos) Type)
  

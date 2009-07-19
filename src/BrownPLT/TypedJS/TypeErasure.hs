@@ -1,15 +1,15 @@
 -- |Erases types, compiling Typed JavaScript to JavaScript.
-module TypedJavaScript.TypeErasure
+module BrownPLT.TypedJS.TypeErasure
   ( eraseTypesExpr
   , eraseTypesStmts
   , eraseTypes
   ) where
 
 import Prelude hiding (id)
-import TypedJavaScript.Prelude
+import BrownPLT.TypedJS.Prelude
 
 import qualified BrownPLT.JavaScript as JS
-import TypedJavaScript.Syntax
+import BrownPLT.TypedJS.Syntax
 
 eraseTypesExpr :: Expression a -> JS.Expression a
 eraseTypesExpr = expr

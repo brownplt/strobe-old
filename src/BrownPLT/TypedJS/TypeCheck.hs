@@ -8,8 +8,8 @@ import BrownPLT.TypedJS.LocalVars (localVars, Binding)
 import BrownPLT.TypedJS.RuntimeAnnotations (runtimeAnnotations)
 import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.TypeTheory
-import TypedJavaScript.PrettyPrint
-import TypedJavaScript.Syntax
+import BrownPLT.TypedJS.PrettyPrint
+import BrownPLT.TypedJS.Syntax
 import qualified Data.Map as M
 import BrownPLT.TypedJS.PreTypeCheck
 import BrownPLT.TypedJS.Environment

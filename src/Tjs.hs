@@ -12,16 +12,16 @@ import qualified Data.GraphViz as GV
 import BrownPLT.JavaScript.Analysis
 import BrownPLT.JavaScript.Analysis.ANFPrettyPrint (prettyANF, prettyLit)
 import BrownPLT.JavaScript.Analysis.Intraprocedural
-import TypedJavaScript.Prelude
+import BrownPLT.TypedJS.Prelude
 import qualified Data.Map as M
 import Text.PrettyPrint.HughesPJ (render, vcat)
 import qualified BrownPLT.JavaScript as JS
-import TypedJavaScript.Syntax
-import TypedJavaScript.Parser
-import TypedJavaScript.Lexer
--- import TypedJavaScript.Contracts
-import TypedJavaScript.TypeErasure
-import TypedJavaScript.PrettyPrint
+import BrownPLT.TypedJS.Syntax
+import BrownPLT.TypedJS.Parser
+import BrownPLT.TypedJS.Lexer
+-- import BrownPLT.TypedJS.Contracts
+import BrownPLT.TypedJS.TypeErasure
+import BrownPLT.TypedJS.PrettyPrint
 import BrownPLT.TypedJS.TestParser
 import Test.HUnit
 import BrownPLT.Testing

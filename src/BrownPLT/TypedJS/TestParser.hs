@@ -15,13 +15,13 @@ module BrownPLT.TypedJS.TestParser
 
 import Text.ParserCombinators.Parsec
 import Test.HUnit
-import TypedJavaScript.Syntax (Expression)
-import TypedJavaScript.Lexer (semi, reservedOp, reserved, whiteSpace, braces)
-import qualified TypedJavaScript.Parser as Parser
+import BrownPLT.TypedJS.Syntax (Expression)
+import BrownPLT.TypedJS.Lexer (semi, reservedOp, reserved, whiteSpace, braces)
+import qualified BrownPLT.TypedJS.Parser as Parser
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.TypeTheory
 import BrownPLT.TypedJS.TypeCheck
-import TypedJavaScript.PrettyPrint
+import BrownPLT.TypedJS.PrettyPrint
 import Control.Exception as E
 
 

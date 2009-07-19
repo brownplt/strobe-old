@@ -9,8 +9,8 @@ import BrownPLT.TypedJS.LocalFlows
 import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.JavaScript.Analysis
 import BrownPLT.JavaScript.Analysis.Intraprocedural (numberStmts, intraproc)
-import qualified TypedJavaScript.Syntax as Stx
-import TypedJavaScript.TypeErasure
+import qualified BrownPLT.TypedJS.Syntax as Stx
+import BrownPLT.TypedJS.TypeErasure
 import qualified Data.Map as M
 
 

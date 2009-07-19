@@ -1,4 +1,4 @@
-module TypedJavaScript.Parser
+module BrownPLT.TypedJS.Parser
   ( parseScript
   , parseExpression
   , parseType
@@ -22,9 +22,9 @@ module TypedJavaScript.Parser
 
 import BrownPLT.TypedJS.TypeTheory (undefType)
 import qualified BrownPLT.JavaScript.Analysis.ANF as ANF
-import TypedJavaScript.Lexer hiding (identifier)
-import qualified TypedJavaScript.Lexer as Lexer
-import TypedJavaScript.Syntax
+import BrownPLT.TypedJS.Lexer hiding (identifier)
+import qualified BrownPLT.TypedJS.Lexer as Lexer
+import BrownPLT.TypedJS.Syntax
 import Text.ParserCombinators.Parsec
 import Text.ParserCombinators.Parsec.Expr
 import Control.Monad(liftM,liftM2)
