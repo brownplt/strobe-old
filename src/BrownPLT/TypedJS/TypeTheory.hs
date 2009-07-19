@@ -33,7 +33,7 @@ areSubtypes :: [Type]
             -> Bool
 areSubtypes [] [] = True
 areSubtypes (s:ss) (t:ts) = isSubtype s t && areSubtypes ss ts
-areSubTypes _ _ = False
+areSubtypes _ _ = False
 
 
 -- |Canonizes types such as int U int to int.  Orders fields lexicographically.
@@ -106,12 +106,17 @@ injRT bt = TKnown (S.singleton bt)
 
 runtime :: Type -> RuntimeTypeInfo
 runtime t = case t of
+  TId x -> error $ printf "TypeTheory.hs : argument of runtime contains \
+                          \free type variable %s" x
   TAny -> TUnk
   TApp "String" [] ->  injRT RTString
   TApp "Bool" [] ->  injRT RTBoolean
   TApp "Double" [] ->  injRT RTNumber
   TApp "Int" [] ->  injRT RTNumber
   TApp "Undefined" [] ->  injRT RTUndefined
+  TApp x ts -> error $ printf "TypeTheory.hs : argument of runtime contains \
+                              \unknown type constructor %s, with args %s"
+                              x (show ts) 
   TObject _ _ -> injRT RTObject
   TArguments _ -> injRT RTObject -- the type of the arguments array
   TArrow _ _ _ -> injRT RTFunction
