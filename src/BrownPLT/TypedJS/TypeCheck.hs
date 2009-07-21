@@ -13,42 +13,7 @@ import BrownPLT.TypedJS.Syntax
 import qualified Data.Map as M
 import BrownPLT.TypedJS.PreTypeCheck
 import BrownPLT.TypedJS.Environment
-
-
-data S = S {
-  stateErrors :: [(SourcePos, String)]
-}
-
-data TypeCheck a = TypeCheck { runTypeCheck :: S  -> (S, Either String a) }
-
-instance Monad TypeCheck where
-
-  return a = TypeCheck $ \s -> (s, Right a)
-
-  fail str = TypeCheck $ \s -> (s, Left str)
-
-  (TypeCheck f) >>= g = TypeCheck $ \s -> case f s of
-    (s', Left str) -> (s', Left str)
-    (s', Right a) -> runTypeCheck (g a) s'
-
-
-getState :: TypeCheck S
-getState = TypeCheck $ \s -> (s, Right s)
-
-
-putState :: S -> TypeCheck ()
-putState s = TypeCheck $ \_ -> (s, Right ())
-  
-
-typeError :: SourcePos
-          -> String
-          -> TypeCheck ()
-typeError loc msg = do
-  s <- getState
-  putState $ s { stateErrors = (loc, msg):(stateErrors s) }
-
-fatalTypeError :: SourcePos -> String -> TypeCheck a
-fatalTypeError p msg = fail (printf "%s: %s" (show p) msg)
+import BrownPLT.TypedJS.TypeCheckEngine
 
 
 unAssignOp :: AssignOp -> InfixOp
@@ -420,10 +385,9 @@ topLevel globals body = case preTypeCheck globals body of
 
 
 typeCheck :: [Statement SourcePos] -> Either String ()
-typeCheck body = case runTypeCheck (topLevel emptyEnv body) (S []) of
-  (S [], Right ()) -> return ()
-  (S errs, Left err) -> Left (show errs ++ "\n\n" ++ err)
-  (S errs, _) -> Left (show errs)
+typeCheck body = case runTypeCheck (topLevel emptyEnv body) of
+  Right () -> return ()
+  Left errs -> Left (show errs)
 
 
 typeCheckExpr :: Expression SourcePos -> Either String Type
@@ -431,9 +395,8 @@ typeCheckExpr e = do
   [e] <- preTypeCheck emptyEnv [ExprStmt noPos e]
   body <- runtimeAnnotations M.empty e
   case body of
-    ExprStmt _ e -> case runTypeCheck (expr emptyEnv e) (S []) of
-      (S [], Right t) -> return t
-      (S errs, Left err) -> fail (show errs ++ "\n\n" ++ err)
-      (S errs, _) -> fail (show errs)
+    ExprStmt _ e -> case runTypeCheck (expr emptyEnv e) of
+      Right t -> return t
+      Left errs -> fail (show errs)
     otherwise -> fail "typeCheckExpr: expression shape error"
 
