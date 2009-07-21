@@ -52,6 +52,7 @@ expr (ParenExpr p e) = JS.ParenExpr p (expr e)
 expr (ListExpr p es) = JS.ListExpr p (map expr es)
 expr (CallExpr p e _ es) = JS.CallExpr p (expr e) (map expr es)
 expr (FuncExpr p ids _ s) = JS.FuncExpr p (map id ids) (stmt s)
+expr (PackExpr _ e _ _) = expr e
 
 caseClause (CaseClause p e ss) = JS.CaseClause p (expr e) (map stmt ss)
 caseClause (CaseDefault p ss) = JS.CaseDefault p (map stmt ss)

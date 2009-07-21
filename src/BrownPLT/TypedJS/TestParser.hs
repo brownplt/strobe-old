@@ -20,6 +20,7 @@ import BrownPLT.TypedJS.Lexer (semi, reservedOp, reserved, whiteSpace, braces)
 import qualified BrownPLT.TypedJS.Parser as Parser
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.TypeTheory
+import BrownPLT.TypedJS.Infrastructure
 import BrownPLT.TypedJS.TypeCheck
 import BrownPLT.TypedJS.PrettyPrint
 import Control.Exception as E
@@ -57,14 +58,20 @@ relation = do
         reservedOp "="
         t2 <- Parser.parseType'
         return $ TestCase $ catchException p $ do
-          assertBool (show p) $
-            (canonize t1 == canonize t2) `xor` isFail
+          assertBool (show p) $ runEnv $ do
+            u1 <- canonize t1
+            u2 <- canonize t2
+            r <- isSubtype u1 u2
+            return (r `xor` isFail)
   let sub = do
         reservedOp "<:"
         t2 <- Parser.parseType'
         return $ TestCase $ catchException p $ do
-          assertBool (show p) $
-            (isSubtype (canonize t1) (canonize t2)) `xor` isFail
+          assertBool (show p) $ runEnv $ do
+            u1 <- canonize t1
+            u2 <- canonize t2
+            r <- isSubtype u1 u2
+            return (r `xor` isFail)
   eq <|> sub
 
 
@@ -79,7 +86,7 @@ expression = do
       t <- Parser.parseType'
       return $ TestCase $ catchException p $ case typeCheckExpr e of
         -- typeCheckExpr should return the type in canonical form
-        Right s -> assertBool (show p) (isSubtype s (canonize t))
+        Right s -> assertBool (show p) $ runEnv (canonize t >>= isSubtype s)
         Left err -> assertFailure (show p ++ ": " ++ err)
     True -> return $ TestCase $ catchException p $ case typeCheckExpr e of
       Left err -> return ()

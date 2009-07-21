@@ -63,6 +63,8 @@ type_ t = case t of
   TObject brand fields ->
     text brand <> braces (nest 2 (commas (map field fields)))
   TUnion t1 t2 -> text "U" <> parens (type_ t1 <> comma <+> type_ t2)
+  TIx n -> text (show n)
+  TExists t -> text "exists ." <+> type_ t
 
 
 id :: Id a -> Doc

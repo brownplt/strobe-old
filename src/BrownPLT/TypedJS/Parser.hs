@@ -33,6 +33,7 @@ import Numeric(readDec,readOct,readHex)
 import Data.Char(chr)
 import Data.Char
 import Data.List
+import BrownPLT.TypedJS.TypeTheory (closeType)
  
 -- We parameterize the parse tree over source-locations.
 type ParsedStatement = Statement SourcePos
@@ -79,8 +80,8 @@ identifier =
 
 Disambiguation:
 
- type ::= forall identifier+ . type_fn
-        | forall identifier+ : typeConstraint+ . type
+ type ::= forall identifier+ . type
+        | exists id+ . type
         | rec identifier . type
         | type_fn
 
@@ -105,7 +106,14 @@ Disambiguation:
 
 type_ :: CharParser st (Type)
 type_ = do
-  type_fn
+  let exists = do
+        reserved "exists"
+        xs <- many1 Lexer.identifier
+        reservedOp "."
+        t <- type_
+        return (foldr (\x t -> TExists (closeType x t)) t xs)
+  exists <|> type_fn
+
 
 type_fn :: CharParser st (Type)
 type_fn = do
@@ -326,7 +334,7 @@ parseForInStmt =
 parseForStmt:: StatementParser st
 parseForStmt =
   let parseInit =
-        (reserved "var" >> liftM VarInit (parseVarDecl `sepBy` comma)) <|>
+        (reserved "var" >> liftM VarInit (varDecl `sepBy` comma)) <|>
         (liftM ExprInit parseListExpr) <|>
         (return NoInit)
     in do pos <- getPosition
@@ -373,28 +381,45 @@ parseReturnStmt = do
   optional semi
   return (ReturnStmt pos expr)
 
--- a vardecl is one of: 
---         a = X
---         a :: type = X
---         a :: type
-parseVarDecl ::  CharParser st (VarDecl SourcePos)
-parseVarDecl = do
-  pos <- getPosition
+
+-- varDecl ::= id = expr
+--           | id :: type = expr
+--           | id :: type
+--           | id :: unpack id . type = expr
+varDecl ::  CharParser st (VarDecl SourcePos)
+varDecl = do
+  p <- getPosition
   id <- identifier
-  (do reservedOp "="  --expression with no type annotation
-      expr <- parseExpression
-      return (VarDeclExpr pos id Nothing expr)) <|>
-    (do thetype <- parseType <?> "expression or type annotation" 
-        (do reserved "="
-            expr <- parseExpression                               --expression with type
-            return (VarDeclExpr pos id (Just thetype) expr)) <|> 
-              (do return (VarDecl pos id thetype)))               --just type, no expression
-    
-parseVarDeclStmt:: StatementParser st
-parseVarDeclStmt = do 
+  let noAnnotation = do
+        reservedOp "="
+        expr <- parseExpression
+        return (VarDeclExpr p id Nothing expr)
+  let elimExistential = do
+        reserved "unpack"
+        x <- Lexer.identifier
+        reservedOp "."
+        t <- type_
+        reservedOp "="
+        e <- parseExpression
+        return (UnpackDecl p id x t e)
+  let withExpr t = do
+        reservedOp "="
+        e <- parseExpression
+        return (VarDeclExpr p id (Just t) e)
+  let maybeWithExpr = do
+        t <- type_
+        withExpr t <|> return (VarDecl p id t)
+  let withAnnotation = do
+        reservedOp "::"
+        elimExistential <|> maybeWithExpr
+  noAnnotation <|> withAnnotation
+
+ 
+varDeclStmt:: StatementParser st
+varDeclStmt = do 
   pos <- getPosition
   reserved "var"
-  decls <- parseVarDecl `sepBy` comma
+  decls <- varDecl `sepBy` comma
   optional semi
   return (VarDeclStmt pos decls)
 
@@ -437,7 +462,7 @@ parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt
   <|> parseDoWhileStmt <|> parseContinueStmt <|> parseBreakStmt 
   <|> parseBlockStmt <|> parseEmptyStmt <|> parseForInStmt <|> parseForStmt
   <|> parseTryStmt <|> parseThrowStmt <|> parseReturnStmt
-  <|> parseVarDeclStmt  <|> parseFunctionStmt
+  <|> varDeclStmt  <|> parseFunctionStmt
   -- added for tJS
   -- <|> parseConstructorStmt 
   
@@ -836,10 +861,24 @@ assignOp =
   (reservedOp "|=" >> return OpAssignBOr)
 
 
+pack :: ExpressionParser st
+pack = do
+  let pack_ :: ExpressionParser st
+      pack_ = do
+        p <- getPosition
+        reserved "pack"
+        t_c <- type_
+        t <- type_
+        reserved "in"
+        e <- pack
+        return (PackExpr p e t_c t)
+  pack_ <|> parseTernaryExpr
+
+
 assignExpr :: ExpressionParser st
 assignExpr = do
   p <- getPosition
-  lhs <- parseTernaryExpr
+  lhs <- pack
   let assign = do
         op <- assignOp
         lhs <- asLValue p lhs

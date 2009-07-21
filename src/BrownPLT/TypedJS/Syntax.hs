@@ -93,6 +93,8 @@ data Expression a
   -- Dataflow analysis may deterine a set of possible runtime types for
   -- certain variable references.
   | AnnotatedVarRef a (Set RuntimeType) String
+  -- introducing existential types.  Elimination form in 'VarDecl'
+  | PackExpr a (Expression a) Type {- concrete -} Type {- existential -}
   deriving (Show, Eq, Ord, Data, Typeable)
 
 data CaseClause a 
@@ -107,6 +109,7 @@ data CatchClause a
 data VarDecl a 
   = VarDecl a (Id a) Type
   | VarDeclExpr a (Id a) (Maybe Type) (Expression a)
+  | UnpackDecl a (Id a) String Type (Expression a)
   deriving (Show, Eq, Ord, Data, Typeable)
   
 data ForInit a

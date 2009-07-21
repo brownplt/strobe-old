@@ -25,7 +25,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import BrownPLT.JavaScript.Analysis (toANF, Stmt)
 import BrownPLT.JavaScript.Analysis.DefineBeforeUse
-import BrownPLT.TypedJS.Environment
 import BrownPLT.TypedJS.TypeErasure
 import BrownPLT.TypedJS.ReachableStatements
 import qualified BrownPLT.JavaScript.Analysis.AllPathsReturn as AllPathsReturn
@@ -56,13 +55,13 @@ checkReachability anf = case unreachableStatements anf of
 
 
 
-preTypeCheck :: Env -- ^globals
+preTypeCheck :: [String] -- ^globals
              -> [Statement SourcePos] -- ^source
              -> Either String [Statement SourcePos]
-preTypeCheck env body = do
-  checkClosed (domEnv env) body
+preTypeCheck globals body = do
+  checkClosed globals body
   anf <- toANF (eraseTypes body)
   checkReachability anf
-  case defineBeforeUse (S.fromList ("this":(domEnv env))) anf of
+  case defineBeforeUse (S.fromList ("this":globals)) anf of
     Right () -> Right body
     Left errs -> Left (show errs)

@@ -74,6 +74,7 @@ expr e = case e of
   ListExpr _ es -> unions (map expr es)
   CallExpr _ e _ es -> unions [expr e, unions $ map expr es]
   FuncExpr _ args _ s -> nest $ unions [unions $ map decl args, stmt s]
+  PackExpr _ e _ _ -> expr e
 
 
 caseClause :: CaseClause SourcePos -> Partial

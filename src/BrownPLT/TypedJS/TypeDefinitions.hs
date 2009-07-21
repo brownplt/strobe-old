@@ -24,9 +24,11 @@ data Type
   | TArguments ArgType
   | TArrow { tArrowThis :: Type, tArrowArgs :: ArgType, tArrowResult :: Type }
               
-  | TId String -- identifier bound by a TForall or a TRec
+  | TId String -- free type variable
+  | TIx Int -- bound type variable
   | TApp String [Type]
   | TUnion Type Type
+  | TExists Type
   deriving (Show, Eq, Ord, Data, Typeable)
 
 

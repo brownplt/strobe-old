@@ -6,18 +6,22 @@ module BrownPLT.TypedJS.TypeCheckEngine
   ) where
 
 import BrownPLT.TypedJS.Prelude
+import Control.Monad.Reader
 
 data S = S {
   stateErrors :: [(SourcePos, String)]
 }
 
+
 data TypeCheck a = TypeCheck (S  -> (S, Either String a))
+
 
 runTypeCheck :: TypeCheck a -> Either [(SourcePos, String)] a
 runTypeCheck (TypeCheck f) = case f (S []) of
   (S [], Right a) -> Right a
   (S errs, Right _) -> Left errs
   (S errs, Left err) -> Left $ (noPos, err) : errs
+
 
 instance Monad TypeCheck where
 

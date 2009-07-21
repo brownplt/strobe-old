@@ -45,12 +45,6 @@ import System.IO.Unsafe
 trace :: String -> a -> a
 trace s r = (unsafePerformIO $ putStrLn s) `seq` r
 
-instance Monad (Either String) where
-  return v = Right v
-  fail s = Left s
-  (Left s) >>= _ = Left s
-  (Right v) >>= f = f v
-
 
 -- |'initialPos ""'
 noPos :: SourcePos
