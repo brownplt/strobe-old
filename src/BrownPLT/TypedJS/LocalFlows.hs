@@ -177,6 +177,16 @@ refineEnv id t env = case M.lookup id env of
     Ref id' -> M.insert id' (Type (TKnown (S.singleton t))) env
     otherwise -> M.insert id (Type (TKnown (S.singleton t))) env
 
+assignUnknownEnv :: Id -> Env -> State S Env 
+assignUnknownEnv id env = do
+  let f (thisId, thisType) 
+          | thisId == id = return (thisId, Type TUnk)
+          | otherwise = case thisType of
+              Typeof id' | id' == id -> return (thisId, Type TUnk)
+              otherwise -> return (thisId, thisType)
+  lst <- mapM f (M.toList env)
+  return (M.fromList lst)
+
 
 assignEnv :: Id
           -> Ref
@@ -220,7 +230,9 @@ remove id remove env = M.adjust f (idRoot id env)  env
                Type (TKnown (S.difference e r))
              (TUnk, _) -> error "localTypes: removing TUnk"
              (_, TUnk) -> Type TUnk
-             (_, TUnreachable) -> error "localTypes: removing from TUnreachable"
+             (_, TUnreachable) -> error $ printf
+               "LocalFlows.hs : removing %s :: %s from TUnreachable %s" 
+                 id (show remove) (show env)
              (TUnreachable, _) -> error "localTypes: removing a TUnreacable"
          f (Typeof x) = case remove of
            TUnreachable -> error "LocalFlows.hs : removing TUnreachable"
@@ -303,7 +315,9 @@ stmt env node s = do
       return (zip (map fst succs) (repeat env))
     DeleteStmt _ obj field -> noop
     NewStmt _ result constr args -> noop
-    CallStmt _ result func args -> noop
+    CallStmt _ result func args -> do
+      env <- assignUnknownEnv result env
+      return (zip (map fst succs) (repeat env))
     IfStmt _ e _ _ -> do
       t <-  expr env e
       let f (node, Just (BoolLit _ True)) = case unRef t env of

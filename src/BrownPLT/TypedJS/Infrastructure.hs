@@ -16,6 +16,7 @@ module BrownPLT.TypedJS.Infrastructure
   , nestEnv
   , EnvM
   , bindTVar
+  , bindTVars
   , lookupTVar
   , freshTVar
   )
@@ -132,6 +133,13 @@ bindTVar :: MonadReader Env m
          -> m a
          -> m a
 bindTVar x = local (\e -> e { eTVars = M.insert x BoundTVar (eTVars e) })
+
+
+bindTVars :: MonadReader Env m
+          => [String]
+          -> m a
+          -> m a
+bindTVars tvars m = foldr bindTVar m tvars
 
 
 lookupTVar :: MonadReader Env m

@@ -91,6 +91,8 @@ openArgTypeRec n s (ArgType ts opt) =
   ArgType (map (openTypeRec n s) ts) (liftM (openTypeRec n s) opt)
 
 
+-- |'openType s t' replaces bound variables in 't' with the locally closed 
+-- type  's'.
 openType :: Type -> Type -> Type
 openType s t = openTypeRec 0 s t
   
@@ -166,7 +168,7 @@ canonize t = case t of
   TUnion t1 t2 -> do
     u1 <- canonize t1
     u2 <- canonize t2
-    return (TUnion u1 u2)
+    canonicalUnion u1 u2
   TObject brand fields -> do
     let cmp (x, _, _) (y, _, _) = compare x y
     let fields' = sortBy cmp fields
@@ -184,11 +186,11 @@ canonicalUnion :: EnvM m => Type -> Type -> m Type
 canonicalUnion t1 t2 = do
   r <- isSubtype t1 t2
   case r of
-    True -> return t2
+    True -> return t1
     False -> do
       r <- isSubtype t2 t1
       case r of
-        True -> return t1
+        True -> return t2
         False -> case t1 < t2 of
           True -> return (TUnion t1 t2)
           False -> return (TUnion t2 t1)
@@ -253,6 +255,8 @@ runtime :: Type -> RuntimeTypeInfo
 runtime t = case t of
   TId x -> error $ printf "TypeTheory.hs : argument of runtime contains \
                           \free type variable %s" x
+  TIx _ -> TUnk
+  TExists t -> runtime t
   TAny -> TUnk
   TApp "String" [] ->  injRT RTString
   TApp "Bool" [] ->  injRT RTBoolean
@@ -291,6 +295,13 @@ static :: EnvM m
        -> Type 
        -> m (Maybe Type)
 static rt st = case st of
+  TId x | not (S.null rt) -> return (Just st)
+  TIx _ | not (S.null rt) -> return (Just st)
+  TExists t -> do
+    r <- static rt t
+    case r of
+      Just t' -> return (Just $ TExists t')
+      Nothing -> return Nothing
   TAny -> case map flatStatic (S.toList rt) of
     [] -> return Nothing
     [t] -> return (Just t)

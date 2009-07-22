@@ -57,17 +57,22 @@ relation = do
   let eq = do
         reservedOp "="
         t2 <- Parser.parseType'
+        let s = printf "%s : %s %s = %s" (show p) 
+                  (if isFail then "fail" else "")
+                  (renderType t1) (renderType t2)
         return $ TestCase $ catchException p $ do
-          assertBool (show p) $ runEnv $ do
+          assertBool s $ runEnv $ do
             u1 <- canonize t1
             u2 <- canonize t2
-            r <- isSubtype u1 u2
-            return (r `xor` isFail)
+            return ((u1 == u2) `xor` isFail)
   let sub = do
         reservedOp "<:"
         t2 <- Parser.parseType'
+        let s = printf "%s : %s %s <: %s" (show p) 
+                  (if isFail then "fail" else "")
+                  (renderType t1) (renderType t2)
         return $ TestCase $ catchException p $ do
-          assertBool (show p) $ runEnv $ do
+          assertBool s $ runEnv $ do
             u1 <- canonize t1
             u2 <- canonize t2
             r <- isSubtype u1 u2

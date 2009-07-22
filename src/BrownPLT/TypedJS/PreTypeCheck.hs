@@ -15,7 +15,7 @@ module BrownPLT.TypedJS.PreTypeCheck
 
 import BrownPLT.TypedJS.FreeVars
 import BrownPLT.TypedJS.Prelude
-import BrownPLT.TypedJS.LocalVars (localVars, Binding)
+import BrownPLT.TypedJS.LocalVars
 import BrownPLT.TypedJS.RuntimeAnnotations (runtimeAnnotations)
 import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.TypeTheory

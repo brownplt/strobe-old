@@ -5,8 +5,6 @@ import System.Environment
 import System.IO
 import System.Exit
 
-import qualified Data.Graph.Inductive as G
-import qualified Data.GraphViz as GV
 
 -- import BrownPLT.TypedJS.InitialEnvironment
 import BrownPLT.JavaScript.Analysis
@@ -93,12 +91,17 @@ annotatedAction [path] = do
 annotatedAction _ = fail "invalid command-line arguments"
 
 
+anfAction [] [path] = do
+  src <- readFile path
+  let (_, script) = parseTypedJavaScript path src
+  putStrLn "Successfully parsed..."
+  let js = eraseTypes script
+  case toANF js of
+    Left err -> putStrLn err
+    Right (_, anf) -> putStrLn (prettyANF anf)
+
 {-
 
-getAction (ANF:args) = return (RequireInput action, args) where
-  action (_, prog) = do
-    let (topDecls, anfProg) = toANF (simplify (eraseTypes prog))
-    putStrLn (prettyANF anfProg)
 getAction (Graphs:args) = return (RequireInput action, args) where
   action (_, prog) = do
     let anf = toANF (simplify (eraseTypes prog))
@@ -133,6 +136,7 @@ main = do
     [] -> typeCheckAction [] files
     (TypeCheck:args) -> typeCheckAction args files
     (Testing:args) -> testingAction args files
+    (ANF:args) -> anfAction args files
     [Annotated] -> annotatedAction files
     [Help] -> do
       putStrLn "Typed JavaScript Compiler"

@@ -65,6 +65,7 @@ type_ t = case t of
   TUnion t1 t2 -> text "U" <> parens (type_ t1 <> comma <+> type_ t2)
   TIx n -> text (show n)
   TExists t -> text "exists ." <+> type_ t
+  TId x -> text x
 
 
 id :: Id a -> Doc
@@ -105,6 +106,9 @@ varDecl decl = case decl of
     id v <+> equals <+> expr e
   VarDeclExpr _ v (Just t) e -> 
     id v <+> text "::" <+> type_ t <+> equals <+> expr e
+  UnpackDecl _ x tVar t e -> 
+    id x <+> text ":: unpack " <+> text tVar <+> text "." <+> type_ t <+> 
+   equals <+> expr e
 
 
 topLevelStatement :: ToplevelStatement a -> Doc

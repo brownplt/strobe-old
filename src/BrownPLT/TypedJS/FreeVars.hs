@@ -91,6 +91,7 @@ catchClause (CatchClause _ id s) = unions [decl id, stmt s]
 varDecl :: VarDecl SourcePos -> Partial
 varDecl (VarDecl _ id _) = decl id
 varDecl (VarDeclExpr _ id _ e) = unions [decl id, expr e]
+varDecl (UnpackDecl _ id _ _ e) = unions [decl id, expr e]
 
  
 forInit :: ForInit SourcePos -> Partial

@@ -5,7 +5,7 @@ module BrownPLT.TypedJS.TypeCheck
 
 import BrownPLT.TypedJS.Infrastructure
 import BrownPLT.TypedJS.Prelude
-import BrownPLT.TypedJS.LocalVars (localVars, Binding)
+import BrownPLT.TypedJS.LocalVars
 import BrownPLT.TypedJS.RuntimeAnnotations (runtimeAnnotations)
 import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.TypeTheory
@@ -63,7 +63,7 @@ fieldType x ((y, ro, t):fs) | x == y = Just (ro, t)
 -- type annotations, even if the variable itself does not have one.  Anything 
 -- else counts as a define-before-use error.
 calcType :: TypeCheck a
-         -> Binding
+         -> (String, Either (Expression SourcePos) Type)
          -> TypeCheck a
 calcType m (x, bind) = case bind of
   Right t -> do
@@ -76,7 +76,7 @@ calcType m (x, bind) = case bind of
     t <- expr e
     extendEnv x t m
 
-calcTypes :: [Binding]
+calcTypes :: [(String, Either (Expression SourcePos) Type)]
           -> TypeCheck a
           -> TypeCheck a
 calcTypes binds m = foldr (flip calcType) m binds
@@ -282,13 +282,13 @@ expr e = case e of
           rtEnv <- runtimeEnv
           case runtimeAnnotations rtEnv body of
             Left s -> catastrophe p s
-            Right body -> do
-              let localBinds = localVars body
-              let newNames = map unId args ++ (map fst localBinds)
-              unless (length newNames == length (nub newNames)) $
-                fail $ "duplicate names in a scope at " ++ show p
-              calcTypes localBinds $ stmt (Just resultType) body
-              canonize t
+            Right body -> case localVars (map unId args) body of
+              Left err -> fatalTypeError p err -- duplicate name error
+              Right (vars, tvars) -> do
+                bindTVars tvars $ 
+                  calcTypes vars $ 
+                    stmt (Just resultType) body
+                canonize t
       -- annotation on the function is not a function type
       otherwise -> do
         fatalTypeError p $ printf "expected a function type, received %s" 
@@ -411,6 +411,18 @@ decl (VarDeclExpr p (Id _ x) Nothing e) = do
     False -> catastrophe p $ printf 
       "%s :: %s, but was calculated to have type %s"
       x (renderType s) (renderType t)
+decl (UnpackDecl p (Id _ x) tVar t e) = do
+  s <- expr e
+  case s of
+    TExists s' -> do
+      r <- isSubtype (openType (TId tVar) s') t
+      case r of
+        True -> ok
+        False -> fatalTypeError p $ printf
+          "expression has type %s, bound to an identifier of type %s"
+          (renderType (openType (TId x) s')) (renderType t)
+    otherwise -> fatalTypeError p $ printf
+      "unpack used on an expression of type %s" (renderType s)
 
 
 -- |This code should be almost identical to the code for function bodies.
@@ -421,12 +433,12 @@ topLevel body = do
   case preTypeCheck globals body of
     Right e -> case runtimeAnnotations rtEnv (BlockStmt noPos e) of
       Left s -> catastrophe noPos s
-      Right body -> do
-        let localBinds = localVars body
-        let newNames = globals ++ (map fst localBinds)
-        unless (length newNames == length (nub newNames)) $
-          fail $ "duplicate names at top level at "
-        calcTypes localBinds  (stmt Nothing body)
+      Right body -> case localVars globals body of
+        Left err -> fatalTypeError noPos err
+        Right (vars, tvars) -> do
+          bindTVars tvars $
+            calcTypes vars $
+              stmt Nothing body
     Left str -> fatalTypeError noPos str
 
 
