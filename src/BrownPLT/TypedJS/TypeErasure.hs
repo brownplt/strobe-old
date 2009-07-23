@@ -93,7 +93,11 @@ stmt (TryStmt p s1 cs s2) =
 stmt (ThrowStmt p e) = JS.ThrowStmt p (expr e)
 stmt (ReturnStmt p e) = JS.ReturnStmt p (liftM expr e)
 stmt (VarDeclStmt p ds) = JS.VarDeclStmt p (map varDecl ds)
---stmt (TypeStmt{}) = error "type-erasure undefined for type statements"
+stmt (ExternalFieldStmt p brand (Id  _ field) e) =
+  JS.ExprStmt p $ JS.AssignExpr p OpAssign 
+                               (JS.LDot p (JS.VarRef p (id brand)) field) 
+                               (expr e)
+
 
 eraseTypes :: [Statement a] -> [JS.Statement a]
 eraseTypes = map stmt

@@ -20,9 +20,13 @@ module BrownPLT.TypedJS.Infrastructure
   , lookupTVar
   , freshTVar
   -- * Brand Store
+  , getBrand
+  , getBrandWithParent
+  , getBrandPath
   , newRootBrand
   , extendBrand
   , isSubbrand
+  , tempBrandStore
   )
   where
 
@@ -181,6 +185,38 @@ emptyBrandStore :: BrandStore
 emptyBrandStore = BrandStore M.empty
 
 
+getBrandWithParent :: MonadState BrandStore m
+                   => String -- ^brand name
+                   -> m (Type, Maybe String)
+getBrandWithParent brand = do
+  s <- get
+  case M.lookup brand (brandStoreDict s) of
+    Just (ty, parent) -> return (ty, parent)
+    Nothing -> fail $ printf "brand %s has not been defined" brand
+
+
+getBrand :: MonadState BrandStore m
+         => String -- ^brand name
+         -> m Type
+getBrand brand = liftM fst (getBrandWithParent brand)
+
+
+-- |@getBrandPath brand@
+-- 
+-- Returns the type of @brand@ and all its ancestors in order.  @brand@ is at
+-- the head of the list.
+getBrandPath :: MonadState BrandStore m
+             => String -- ^brand
+             -> m [Type]
+getBrandPath brand = do
+  (ty, parent) <- getBrandWithParent brand
+  case parent of
+    Nothing -> return [ty]
+    Just parentBrand -> do
+      tys <- getBrandPath parentBrand
+      return (ty:tys)
+
+
 newRootBrand :: MonadState BrandStore m
              => Type -- ^expected @TObject@
              -> m ()
@@ -250,3 +286,14 @@ isSubbrand sub sup = do
             Nothing -> error $ printf 
               "isSubbrand : brand store inconsistent, %s not found" brand
   return (traverse sub)
+
+
+-- |Restores the original brand store after running the computation.
+tempBrandStore :: MonadState BrandStore m
+               => m a
+               -> m a
+tempBrandStore m = do
+  s <- get
+  r <- m
+  put s
+  return r

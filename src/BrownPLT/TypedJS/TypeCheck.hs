@@ -13,6 +13,7 @@ import BrownPLT.TypedJS.PrettyPrint
 import BrownPLT.TypedJS.Syntax
 import qualified Data.Map as M
 import BrownPLT.TypedJS.PreTypeCheck
+import Control.Monad.Reader
 
 
 runtimeEnv :: TypeCheck (Map String RuntimeTypeInfo)
@@ -56,20 +57,31 @@ ok = return ()
 -- type annotations, even if the variable itself does not have one.  Anything 
 -- else counts as a define-before-use error.
 calcType :: TypeCheck a
-         -> (String, Either (Expression SourcePos) Type)
+         -> LocalDecl
          -> TypeCheck a
-calcType m (x, bind) = case bind of
-  Right t -> do
+calcType m decl = case decl of
+  DeclType x t -> do
     u <- canonize t
+    u <- brandSugar u
     extendEnv x u m
-  Left (FuncExpr _ _ t _) -> do
+  DeclExpr x (FuncExpr _ _ t _) -> do
     u <- canonize t
+    u <- brandSugar u
     extendEnv x u m
-  Left e -> do
+  DeclExpr x e -> do
     t <- expr e
     extendEnv x t m
+  DeclField brand field (FuncExpr _ _ t _) ->  do
+    t <- canonize t
+    t <- brandSugar t
+    extendBrand brand field t
+    m
+  DeclField brand field e -> do
+    t <- expr e
+    extendBrand brand field t
+    m
 
-calcTypes :: [(String, Either (Expression SourcePos) Type)]
+calcTypes :: [LocalDecl]
           -> TypeCheck a
           -> TypeCheck a
 calcTypes binds m = foldr (flip calcType) m binds
@@ -159,10 +171,14 @@ expr e = case e of
   DotRef p e (Id _ x) -> do
     t <- expr e
     case t of
-      TObject _ fields -> case fieldType x fields of
-        Just (ty, _) -> return ty
-        Nothing -> fatalTypeError p $ printf
-          "object %s does not have the field %s" (renderType t) x
+      TObject brand fields -> do
+        -- TODO: This is guesswork.  It's suspect since the type language
+        -- does not have intersections.
+        fields' <- intersectBrand brand
+        case fieldType x (overrideFields fields fields') of
+          Just (ty, _) -> return ty
+          Nothing -> fatalTypeError p $ printf
+            "object %s does not have the field %s" (renderType t) x
       otherwise -> fatalTypeError p $ printf "expected object, received %s"
                      (renderType t)
   PrefixExpr p op e -> do
@@ -256,7 +272,14 @@ expr e = case e of
     unless (length fields == length (nub names)) $
       fatalTypeError p "duplicate field names"
     ts <- mapM field fields
-    canonize (TObject "Object" ts)
+    t <- canonize (TObject "Object" ts)
+    s <- getBrand "Object"
+    case (t, s) of
+      (TObject "Object" fs1, TObject "Object" fs2) ->
+        return (TObject "Object" (overrideFields fs1 fs2))
+      otherwise -> 
+        catastrophe p "TypeCheck.hs : canonize/getBrand error in ObjectLit"
+    
   CallExpr p f ts args -> do
     f_t <- expr f
     args_t <- mapM expr args
@@ -273,6 +296,7 @@ expr e = case e of
           (renderType f_t)
   FuncExpr p args t body -> do
     t <- canonize t
+    t <- brandSugar t
     case t of
       TArrow thisType (ArgType argTypes optArgType) resultType -> do
         unless (length args == length (nub $ map unId args)) $
@@ -291,9 +315,10 @@ expr e = case e of
             Right body -> case localVars (map unId args) body of
               Left err -> fatalTypeError p err -- duplicate name error
               Right (vars, tvars) -> do
-                bindTVars tvars $ 
-                  calcTypes vars $ 
-                    stmt (Just resultType) body
+                -- Calculating types affects the brand store.  Scope the effects
+                -- and recompute in the calculated environment.
+                env <- tempBrandStore $ bindTVars tvars $  calcTypes vars $ ask
+                local (const env) $ stmt (Just resultType) body
                 canonize t
       -- annotation on the function is not a function type
       otherwise -> do
@@ -385,11 +410,15 @@ stmt returnType s = case s of
           False -> fatalTypeError p $ printf "statement returns %s, expected %s"
                      (renderType t) (renderType returnType)
   VarDeclStmt p decls -> mapM_ (decl) decls
+  ExternalFieldStmt p (Id _ brand) (Id _ field) e -> do
+    ty <- expr e
+    extendBrand brand field ty
     
 
 decl :: VarDecl SourcePos -> TypeCheck ()
 decl (VarDecl p (Id _ x) t) = do
   t' <- canonize t
+  t' <- brandSugar t'
   r <- isSubtype undefType t'
   case r of
     True -> ok
@@ -398,6 +427,7 @@ decl (VarDecl p (Id _ x) t) = do
 decl (VarDeclExpr p (Id _ x) (Just t) e) = do
   s <- expr e
   t' <- canonize t
+  t' <- brandSugar t'
   r <- isSubtype s t'
   case r of
     True -> ok
@@ -414,6 +444,8 @@ decl (VarDeclExpr p (Id _ x) Nothing e) = do
       "%s :: %s, but was calculated to have type %s"
       x (renderType s) (renderType t)
 decl (UnpackDecl p (Id _ x) tVar t e) = do
+  t <- canonize t
+  t <- brandSugar t
   s <- expr e
   case s of
     TExists s' -> do
@@ -444,18 +476,26 @@ topLevel body = do
     Left str -> fatalTypeError noPos str
 
 
+withInitEnv :: TypeCheck a -> TypeCheck a
+withInitEnv m = do
+  let objType = TObject "Object" []
+  newRootBrand objType
+  newRootBrand (TObject "Window" []) -- TODO: hack
+  extendEnv "Object" objType m
+
+
 typeCheck :: [Statement SourcePos] -> Either String ()
-typeCheck body = case runTypeCheck (topLevel body) of
+typeCheck body = case runTypeCheck (withInitEnv $ topLevel body) of
   Right () -> return ()
   Left errs -> Left (show errs)
 
 
 typeCheckExpr :: Expression SourcePos -> Either String Type
 typeCheckExpr e = do
-  [e] <- preTypeCheck [] [ExprStmt noPos e]
+  [e] <- preTypeCheck ["Object"] [ExprStmt noPos e]
   body <- runtimeAnnotations M.empty e
   case body of
-    ExprStmt _ e -> case runTypeCheck (expr e) of
+    ExprStmt _ e -> case runTypeCheck (withInitEnv $ expr e) of
       Right t -> return t
       Left errs -> fail (show errs)
     otherwise -> fail "typeCheckExpr: expression shape error"

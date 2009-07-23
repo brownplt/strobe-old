@@ -27,7 +27,8 @@ javascriptDef =
                  "for", "function", "if", "instanceof", "in", "let", "new", 
                  "null", "return", "switch", "this", "throw", "true", "try", 
                  "typeof", "var", "void", "while", "with","forall", "rec", 
-                 "any", "sealed", "readonly", "pack", "unpack", "exists" ]
+                 "any", "sealed", "readonly", "pack", "unpack", "exists",
+                 "prototype" ]
                 ["|=", "^=", "&=", "<<=", ">>=", ">>>=", "+=", "-=", "*=", "/=",
                  "%=", "=", ";", ",", "?", ":", "||", "&&", "|", "^", "&", 
                  "===", "==", "=", "!==", "!=", "<<", "<=", "<", ">>>", ">>", 

@@ -89,3 +89,116 @@ expressions {
   fail function (b,a) :: ((Int -> Int), (Double -> Int) -> Undefined)
   { a = b; }
 }
+
+expressions {
+  succeed function() :: -> Undefined {
+    Object.prototype.x = 93;
+  };
+  
+  succeed function() :: -> Undefined {
+    Object.prototype.x = 93;
+    var obj :: { x :: Int, y :: Int } = { y : 900 };
+    var z :: Int = obj.x;
+  };
+  
+  succeed function() :: -> Undefined {
+    Object.prototype.x = 93;
+    var obj = { y : 900 }; // requires calcType to account for previous stmt.
+    var z :: Int = obj.x;
+  };
+
+  succeed function() :: -> Undefined {
+    var obj :: { y :: Int } = { y : 900 };
+    Object.prototype.x = 93;
+    var z :: Int = obj.x; // requires an intersection
+  };
+  
+  fail function() :: -> Undefined {
+    var obj :: { y :: Int } = { y : 900 };
+    var g :: Int = obj.x; // hasn't been added yet
+    Object.prototype.x = 93;
+    var z :: Int = obj.x;
+  };
+  
+  succeed function() :: -> Undefined {
+    var f = function(obj) :: { x :: Int, y :: String } -> String {
+      return obj.y;
+    };
+
+    f({ x : 45, y : "hello" });
+    Object.prototype.y = "I AM THE PROTOTYPE";
+    f({ x : 90 });
+  };
+
+  fail function() :: -> Undefined {
+    var f = function(obj) :: { x :: Int, y :: String } -> String {
+      return obj.y;
+    };
+
+    f({ x : 90 }); // y not added yet
+    Object.prototype.y = "I AM THE PROTOTYPE";
+  };
+
+  succeed function() :: -> Undefined {
+    var f = function(obj) :: { x :: Int, y :: String } -> String {
+      return obj.y;
+    };
+
+    Object.prototype.y = 92;
+    f({ x : 70, y : "field override, or something" });
+  };
+  
+  fail function() :: -> Undefined {
+    var f = function(obj) :: { x :: Int, y :: String } -> String {
+      return obj.y;
+    };
+
+    Object.prototype.y = 92;
+    f({ x : 70 }); // prototype.y has the wrong type
+  };
+  
+
+  fail function() :: -> Undefined {
+    var f = function(obj) :: { x :: Int, y :: String } -> String {
+      return obj.y;
+    };
+
+    Object.prototype.y = 92;
+    Object.prototype.y = "we could support this if we wanted to";
+    f({ x : 70 });
+  };
+
+  succeed function() :: -> Undefined {
+     Object.prototype.x = 34;
+     // Without constraints, x :: Int is filled in.
+     var f = function(obj) :: {} -> Int {
+       return obj.x;
+     }
+  };
+  
+  succeed function() :: -> Undefined {
+     Object.prototype.x = 34;
+     // same as above
+     var f = function(obj) :: Object: -> Int {
+       return obj.x;
+     }
+  };
+
+  succeed function() :: -> Undefined {
+     Object.prototype.x = 34;
+     // explicit constraint override the prototype
+     var f = function(obj) :: { x :: String } -> String {
+       return obj.x;
+     }
+  };
+  
+  fail function() :: -> Undefined {
+     // x :: Int is not declared yet, so it is not filled in.
+     var f = function(obj) :: {} -> Int {
+       return obj.x;
+     }
+     Object.prototype.x = 34;
+  }
+  
+
+}

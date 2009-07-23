@@ -3,6 +3,7 @@
 -- expression, if the variable does not have a type annotation.
 module BrownPLT.TypedJS.LocalVars
   ( localVars
+  , LocalDecl(..)
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -12,8 +13,15 @@ import qualified Data.Set as S
 import Control.Monad.State
 import Control.Monad.Error
 
+
+data LocalDecl
+  = DeclType String Type
+  | DeclExpr String (Expression SourcePos)
+  | DeclField String String (Expression SourcePos)
+
+
 data S =  S {
-  sVarList :: [(String, Either (Expression SourcePos) Type)],
+  sVarList :: [LocalDecl],
   sTVars :: Set String,
   sBoundVars :: Set String
 }
@@ -28,7 +36,7 @@ bind :: String
 bind x t = do
   s <- get
   case S.member x (sBoundVars s) of
-    False -> put (s { sVarList = (x, Right t):(sVarList s),
+    False -> put (s { sVarList = (DeclType x t):(sVarList s),
                       sBoundVars = S.insert x (sBoundVars s) })
     True -> fail $ printf "%s is declared multiple times"
 
@@ -39,9 +47,18 @@ bindExpr :: String
 bindExpr x e = do
   s <- get
   case S.member x (sBoundVars s) of
-    False -> put (s { sVarList = (x, Left e):(sVarList s),
+    False -> put (s { sVarList = (DeclExpr x e):(sVarList s),
                       sBoundVars = S.insert x (sBoundVars s) })
     True -> fail $ printf "%s is declared multiple times"
+
+
+bindField :: String
+          -> String
+          -> Expression SourcePos
+          -> Locals ()
+bindField brand field e = do
+  s <- get
+  put $ s { sVarList = (DeclField brand field e):(sVarList s) }
 
 
 bindTVar :: String -> Locals ()
@@ -100,13 +117,13 @@ stmt s = case s of
   ThrowStmt _ _ -> return ()
   ReturnStmt _ _ -> return ()
   VarDeclStmt _ decls -> mapM_ varDecl decls
+  ExternalFieldStmt _ (Id _ brand) (Id _ field) e ->
+    bindField brand field e
 
 
 localVars :: [String] -- ^ function arguments
           -> Statement SourcePos
-          -> Either String
-                    ([(String, Either (Expression SourcePos) Type)],
-                     [String])
+          -> Either String ([LocalDecl], [String])
 localVars binds s =
   case runState (runErrorT (stmt s)) (S [] S.empty (S.fromList binds)) of
     (Left err, _) -> Left err

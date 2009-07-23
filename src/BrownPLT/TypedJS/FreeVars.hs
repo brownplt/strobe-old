@@ -127,6 +127,8 @@ stmt s = case s of
   ThrowStmt _ e -> expr e
   ReturnStmt _ me -> maybe empty expr me
   VarDeclStmt _ decls -> unions $ map varDecl decls
+  ExternalFieldStmt _ brand _ e -> unions [ref brand, expr e]
+  
 
 
 -- |The statically-determinate lexical structure of a JavaScript program.

@@ -1,6 +1,8 @@
 Typed JavaScript
 ================
 
+Copyright (c) 2009 Claudiu Saftoiu and Arjun Guha.
+All Rights Reserved.
 
 Coding Guidelines
 -----------------
@@ -17,11 +19,11 @@ Building and Testing
 
 > ./Setup.hs configure --user && ./Setup.hs build
 
-The command above builds the system in ./dist, configured to install to 
-$HOME/.cabal by default.  However, there is no need to install the typechecker.
-You can develop and test it in-place.
+Builds the system in ./dist, configured to install to $HOME/.cabal by default.
+However, there is no need to install the typechecker.  You can develop and test
+it in-place.
 
-> ./Setup.hs test
+> ./test
 
 This runs the test suite in-place.  You can add tests and re-run just this
 command.  However, if you modify the type-checker, you will need to rebuild.

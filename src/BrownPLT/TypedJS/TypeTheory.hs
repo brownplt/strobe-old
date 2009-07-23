@@ -22,12 +22,16 @@ module BrownPLT.TypedJS.TypeTheory
 	, runtime
   -- * Utilities
   , fieldType
+  , overrideFields
+  , intersectBrand
+  , brandSugar
   ) where
 
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.TypeDefinitions
 import qualified Data.Set as S
 import BrownPLT.TypedJS.Infrastructure
+import BrownPLT.TypedJS.PrettyPrint (renderType)
 
 
 undefType = TApp "Undefined" []
@@ -345,3 +349,44 @@ fieldType name ((name', ro, ty):rest)
   | name == name' = Just (ty, ro)
   | name' > name = Nothing
   | otherwise = fieldType name rest
+
+
+overrideFields :: [Field] -> [Field] -> [Field]
+overrideFields [] ys = ys
+overrideFields xs [] = xs
+overrideFields xs@((n1, ro1, ty1):xs') ys@((n2, ro2, ty2):ys')
+  | n1 < n2 = (n1, ro1, ty1):(overrideFields xs' ys)
+  | n1 == n2 = (n1, ro1, ty1):(overrideFields xs' ys')
+  | otherwise = (n2, ro2, ty2):(overrideFields xs ys')
+
+
+-- TODO: This is guesswork.
+intersectBrand :: EnvM m
+               => String
+               -> m [Field]
+intersectBrand brand = do
+  tys <- getBrandPath brand
+  let f (TObject _ fs) = fs
+      f t = error $ printf
+              "intersectBrand: expected TObject in brand path, got %s"
+              (renderType t)
+  return (foldr overrideFields [] (map f tys))
+
+
+sugarTObject :: EnvM m
+             => Type
+             -> m Type
+sugarTObject (TObject brand fields) = do
+  fields' <- intersectBrand brand
+  return (TObject brand (overrideFields fields fields'))
+sugarTObject ty = return ty
+
+
+-- |Syntactic sugar for brands.  Theoretically, all the fields in an object
+-- must be enumerated.  However, when a function is declared or a variable's
+-- type is written, we fill in the fields that already exist in the brand
+-- store.
+brandSugar :: EnvM m
+           => Type
+           -> m Type
+brandSugar ty = everywhereM (mkM sugarTObject) ty

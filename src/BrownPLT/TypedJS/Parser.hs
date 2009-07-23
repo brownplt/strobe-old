@@ -52,14 +52,6 @@ type ToplevelParser state = CharParser state ParsedToplevel
 identifier =
   liftM2 Id getPosition Lexer.identifier
 
-{- typeConstraint ::= identifier <: type
-                    | ( type ) <: type
-
-   The obvious production, type <: type, conflicts with const<type [,*]> and is
-   not LL-parsable.
- -}
-
-
 {- The syntax for types is:
 
  type ::= identifier
@@ -76,6 +68,7 @@ identifier =
         | rec identifier . type
         | ( type )
         | identifier:{ [readonly] id: type' [,*] }
+        | identifier: ; object without additional field constraints
         | { [readonly] id: type' [,*] } ; implicitly branded Object
 
 Disambiguation:
@@ -97,6 +90,7 @@ Disambiguation:
  type'' ::= identifier
           | ( type )
           | identifier:{ [readonly] id: type' [,*] }
+          | identifier:
           | { [readonly] id: type' [,*] } ; implicitly branded Object
           | constr '[' type [,*] ']'
           | 'literal
@@ -163,9 +157,11 @@ type_'' = do
         return (TApp constr args)
   let brandedObject brand = do
         colon
-        fields <- braces (field `sepBy` comma)
-        fields <- noDupFields fields
-        return (TObject brand fields)
+        let withFields = do
+              fields <- braces (field `sepBy` comma)
+              fields <- noDupFields fields
+              return (TObject brand fields)
+        withFields <|> (return $ TObject brand [])
   -- If the first letter is upper-case, an unapplied identifier is a nullary
   -- type constructor.  If it is lower-case, it is a free type variable.
   -- Therefore, basic types such as integers, booleans, etc. must be "Int",
@@ -201,7 +197,22 @@ parseMaybeType = do
   (do t <- parseType
       return (Just t)) <|> (return Nothing)
 
---{{{ Statements
+-- ----------------------------------------------------------------------------
+-- Statements
+
+externalFieldStmt :: StatementParser st
+externalFieldStmt = do
+  p <- getPosition
+  -- avoid ambiguity with ExprStmt.
+  brand <- try $ do brand <- identifier
+                    reservedOp "."
+                    reserved "prototype"
+                    return brand
+  reservedOp "."
+  field <- identifier
+  reservedOp "="
+  e <- expr 
+  return (ExternalFieldStmt p brand field e)
 
 -- Keep in mind that Token.reserved parsers (exported from the lexer) do not
 -- consume any input on failure.  Note that all statements (expect for labelled
@@ -466,9 +477,11 @@ parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt
   <|> varDeclStmt  <|> parseFunctionStmt
   -- added for tJS
   -- <|> parseConstructorStmt 
-  
-  -- labelled, expression and the error message always go last, in this order
-  <|> parseLabelledStmt <|> parseExpressionStmt <?> "statement"
+  -- order matters to handle ambiguity
+  <|> externalFieldStmt
+  <|> parseLabelledStmt
+  <|> parseExpressionStmt
+  <?> "statement"
 
 --}}}
 
@@ -886,7 +899,11 @@ assignExpr = do
         return (AssignExpr p op lhs rhs)
   assign <|> (return lhs)
 
-  
+
+expr :: ExpressionParser st
+expr = assignExpr  
+
+
 parseExpression:: ExpressionParser st
 parseExpression = assignExpr
 
