@@ -1,0 +1,4 @@
+#!/bin/bash
+TypedJavaScript_datadir=./data 
+
+find ./tests/type-check -name "*.js" | xargs ./dist/build/tjs/tjs --testing

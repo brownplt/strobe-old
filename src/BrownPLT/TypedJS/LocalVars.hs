@@ -13,9 +13,9 @@ import Control.Monad.State
 import Control.Monad.Error
 
 data S =  S {
-  sVars :: Map String (Either (Expression SourcePos) Type),
+  sVarList :: [(String, Either (Expression SourcePos) Type)],
   sTVars :: Set String,
-  sArgs :: Set String
+  sBoundVars :: Set String
 }
 
 
@@ -27,11 +27,10 @@ bind :: String
      -> Locals ()
 bind x t = do
   s <- get
-  case S.member x (sArgs s) of
-    False -> case M.lookup x (sVars s) of
-      Nothing -> put (s { sVars = M.insert x (Right t) (sVars s) })
-      Just _ -> fail $ printf "%s is declared multiple times" x
-    True -> fail $ printf "%s is declared as a local variable and an argument" x
+  case S.member x (sBoundVars s) of
+    False -> put (s { sVarList = (x, Right t):(sVarList s),
+                      sBoundVars = S.insert x (sBoundVars s) })
+    True -> fail $ printf "%s is declared multiple times"
 
 
 bindExpr :: String
@@ -39,11 +38,10 @@ bindExpr :: String
          -> Locals ()
 bindExpr x e = do
   s <- get
-  case S.member x (sArgs s) of
-    False -> case M.lookup x (sVars s) of
-      Nothing -> put (s { sVars = M.insert x (Left e) (sVars s) })
-      Just _ -> fail $ printf "%s is declared multiple times" x
-    True -> fail $ printf "%s is declared as a local variable and an argument" x
+  case S.member x (sBoundVars s) of
+    False -> put (s { sVarList = (x, Left e):(sVarList s),
+                      sBoundVars = S.insert x (sBoundVars s) })
+    True -> fail $ printf "%s is declared multiple times"
 
 
 bindTVar :: String -> Locals ()
@@ -110,6 +108,6 @@ localVars :: [String] -- ^ function arguments
                     ([(String, Either (Expression SourcePos) Type)],
                      [String])
 localVars binds s =
-  case runState (runErrorT (stmt s)) (S M.empty S.empty (S.fromList binds)) of
+  case runState (runErrorT (stmt s)) (S [] S.empty (S.fromList binds)) of
     (Left err, _) -> Left err
-    (Right (), S vars tvars _) -> Right (M.toList vars, S.toList tvars)
+    (Right (), S vars tvars _) -> Right (reverse vars, S.toList tvars)

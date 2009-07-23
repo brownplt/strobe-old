@@ -1,3 +1,0 @@
-#!/bin/bash
-
-TypedJavaScript_datadir=./data ./dist/build/typedjs-tests/typedjs-tests $@

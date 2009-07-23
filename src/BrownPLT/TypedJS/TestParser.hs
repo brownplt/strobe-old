@@ -7,6 +7,7 @@
 --            | [fail] type <: type
 --
 -- expression ::= fail expr
+--              | succeed expr
 --              | expr :: type
 module BrownPLT.TypedJS.TestParser
   ( parseTestFile
@@ -80,8 +81,8 @@ relation = do
   eq <|> sub
 
 
-expression :: CharParser st Test
-expression = do
+expression' :: CharParser st Test
+expression' = do
   p <- getPosition
   isFail <- option False (reserved "fail" >> return True)
   e <- Parser.parseExpression
@@ -97,6 +98,19 @@ expression = do
       Left err -> return ()
       Right s -> assertFailure $ printf 
         "%s: expected ill-typed expression; has type %s" (show p) (renderType s)
+
+
+expressionSucceed :: CharParser st Test
+expressionSucceed = do
+  p <- getPosition
+  reserved "succeed"
+  e <- Parser.parseExpression
+  return $ TestCase $ catchException p $ case typeCheckExpr e of
+    Right _ -> return ()
+    Left err -> assertFailure (show p ++ ": " ++ err)
+
+
+expression = expressionSucceed <|> expression'
 
 
 testFile :: CharParser st Test

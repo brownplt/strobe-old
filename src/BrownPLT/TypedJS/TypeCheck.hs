@@ -47,13 +47,6 @@ ok :: TypeCheck ()
 ok = return ()
 
 
-fieldType :: String -> [Field] -> Maybe (Bool, Type)
-fieldType _ [] = Nothing
-fieldType x ((y, ro, t):fs) | x == y = Just (ro, t)
-                            | x > y = fieldType x fs
-                            | otherwise = Nothing
-
-
 -- |Calculates the type of a local variable that does not have a type
 -- type annotation.  Extends the environment with the type of the variable.
 -- Expects the environment to contain the preceding local variables.
@@ -142,11 +135,12 @@ lvalue lv = case lv of
     tObj <- expr obj
     case tObj of
       TObject brand fields -> case fieldType f fields of
-        Just (False, s)  -> return s
-        Just (True, s) -> do
+        Just (s, False)  -> return s
+        Just (s, True) -> do
           fatalTypeError p $ printf "the field %s is readonly" f
         Nothing -> do
-          fatalTypeError p $ printf "object does not have the field %s" f
+          fatalTypeError p $ printf "object %s does not have the field %s" 
+                                    (renderType tObj) f
       otherwise -> do
         fatalTypeError p $ printf "expected object"
 
@@ -162,6 +156,15 @@ expr e = case e of
   NullLit _ -> fail "NullLit NYI"
   ThisRef p -> lookupEnv p "this"
   VarRef p (Id _ x) -> lookupEnv p x
+  DotRef p e (Id _ x) -> do
+    t <- expr e
+    case t of
+      TObject _ fields -> case fieldType x fields of
+        Just (ty, _) -> return ty
+        Nothing -> fatalTypeError p $ printf
+          "object %s does not have the field %s" (renderType t) x
+      otherwise -> fatalTypeError p $ printf "expected object, received %s"
+                     (renderType t)
   PrefixExpr p op e -> do
     t <- expr e
     isDoubleSubtype <- isSubtype t doubleType
@@ -248,8 +251,11 @@ expr e = case e of
   ListExpr p es -> 
     foldM (\_ e -> expr e) undefined es -- type of the last expression
   ObjectLit p fields -> do
+    let names = map (\(x, _, _) -> x) fields
+    -- Confirmed in Rhino that this is not a syntax error in JavaScript.
+    unless (length fields == length (nub names)) $
+      fatalTypeError p "duplicate field names"
     ts <- mapM field fields
-    -- TODO: ensure fields are unique
     canonize (TObject "Object" ts)
   CallExpr p f ts args -> do
     f_t <- expr f
@@ -311,10 +317,6 @@ expr e = case e of
           fatalTypeError p $ "PackExpr type error 1"
     otherwise -> fatalTypeError p $ printf
       "expected existential type to pack, received %s" (renderType t)
-
-       
-
-
 
 
 stmt :: Maybe Type -- ^ return type

@@ -15,9 +15,13 @@ module BrownPLT.TypedJS.TypeTheory
   , (-=-)
   , isSubtype
   , canonize
-  , runtime
-  , static
   , canonicalUnion 
+  -- * Interface to dataflow analysis
+  -- $runtime
+	, static
+	, runtime
+  -- * Utilities
+  , fieldType
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -204,9 +208,9 @@ areFieldsSubtypes [] _ = return False
 areFieldsSubtypes ((x1, ro1, t1):fs1) ((x2, ro2, t2):fs2)
   | x1 < x2 = areFieldsSubtypes fs1 ((x2, ro2, t2):fs2)
   | x1 == x2 = case (ro1, ro2) of
-      (_, True) -> isSubtype t1 t2 +++ areFieldsSubtypes fs1 fs2
+      (True, False) -> return False
       (False, False) -> return (t1 == t2) +++ areFieldsSubtypes fs1 fs2
-      otherwise -> return False
+      (_, True) -> isSubtype t1 t2 +++ areFieldsSubtypes fs1 fs2
   | otherwise = return False
 
 
@@ -245,6 +249,11 @@ isSubtype s t = case (s, t) of
     bindTVar x $ isSubtype (openType (TId x) t1) (openType (TId x) t2)
   otherwise -> 
     return False
+
+
+-- ----------------------------------------------------------------------------
+-- $runtime
+-- Interface between the type system and the dataflow analysis
 
 
 injRT :: RuntimeType -> RuntimeTypeInfo
@@ -322,3 +331,17 @@ static rt st = case st of
       (Nothing, Just u2) -> return (Just u2)
       (Nothing, Nothing) -> return Nothing
   otherwise -> return Nothing
+
+
+-- ----------------------------------------------------------------------------
+-- Utilities
+
+
+fieldType :: String
+          -> [Field]
+          -> Maybe (Type, Bool) -- ^flag is true if it is immutable
+fieldType name [] = Nothing
+fieldType name ((name', ro, ty):rest)
+  | name == name' = Just (ty, ro)
+  | name' > name = Nothing
+  | otherwise = fieldType name rest

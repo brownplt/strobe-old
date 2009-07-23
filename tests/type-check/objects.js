@@ -1,84 +1,91 @@
-{} :: {};
-{x: 5} :: {x :: int};
-{x :: int : 5} :: {x :: int};
-{x :: double : 5} :: {x :: double};
+relations {
+  { z :: String } <: { z :: String };
+  Object:{z :: String } <: Object:{ z :: String };
+  { x :: Int, y :: Bool } <: { x :: Int };
+  { x :: Int, y :: String } = { y :: String, x :: Int };
+  // Fields are mutable by default.
+  fail { x :: { f1 :: Int, f2 :: String } } 
+       <: { x :: { f1 :: Int } };
+  { readonly x :: { f1 :: Int, f2 :: String } } 
+  <: { readonly x :: { f1 :: Int } };
+  fail { readonly x :: { f :: Int } }
+  <: { x :: { f :: Int } };
+  { x :: { f :: Int } }
+  <: { readonly x :: { f :: Int } }
+  
+}
 
-{point :: {x::int,y::int} : {x:5, y:3}} :: {point :: {x::int,y::int}};
-
-//dotrefs
-function (point) :: ({x::int, y::int} -> double) {
-  var sqrt = function(x) :: (double -> double) { return x*x; }; // lol not
-  var magnitude = point.x * point.x + point.y * point.y;
-  return sqrt(magnitude);
-} :: ({x :: int, y :: int} -> double);
-function (point) :: ({x::int, y::int} -> double) {
-  var sqrt :: (double -> double);
-  var magnitude = point.x * point.x + point.y * point.y + point.z * point.z;
-  return sqrt(magnitude);
-} @@ fails;
-
-//more nested objects
-function() :: (->) {
-  var gadget = {
-    debug : { error: function(s) :: (string ->) { return; },
-              trace: function(s) :: (string ->) { return; },
-              warning: function(s) :: (string ->) { return; } },
-    storage : { extract: function(s) :: (string -> string) { return s; },
-                openText: function(s) :: (string -> string) { return s; } } };
-
-  var debugfunc = gadget.debug.warning;
-  var extractfunc = gadget.storage.extract;
-  //disclaimer: the following function calls are meaningless
-  debugfunc(extractfunc("NUMBER_PROCESSORS"));
-  debugfunc("The number of RAMs is: " + extractfunc("MEMORY_SIZE"));
-  gadget.debug.warning("You are being warned.");
-  gadget.debug.trace = gadget.debug.error;
-  gadget.debug.trace("This is showing an error, because I messed around with the functions.");
-} :: (->);
+expressions {
+  { } :: {};
+  { x: 5 } :: {x :: Int};
+  { x: 5 } :: {x :: Int};
+  { x: 5.0 } :: {x :: Double};
+  fail { x : 9, x : 10 };
+  
+  { point: { x:5, y: 3} } :: {point :: {x::Int,y::Int}};
 
 
-//TODO: add test cases using toString et. al., once inheritance from base object is done
+  function (point) :: {x::Int, y::Int} -> Double {
+    var sqrt = function(x) :: Double -> Double { return x*x; }; // lol not
+    var magnitude = point.x * point.x + point.y * point.y;
+    return sqrt(magnitude);
+  } :: {x :: Int, y :: Int} -> Double;
 
-//TODO: allow number properties?
-{0: '3', 4: 4} @@ succeeds; //there is no way to write out this type
 
-//duplicates in literals:
-{z: 5, 5: 6, 5: 9} @@ fails;
+  fail function (pt) :: ({x::Int, y::Int} -> Double) {
+    var sqrt = function(x) :: Double -> Double { return x*x; }; // lol not
+    var magnitude = pt.x * pt.x + pt.y * pt.y + pt.z * pt.z; // z does not exist
+    return sqrt(magnitude);
+  };
 
-//duplicates in types:
-// For the moment, this has turned into a parse error
-// {point :: {x::int,x::int} : {x:5}} @@ fails;
+  function() :: -> Undefined {
+    var gadget = {
+      debug : { error: function(s) :: String -> Undefined { return; },
+                trace: function(s) :: (String -> Undefined) { return; },
+                warning: function(s) :: (String -> Undefined) { return; } },
+      storage : { extract: function(s) :: (String -> String) { return s; },
+                  openText: function(s) :: (String -> String) { return s; } } };
+  
+    var debugfunc = gadget.debug.warning;
+    var extractfunc = gadget.storage.extract;
+    debugfunc(extractfunc("NUMBER_PROCESSORS"));
+    debugfunc("The number of RAMs is: " + extractfunc("MEMORY_SIZE"));
+    gadget.debug.warning("You are being warned.");
+    gadget.debug.trace = gadget.debug.error;
+    gadget.debug.trace("This is showing an error, because I messed around with the functions.");
+  } :: -> Undefined
 
-/*function() :: (->) {
-  var z :: {name :: int, name :: string, name :: double};
-  //z = 4;
-} @@ fails;
-function() :: (->) {
-  var z :: {name :: int, name :: int};
-} @@ fails;
-*/
+}
 
-//read-only fieldses
-function (obj) :: ({readonly x :: int} -> int) {
-  return obj.x;
-} :: ({readonly x :: int} -> int);
-function (obj) :: ({readonly x :: int} -> int) {
-  obj.x = 3;
-  return obj.x;
-} @@ fails;
+expressions {
+  
+  function (obj) :: {readonly x :: Int} -> Int {
+    return obj.x;
+  } :: {readonly x :: Int} -> Int;
 
-//write-only fields
-function (obj) :: ({writeonly x :: int} -> int) {
-  return obj.x;
-} @@ fails;
-function (obj) :: ({writeonly x :: int} -> int) {
-  obj.x = 3;
-  return obj.x;
-} @@ fails;
-//ANF fail:
-function (obj) :: ({writeonly x :: int} -> int) {
-  obj.x = 3;
-  return 3;
-} :: ({writeonly x :: int} -> int);
+  fail function (obj) :: {readonly x :: Int} -> Int {
+    obj.x = 3;
+    return obj.x;
+  };
+  
+  function (obj) :: { x :: Int } -> Int {
+    obj.x  = 900;
+    return obj.x;
+  } :: { x :: Int} -> Int
+  
+}
 
-//see sub-typing for how these sub-type w/ each other.
+expressions {
+
+  succeed function (b,a) :: (Int -> {x::String}), (Int -> { }) -> Undefined
+          { a = b; };
+
+  fail function (b,a) :: (Int -> {}), (Int -> {x::String}) -> Undefined
+  { a = b; };
+
+  succeed function (b,a) :: ((Double -> Int), (Int -> Int) -> Undefined) 
+  { a = b; };
+  
+  fail function (b,a) :: ((Int -> Int), (Double -> Int) -> Undefined)
+  { a = b; }
+}

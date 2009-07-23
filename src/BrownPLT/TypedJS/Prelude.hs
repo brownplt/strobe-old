@@ -46,7 +46,6 @@ trace :: String -> a -> a
 trace s r = (unsafePerformIO $ putStrLn s) `seq` r
 
 
--- |'initialPos ""'
 noPos :: SourcePos
 noPos = initialPos ""
 

@@ -147,16 +147,13 @@ data Statement a
       (Maybe (Statement a)) {-finally-}
   | ThrowStmt a (Expression a)
   | ReturnStmt a (Maybe (Expression a))
-  -- TODO: we HAVE to support with statements looolololooolllloll!!!11one
-  -- | WithStmt a (Expression a) (Statement a)
   | VarDeclStmt a [VarDecl a]
-  -- FunctionStatements turn into expressions with an assignment. 
-  -- | FunctionStmt a (Id a) {-name-} [(Id a, Type)] {-args-} (Maybe Type) {-ret type-}  (Statement a) {-body-}
-{-  | ConstructorStmt a (Id a) {-name-} 
-                      [(Id a, Type)] {- required args -}
-                      [(Id a, Type)] {- optional args -}
-                      (Maybe (Id a, Type)) {- optional var arg -}
-                      (Statement a) {-body-} -}
+  -- |@ConstructorStmt loc brand body@
+  | ConstructorStmt a (Id a) (Expression a)
+  -- |@ExternalFieldStmt loc brand field expr@
+  -- corresponds to
+  -- @brand.prototype.field = expr@
+  | ExternalFieldStmt a (Id a) (Id a) (Expression a)
   deriving (Show, Eq, Ord, Data, Typeable)  
   
 showSp :: SourcePos -> String

@@ -183,6 +183,7 @@ field :: CharParser st (String, Bool, Type)
 field = do
   ro <- (reserved "readonly" >> return True) <|> (return False)
   name <- Lexer.identifier
+  reservedOp "::"
   t <- type_'
   return (name, ro, t)
  
@@ -615,10 +616,9 @@ parseObjectLit =
                        (liftM (\(StringLit p s) -> (p,s)) parseStringLit))
                 <|> (liftM2 PropId getPosition identifier)
                 <|> (liftM2 PropNum getPosition (do x<-decimal; whiteSpace; return x))
-        typeannot <- parseMaybeType
         colon
         val <- assignExpr
-        return (name,typeannot,val)
+        return (name, Nothing, val)
     in do pos <- getPosition
           props <- braces (parseProp `sepEndBy` comma) <?> "object literal"
           return $ ObjectLit pos props
