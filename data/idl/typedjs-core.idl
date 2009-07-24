@@ -16,10 +16,10 @@ interface String {
 //seems silly to re-encode everything in terms
 //of IDLs...
 
-/*
+
 interface Object {
-  attribute function constructor;
   bool hasOwnProperty(in string propname);
   bool isPrototypeOf(in any o);
   bool propertyIsEnumerable(in string propname);
-*/
+};
+

@@ -7,6 +7,15 @@
  * an IDL file for each kind of HTML element.  The following definitions are a
  * concatenation of those files.
  */
+
+interface HTMLElement : Element {
+           attribute  DOMString            id;
+           attribute  DOMString            title;
+           attribute  DOMString            lang;
+           attribute  DOMString            dir;
+           attribute  DOMString            className;
+};
+
 interface HTMLAnchorElement : HTMLElement {
            attribute  DOMString            accessKey;
            attribute  DOMString            charset;
@@ -124,13 +133,6 @@ interface HTMLDocument : Document {
   NodeList                  getElementsByName(in DOMString elementName);
 };
 
-interface HTMLElement : Element {
-           attribute  DOMString            id;
-           attribute  DOMString            title;
-           attribute  DOMString            lang;
-           attribute  DOMString            dir;
-           attribute  DOMString            className;
-};
 
 interface HTMLFieldSetElement : HTMLElement {
   readonly attribute  HTMLFormElement      form;

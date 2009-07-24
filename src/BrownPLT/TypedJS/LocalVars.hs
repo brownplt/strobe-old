@@ -38,7 +38,7 @@ bind x t = do
   case S.member x (sBoundVars s) of
     False -> put (s { sVarList = (DeclType x t):(sVarList s),
                       sBoundVars = S.insert x (sBoundVars s) })
-    True -> fail $ printf "%s is declared multiple times"
+    True -> fail $ printf "%s is declared multiple times" x
 
 
 bindExpr :: String
@@ -49,7 +49,7 @@ bindExpr x e = do
   case S.member x (sBoundVars s) of
     False -> put (s { sVarList = (DeclExpr x e):(sVarList s),
                       sBoundVars = S.insert x (sBoundVars s) })
-    True -> fail $ printf "%s is declared multiple times"
+    True -> fail $ printf "%s is declared multiple times" x
 
 
 bindField :: String

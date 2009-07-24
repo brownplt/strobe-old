@@ -2,7 +2,10 @@ module BrownPLT.TypedJS.Infrastructure
   ( TypeCheck
   , fatalTypeError
   , runTypeCheck
-  , runEnv
+  , runEmptyTypeCheck
+  , getInitialStoreEnv
+  , InitialStoreEnv
+  , runTypeCheckWithoutError
   , BoundVar
   , BoundTVar (..)
   , emptyEnv
@@ -24,6 +27,7 @@ module BrownPLT.TypedJS.Infrastructure
   , getBrandWithParent
   , getBrandPath
   , newRootBrand
+  , newBrand
   , extendBrand
   , isSubbrand
   , tempBrandStore
@@ -38,9 +42,6 @@ import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.PrettyPrint (renderType)
 import qualified Data.Map as M
 
-data S = S {
-  stateErrors :: [(SourcePos, String)]
-}
 
 class (MonadReader Env m, MonadState BrandStore m) => EnvM m
 
@@ -55,13 +56,30 @@ newtype TypeCheck a
             EnvM)
 
 
+data InitialStoreEnv = InitialStoreEnv BrandStore Env
 
-runTypeCheck :: TypeCheck a -> Either String a
-runTypeCheck (TypeCheck m) = 
-  runReader (evalStateT (runErrorT m) emptyBrandStore) emptyEnv 
 
-runEnv :: StateT BrandStore (Reader Env) a -> a
-runEnv m = runReader (evalStateT m emptyBrandStore) emptyEnv
+getInitialStoreEnv :: TypeCheck InitialStoreEnv
+getInitialStoreEnv = do
+  st <- get
+  env <- ask
+  return (InitialStoreEnv st env)
+
+
+runTypeCheck :: InitialStoreEnv -> TypeCheck a -> Either String a
+runTypeCheck (InitialStoreEnv st env) (TypeCheck m) =
+  runReader (evalStateT (runErrorT m) st) env
+
+runEmptyTypeCheck :: TypeCheck a -> Either String a
+runEmptyTypeCheck tc = 
+  runTypeCheck (InitialStoreEnv emptyBrandStore emptyEnv) tc
+
+
+
+runTypeCheckWithoutError :: InitialStoreEnv
+                         -> StateT BrandStore (Reader Env) a -> a
+runTypeCheckWithoutError (InitialStoreEnv st env) m =
+  runReader (evalStateT m st) env
 
 
 fatalTypeError :: SourcePos -> String -> TypeCheck a
@@ -230,6 +248,26 @@ newRootBrand ty@(TObject brand fields) = do
 newRootBrand ty =
   fail $ printf "newRootBrand: expected (TObject ...), received %s" 
                 (renderType ty)
+
+-- |Assumes that the subbrand is a structural subtype of the parent.
+-- Assumes that the parent already exists.
+newBrand :: MonadState BrandStore m
+         => Type -- ^expected @TObject@
+         -> String -- ^parent
+         -> m ()
+newBrand ty@(TObject brand fields) parent = do
+  s <- get
+  let dict = brandStoreDict s
+  case M.lookup brand dict of
+    Nothing -> 
+      put $ s { brandStoreDict = M.insert brand (ty, Just parent) dict }
+    Just (ty', _) -> 
+      fail $ printf "constructor %s is already defined with the type %s"
+                     brand (renderType ty')
+newBrand ty _ =
+  fail $ printf "newBrand: expected (TObject ...), received %s" 
+                (renderType ty)
+
 
 
 insertField :: String -- ^field name

@@ -24,6 +24,7 @@ import BrownPLT.TypedJS.TypeTheory
 import BrownPLT.TypedJS.Infrastructure
 import BrownPLT.TypedJS.TypeCheck
 import BrownPLT.TypedJS.PrettyPrint
+import BrownPLT.TypedJS.InitialEnvironment
 import Control.Exception as E
 
 
@@ -36,22 +37,24 @@ xor _ _ = False
 catchException :: SourcePos
                -> Assertion
                -> Assertion
-catchException p assert = E.catch assert $ 
-  \(E.ErrorCall e) -> fail $ printf "%s: %s" (show p) e
+catchException p assert =E.catch assert f
+  where f exp = case exp of
+          E.ErrorCall e ->  
+            fail $ printf "uncaught exception at %s: %s" (show p) e
 
 
-testcase :: CharParser st Test
-testcase = relations <|> expressions
+testcase :: InitialStoreEnv -> CharParser st Test
+testcase idl = relations <|> expressions
   where relations = do
           reserved "relations"
-          liftM TestList (braces $ relation `sepBy` semi)
+          liftM TestList (braces $ relation idl `sepBy` semi)
         expressions = do
           reserved "expressions"
-          liftM TestList (braces $ expression `sepBy` semi)
+          liftM TestList (braces $ expression idl `sepBy` semi)
 
 
-relation :: CharParser st Test
-relation = do
+relation :: InitialStoreEnv -> CharParser st Test
+relation init = do
   p <- getPosition
   isFail <- option False (reserved "fail" >> return True)
   t1 <- Parser.parseType'
@@ -62,7 +65,7 @@ relation = do
                   (if isFail then "fail" else "")
                   (renderType t1) (renderType t2)
         return $ TestCase $ catchException p $ do
-          assertBool s $ runEnv $ do
+          assertBool s $ runTypeCheckWithoutError init $ do
             u1 <- canonize t1
             u2 <- canonize t2
             return ((u1 == u2) `xor` isFail)
@@ -73,7 +76,7 @@ relation = do
                   (if isFail then "fail" else "")
                   (renderType t1) (renderType t2)
         return $ TestCase $ catchException p $ do
-          assertBool s $ runEnv $ do
+          assertBool s $ runTypeCheckWithoutError init $ do
             u1 <- canonize t1
             u2 <- canonize t2
             r <- isSubtype u1 u2
@@ -81,8 +84,8 @@ relation = do
   eq <|> sub
 
 
-expression' :: CharParser st Test
-expression' = do
+expression' :: InitialStoreEnv -> CharParser st Test
+expression' idl = do
   p <- getPosition
   isFail <- option False (reserved "fail" >> return True)
   e <- Parser.parseExpression
@@ -90,40 +93,44 @@ expression' = do
     False -> do
       reservedOp "::"
       t <- Parser.parseType'
-      return $ TestCase $ catchException p $ case typeCheckExpr e of
+      return $ TestCase $ catchException p $ case typeCheckExpr idl e of
         -- typeCheckExpr should return the type in canonical form
-        Right s -> assertBool (show p) $ runEnv (canonize t >>= isSubtype s)
-        Left err -> assertFailure (show p ++ ": " ++ err)
-    True -> return $ TestCase $ catchException p $ case typeCheckExpr e of
+        Right s -> do
+          assertBool (show p) $ runTypeCheckWithoutError idl $ do
+            t <- canonize t
+            t <- brandSugar t
+            isSubtype s t
+        Left err -> assertFailure (show p ++ ": expected succeess got, " ++ err)
+    True -> return $ TestCase $ catchException p $ case typeCheckExpr idl e of
       Left err -> return ()
       Right s -> assertFailure $ printf 
         "%s: expected ill-typed expression; has type %s" (show p) (renderType s)
 
 
-expressionSucceed :: CharParser st Test
-expressionSucceed = do
+expressionSucceed :: InitialStoreEnv -> CharParser st Test
+expressionSucceed idl = do
   p <- getPosition
   reserved "succeed"
   e <- Parser.parseExpression
-  return $ TestCase $ catchException p $ case typeCheckExpr e of
+  return $ TestCase $ catchException p $ case typeCheckExpr idl e of
     Right _ -> return ()
     Left err -> assertFailure (show p ++ ": " ++ err)
 
 
-expression = expressionSucceed <|> expression'
+expression idl = expressionSucceed idl <|> expression' idl
 
 
-testFile :: CharParser st Test
-testFile = do
+testFile :: InitialStoreEnv -> CharParser st Test
+testFile idl = do
   whiteSpace
-  ts <- many testcase
+  ts <- many (testcase idl)
   eof
   return (TestList ts)
 
 
-parseTestFile :: SourceName -> IO Test
-parseTestFile path = do
-  r <- parseFromFile testFile path
+parseTestFile :: InitialStoreEnv -> SourceName -> IO Test
+parseTestFile idl path = do
+  r <- parseFromFile (testFile idl) path
   case r of
     Left err -> fail (show err)
     Right t -> return t

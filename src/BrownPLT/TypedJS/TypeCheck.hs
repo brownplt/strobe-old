@@ -126,7 +126,7 @@ numericOp loc e lhs rhs requireInts returnDouble = do
       unless r $
         fatalTypeError loc $ printf 
           "operator expects double/int arguments, given %s and %s" 
-          (renderType lhs) (renderType rhs) (renderExpr e)
+          (renderType lhs) (renderType rhs)
       return result
 
 
@@ -335,11 +335,14 @@ expr e = case e of
                x (renderType s) (show rt)
   PackExpr p e c t -> case t of
     TExists t' -> do
+      t' <- canonize t'
+      t' <- brandSugar t'
       s <- expr e
       case openType c t' == s of
-        True -> return t
+        True -> return (TExists t')
         False -> do
-          fatalTypeError p $ "PackExpr type error 1"
+          fatalTypeError p $ printf "expected %s to have the shape %s"
+            (renderType s) (renderType (openType c t'))
     otherwise -> fatalTypeError p $ printf
       "expected existential type to pack, received %s" (renderType t)
 
@@ -478,25 +481,23 @@ topLevel body = do
 
 withInitEnv :: TypeCheck a -> TypeCheck a
 withInitEnv m = do
-  let objType = TObject "Object" []
-  newRootBrand objType
-  newRootBrand (TObject "Window" []) -- TODO: hack
+  objType <- getBrand "Object"
   extendEnv "Object" objType m
 
 
-typeCheck :: [Statement SourcePos] -> Either String ()
-typeCheck body = case runTypeCheck (withInitEnv $ topLevel body) of
-  Right () -> return ()
-  Left errs -> Left (show errs)
+typeCheck :: InitialStoreEnv -> [Statement SourcePos] -> Either String ()
+typeCheck init body = 
+  case runTypeCheck init (withInitEnv $ topLevel body) of
+    Right () -> return ()
+    Left errs -> Left (show errs)
 
 
-typeCheckExpr :: Expression SourcePos -> Either String Type
-typeCheckExpr e = do
+typeCheckExpr :: InitialStoreEnv -> Expression SourcePos -> Either String Type
+typeCheckExpr init e = do
   [e] <- preTypeCheck ["Object"] [ExprStmt noPos e]
   body <- runtimeAnnotations M.empty e
   case body of
-    ExprStmt _ e -> case runTypeCheck (withInitEnv $ expr e) of
+    ExprStmt _ e -> case runTypeCheck init (withInitEnv $ expr e) of
       Right t -> return t
-      Left errs -> fail (show errs)
+      Left errs -> Left (show errs)
     otherwise -> fail "typeCheckExpr: expression shape error"
-

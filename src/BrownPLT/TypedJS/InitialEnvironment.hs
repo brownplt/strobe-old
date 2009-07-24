@@ -1,7 +1,7 @@
 -- |Uses W3C IDL files to create the initial environment for Typed JavaScript
 -- programs.
 module BrownPLT.TypedJS.InitialEnvironment
-  ( makeInitialEnv
+  ( loadIDLs
   ) where
 
 import Paths_TypedJavaScript
@@ -9,13 +9,16 @@ import System.Directory
 import System.FilePath
 import qualified Data.Map as M
 import qualified BrownPLT.IDL as IDL
-import BrownPLT.IDL.RemoveInheritance
 import BrownPLT.TypedJS.Prelude
-import BrownPLT.TypedJS.Types
-import BrownPLT.TypedJS.Syntax (Type (..), Access(..))
+import BrownPLT.TypedJS.TypeDefinitions
+import BrownPLT.TypedJS.TypeTheory
+import BrownPLT.TypedJS.Infrastructure
 
 
--- |The order in which these files are specified does not matter.
+type IDLs = [IDL.Definition]
+
+
+-- |These files must be in order.
 idlFiles :: [FilePath]
 idlFiles = 
   [ "idl" </> "dom.idl"
@@ -28,11 +31,12 @@ idlFiles =
   , "idl" </> "typedjs-core.idl"
   ]
 
+
 -- |Search for typedef in the DOM IDLs.  We need an entry for each typedef.
 extras :: [(String, Type)]
 extras = 
   [ ("DOMString", stringType)
-  , ("DOMObject", TObject True False [])
+  , ("DOMObject", TObject "DOMObject" [])
   , ("DOMUserData", TAny)
   , ("DOMTimeStamp", intType)
   ]
@@ -43,44 +47,61 @@ parseIDLType t = case t of
   IDL.TInt -> intType
   IDL.TBool -> boolType
   IDL.TVoid -> undefType
-  IDL.TId id -> TEnvId id
+  IDL.TId id -> case lookup id extras of
+    Just t -> t
+    Nothing -> TObject id []
 
 
--- |Assumes all names are unique in the list of members.  This is guaranteed
--- by 'removeInheritance'.
---
--- Silently drops the readonly modifier on attributes.
-objectFromIDL :: String -- ^self id
-              -> [IDL.Definition] -- ^methods, attributes, etc.
-              -> Type -- ^a TObject with slack
-objectFromIDL self members = TObject True False (map field members)
-  where field (IDL.Const t v _) = (v, (parseIDLType t, (True, False)))
-        field (IDL.Attr isReadOnly t v) = (v, (parseIDLType t, 
-                                               (True, True)))
+-- |Assumes all names are unique in the list of members.
+-- Makes methods and constants readonly in the type system.
+fieldsFromIDL :: String -> [IDL.Definition] -> TypeCheck [Field]
+fieldsFromIDL self members = mapM field members
+  where field (IDL.Const t v _) = return (v, True, parseIDLType t)
+        field (IDL.Attr isReadOnly t v) = return (v, isReadOnly, parseIDLType t)
         field (IDL.Method ret v args) = 
-          (v, (TFunc Nothing (this:arguments:formals) rt, 
-               (True, False)))
-            where formals = map parseIDLType (map fst args)
-                  arguments = TSequence formals Nothing
-                  rt = parseIDLType ret
-                  this = TId self
+          return (v, True, 
+                  TArrow (TObject self [])
+                         -- formal arguments are named, so fst
+                         (ArgType (map (parseIDLType.fst) args) Nothing)
+                         (parseIDLType ret))
         field def = 
-          error $ "BrownPLT.TypedJS.InitialEnvironment.objectFromIDL: \
+          fail $ "BrownPLT.TypedJS.InitialEnvironment.objectFromIDL: \
                   \unexpected " ++ show def
 
 
-bindingFromIDL :: IDL.Definition -> (String, Type)
-bindingFromIDL def = case def of
-  IDL.Const t v _ -> (v, parseIDLType t)
-  IDL.Interface v Nothing body -> (v, TRec v (objectFromIDL v body))
-  otherwise -> error $ "BrownPLT.TypedJS.InitialEnvironment.bindingFromIDL: \
-                       \unexpected " ++ show def
+bindingFromIDL :: IDL.Definition 
+               -> TypeCheck a
+               -> TypeCheck a
+bindingFromIDL def cont = case def of
+  IDL.Const t v _ -> extendEnv v (parseIDLType t) cont
+  IDL.Interface v Nothing body -> do
+    fields <- fieldsFromIDL v body
+    newRootBrand (TObject v fields)
+    cont
+  IDL.Interface v (Just parent) body -> do
+    fields <- fieldsFromIDL v body
+    ty <- getBrand parent
+    case ty of
+      (TObject _ fields') -> do
+        newBrand (TObject v (overrideFields fields fields')) parent
+        cont
+      otherwise ->
+        fail $ "bindingFromIDL: getBrand returned " ++ show ty
+  otherwise -> fail $ "bindingFromIDL: unexpected " ++ show def
 
 
-makeInitialEnv :: IO (Map String Type)
-makeInitialEnv = do
+withIDLs :: IDLs
+         -> TypeCheck a
+         -> TypeCheck a
+withIDLs []         cont = cont
+withIDLs (def:defs) cont = bindingFromIDL def (withIDLs defs cont)
+
+
+loadIDLs :: IO InitialStoreEnv
+loadIDLs = do
   dataDir <- getDataDir
   let idlPaths = map (dataDir </>) idlFiles
-  idls <- mapM IDL.parseIDLFromFile idlPaths
-  let idl = removeInheritance (concat idls)
-  return (M.fromList $ (map bindingFromIDL idl) ++ extras)
+  idls <- liftM concat (mapM IDL.parseIDLFromFile idlPaths)
+  case runEmptyTypeCheck (withIDLs idls getInitialStoreEnv) of
+    Left s -> fail $ "error loading IDLs: " ++ s
+    Right st -> return st

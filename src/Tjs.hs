@@ -25,6 +25,7 @@ import Test.HUnit
 import BrownPLT.Testing
 import BrownPLT.TypedJS.TypeCheck
 import BrownPLT.TypedJS.RuntimeAnnotations
+import BrownPLT.TypedJS.InitialEnvironment
 
 pretty :: [ParsedStatement] -> String
 pretty = renderStatements
@@ -69,14 +70,16 @@ typeCheckAction :: Action
 typeCheckAction [] [path] = do
   src <- readFile path
   let (_, script) = parseTypedJavaScript path src
-  case typeCheck script of
+  idl <- loadIDLs
+  case typeCheck idl script of
     Right () -> putStrLn "Type-checking successful."
     Left errs -> putStrLn errs
 typeCheckAction _ _ = fail "invalid command-line arguments"
 
 
 testingAction [] paths = do
-  tests <- mapM parseTestFile paths
+  idl <- loadIDLs
+  tests <- mapM (parseTestFile idl) paths
   runTest (TestList tests)
 testingAction _ _ = fail "invalid command-line arguments"
 
@@ -122,7 +125,7 @@ getAction ((PrintType name):args) = return (RequireInput action, args) where
     (venv, tenv) <- loadCoreEnv M.empty domTypeEnv toplevs
     case M.lookup name tenv of
       Just t -> putStrLn (renderType t)
-      Nothing -> fail $ printf "%s is not a type name" name
+      Nothing -> fail $ "foo"
 -}
 
 main = do
