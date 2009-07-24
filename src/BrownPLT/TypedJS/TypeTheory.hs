@@ -191,17 +191,10 @@ canonize t = case t of
 
 -- |Assumes that the components are already canonized.
 canonicalUnion :: EnvM m => Type -> Type -> m Type
-canonicalUnion t1 t2 = do
-  r <- isSubtype t1 t2
-  case r of
-    True -> return t1
-    False -> do
-      r <- isSubtype t2 t1
-      case r of
-        True -> return t2
-        False -> case t1 < t2 of
-          True -> return (TUnion t1 t2)
-          False -> return (TUnion t2 t1)
+canonicalUnion t1 t2
+  | t1 == t2  = return t1
+  | t1 < t2   = return (TUnion t1 t2)
+  | otherwise = return (TUnion t2 t1)
 
 
 -- Width and subsumption.  'canonize' handles permutations.

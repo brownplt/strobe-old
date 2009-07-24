@@ -9,9 +9,8 @@ relations {
   U(Int, Int) <: Int;
   Int <: Double;
   fail Double <: Int;
-  Int = U(Double, Int); // What?
+  fail Int = U(Double, Int);
   fail Double = U(Double, Int);
-  Int = U(Double, Int);
   Int <: U(Int, String);
   String <: U(Int, String);
   U(Int, String) <: U(Int, String, Bool);
@@ -518,14 +517,14 @@ expressions {
     return y;
   };
   
-  function() :: (-> Undefined) {
+  fail function() :: (-> Undefined) {
     var x :: U(Double, String, Bool) = "hello";
     var y :: String =
       (typeof ((typeof x == "number") ? "x is a number" : x) == "boolean")
         ? "x is a Boolean"
         : x;
   
-  } :: -> Undefined;
+  };
   
   //switch statements:
   function (x) :: (U(String, Bool) -> String) {
