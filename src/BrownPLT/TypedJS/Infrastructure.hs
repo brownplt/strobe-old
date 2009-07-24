@@ -5,6 +5,7 @@ module BrownPLT.TypedJS.Infrastructure
   , runEmptyTypeCheck
   , getInitialStoreEnv
   , InitialStoreEnv
+  , variablesInScope
   , runTypeCheckWithoutError
   , BoundVar
   , BoundTVar (..)
@@ -58,12 +59,21 @@ newtype TypeCheck a
 
 data InitialStoreEnv = InitialStoreEnv BrandStore Env
 
+instance Show InitialStoreEnv where
+  show (InitialStoreEnv (BrandStore brands) env) = 
+    printf "Classes:\n%s\n\nValues:\n%s\n" 
+           (show $ M.keys brands)
+           (show $ M.keys $ eVars env)
+
 
 getInitialStoreEnv :: TypeCheck InitialStoreEnv
 getInitialStoreEnv = do
   st <- get
   env <- ask
   return (InitialStoreEnv st env)
+
+variablesInScope :: InitialStoreEnv -> [String]
+variablesInScope (InitialStoreEnv _ e) = M.keys (eVars e)
 
 
 runTypeCheck :: InitialStoreEnv -> TypeCheck a -> Either String a
@@ -93,7 +103,7 @@ fatalTypeError p msg = fail (printf "%s: %s" (show p) msg)
 type BoundVar = (Type, Int)
 
 
-data BoundTVar = BoundTVar
+data BoundTVar = BoundTVar deriving (Show)
 
 
 data Env = Env {
@@ -101,7 +111,7 @@ data Env = Env {
   eVars :: Map String BoundVar,
   eTVars :: Map String BoundTVar,
   eGen :: Int
-}
+} deriving (Show)
 
 
 emptyEnv  = Env 0 M.empty M.empty 0

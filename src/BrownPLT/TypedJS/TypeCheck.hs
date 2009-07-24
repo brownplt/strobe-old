@@ -12,6 +12,7 @@ import BrownPLT.TypedJS.TypeTheory
 import BrownPLT.TypedJS.PrettyPrint
 import BrownPLT.TypedJS.Syntax
 import qualified Data.Map as M
+import qualified Data.Set as S
 import BrownPLT.TypedJS.PreTypeCheck
 import Control.Monad.Reader
 
@@ -146,13 +147,15 @@ lvalue lv = case lv of
   LDot p obj f -> do
     tObj <- expr obj
     case tObj of
-      TObject brand fields -> case fieldType f fields of
-        Just (s, False)  -> return s
-        Just (s, True) -> do
-          fatalTypeError p $ printf "the field %s is readonly" f
-        Nothing -> do
-          fatalTypeError p $ printf "object %s does not have the field %s" 
-                                    (renderType tObj) f
+      TObject brand fields -> do
+        fields' <- intersectBrand brand
+        case fieldType f (overrideFields fields fields') of
+          Just (s, False)  -> return s
+          Just (s, True) -> do
+            fatalTypeError p $ printf "the field %s is readonly" f
+          Nothing -> do
+            fatalTypeError p $ printf "object %s does not have the field %s" 
+                                      (renderType tObj) f
       otherwise -> do
         fatalTypeError p $ printf "expected object"
 
@@ -325,14 +328,16 @@ expr e = case e of
         fatalTypeError p $ printf "expected a function type, received %s" 
                              (renderType t)
         return t
-  AnnotatedVarRef p rt x -> do
-    s <- lookupEnv p x
-    u <- static rt s
-    case u of
-      Just t -> return t
-      Nothing -> catastrophe p $ 
-        printf "%s :: %s is inconsistent with the runtime type %s" 
-               x (renderType s) (show rt)
+  AnnotatedVarRef p rt x 
+    | S.null rt -> lookupEnv p x -- provably unreachable
+    | otherwise -> do
+        s <- lookupEnv p x
+        u <- static rt s
+        case u of
+          Just t -> return t
+          Nothing -> catastrophe p $ 
+            printf "%s :: %s is inconsistent with the runtime type %s" 
+                   x (renderType s) (show rt)
   PackExpr p e c t -> case t of
     TExists t' -> do
       t' <- canonize t'
@@ -480,9 +485,7 @@ topLevel body = do
 
 
 withInitEnv :: TypeCheck a -> TypeCheck a
-withInitEnv m = do
-  objType <- getBrand "Object"
-  extendEnv "Object" objType m
+withInitEnv m = m
 
 
 typeCheck :: InitialStoreEnv -> [Statement SourcePos] -> Either String ()
@@ -494,7 +497,7 @@ typeCheck init body =
 
 typeCheckExpr :: InitialStoreEnv -> Expression SourcePos -> Either String Type
 typeCheckExpr init e = do
-  [e] <- preTypeCheck ["Object"] [ExprStmt noPos e]
+  [e] <- preTypeCheck (variablesInScope init) [ExprStmt noPos e]
   body <- runtimeAnnotations M.empty e
   case body of
     ExprStmt _ e -> case runTypeCheck init (withInitEnv $ expr e) of

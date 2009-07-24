@@ -951,8 +951,13 @@ expressions {
     else
       return a * 15;
   } :: Int? -> Int;
+
+  succeed function(x) :: Int -> Int {
+    if (typeof x == "number") { return x; }
+    else { return x; }
+  };
   
-  function (a) :: (Int? -> Int) {
+  fail function (a) :: (Int? -> Int) {
     var x :: Int?;
     x = undefined;
     x = 5;
@@ -961,8 +966,8 @@ expressions {
       return 4;
     }
     else
-      return x;
-  } :: Int? -> Int;
+      return x; // this is provably unreachable, assume static type Int?
+  };
   
   function (x) :: (Int? -> Int) {
     if (typeof x == "undefined") {

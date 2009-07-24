@@ -13,13 +13,13 @@ interface String {
   union { Array<string>, undefined } match(in string);
 };*/
 
-//seems silly to re-encode everything in terms
-//of IDLs...
-
-
 interface Object {
   bool hasOwnProperty(in string propname);
   bool isPrototypeOf(in any o);
   bool propertyIsEnumerable(in string propname);
 };
+
+const void undefined = 0;
+
+const HTMLDocument document = 0;
 

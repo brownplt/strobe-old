@@ -39,6 +39,7 @@ data Flag
   | InteractiveTesting
   | Testing
   | Annotated
+  | Env
   deriving (Eq, Ord)
 
 options :: [OptDescr Flag]
@@ -57,6 +58,8 @@ options =
       "reads in multiple test files"
   , Option [] ["annotated"] (NoArg Annotated)
       "prints the program annotated with runtime type information"
+  , Option [] ["environment"] (NoArg Env)
+      "print the initial environment"
   ]
 
 
@@ -75,6 +78,11 @@ typeCheckAction [] [path] = do
     Right () -> putStrLn "Type-checking successful."
     Left errs -> putStrLn errs
 typeCheckAction _ _ = fail "invalid command-line arguments"
+
+
+envAction = do
+  env <- loadIDLs
+  putStrLn (show env)
 
 
 testingAction [] paths = do
@@ -141,6 +149,7 @@ main = do
     (Testing:args) -> testingAction args files
     (ANF:args) -> anfAction args files
     [Annotated] -> annotatedAction files
+    [Env] -> envAction
     [Help] -> do
       putStrLn "Typed JavaScript Compiler"
       putStrLn (usageInfo "Usage: jst [OPTION ...] [file]" options)

@@ -77,14 +77,15 @@ bindingFromIDL def cont = case def of
   IDL.Interface v Nothing body -> do
     fields <- fieldsFromIDL v body
     newRootBrand (TObject v fields)
-    cont
+    extendEnv v (TObject v fields) cont -- TODO: this is a hack
   IDL.Interface v (Just parent) body -> do
     fields <- fieldsFromIDL v body
     ty <- getBrand parent
     case ty of
       (TObject _ fields') -> do
-        newBrand (TObject v (overrideFields fields fields')) parent
-        cont
+        let ty' = TObject v (overrideFields fields fields')
+        newBrand ty' parent
+        extendEnv v ty' cont
       otherwise ->
         fail $ "bindingFromIDL: getBrand returned " ++ show ty
   otherwise -> fail $ "bindingFromIDL: unexpected " ++ show def
