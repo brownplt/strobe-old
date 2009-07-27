@@ -15,6 +15,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import BrownPLT.TypedJS.PreTypeCheck
 import Control.Monad.Reader
+import Control.Monad.Error
 
 
 runtimeEnv :: TypeCheck (Map String RuntimeTypeInfo)
@@ -61,11 +62,10 @@ lookupId p x = do
 
 desugarType :: SourcePos -> Type -> TypeCheck Type
 desugarType p ty = do
-  r <- isWfType ty
+  r <- runErrorT (isWfType ty)
   case r of
-    True ->  canonize ty >>= brandSugar
-    False -> fatalTypeError p $ printf
-      "ill-formed type %s" (renderType ty)
+    Right () ->  canonize ty >>= brandSugar
+    Left msg -> fatalTypeError p $ printf "%s in type %s" msg (renderType ty)
 
 
 -- |Calculates the type of a local variable that does not have a type
@@ -354,17 +354,18 @@ expr e = case e of
           Nothing -> catastrophe p $ 
             printf "%s :: %s is inconsistent with the runtime type %s" 
                    x (renderType s) (show rt)
-  PackExpr p e c t -> case t of
-    TExists t' -> do
-      t' <- desugarType p t'
-      s <- expr e
-      case openType c t' == s of
-        True -> return (TExists t')
-        False -> do
-          fatalTypeError p $ printf "expected %s to have the shape %s"
-            (renderType s) (renderType (openType c t'))
-    otherwise -> fatalTypeError p $ printf
-      "expected existential type to pack, received %s" (renderType t)
+  PackExpr p e c t -> do
+    t <- desugarType p t
+    case t of
+      TExists t' -> do
+        s <- expr e
+        case openType c t' == s of
+          True -> return (TExists t')
+          False -> do
+            fatalTypeError p $ printf "expected %s to have the shape %s"
+              (renderType s) (renderType (openType c t'))
+      otherwise -> fatalTypeError p $ printf
+        "expected existential type to pack, received %s" (renderType t)
   TyAppExpr p e t -> do
     t <- desugarType p t
     s <- expr e

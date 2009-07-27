@@ -57,6 +57,7 @@ type_ :: Type -> Doc
 type_ t = case t of
   TArguments at -> argType at
   TArrow this at r -> argType at <+> text "->" <+> type_ r
+  TApp s [] -> text s
   TApp s ts -> text s <> text "<" <> commas (map type_ ts) <> text ">"
   TAny -> text "any"
   TObject "Object" fields -> braces (nest 2 (commas (map field fields)))

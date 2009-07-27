@@ -14,9 +14,9 @@ interface String {
 };*/
 
 interface Object {
-  bool hasOwnProperty(in string propname);
-  bool isPrototypeOf(in any o);
-  bool propertyIsEnumerable(in string propname);
+  boolean hasOwnProperty(in DOMString propname);
+//   boolean isPrototypeOf(in any o);
+  boolean propertyIsEnumerable(in DOMString propname);
 };
 
 const void undefined = 0;

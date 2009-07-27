@@ -34,6 +34,7 @@ import BrownPLT.TypedJS.TypeDefinitions
 import qualified Data.Set as S
 import BrownPLT.TypedJS.Infrastructure
 import BrownPLT.TypedJS.PrettyPrint (renderType)
+import Control.Monad.Error
 
 
 undefType = TApp "Undefined" []
@@ -149,14 +150,6 @@ m1 -=- m2 = do
     False -> m2
 
 
-areSubtypes :: EnvM m
-            => [Type]
-            -> [Type]
-            -> m Bool
-areSubtypes [] [] = return True
-areSubtypes (s:ss) (t:ts) = isSubtype s t +++ areSubtypes ss ts
-areSubtypes _ _ = return False
-
 
 canonizeArgType :: EnvM m => ArgType -> m ArgType
 canonizeArgType (ArgType args Nothing) = do
@@ -204,6 +197,55 @@ canonicalUnion t1 t2
   | otherwise = return (TUnion t2 t1)
 
 
+
+
+isWfType :: EnvM m
+         => Type
+         -> ErrorT String m ()
+isWfType ty = case ty of
+  TAny -> return ()
+  TApp c args -> mapM_ isWfType args
+  TArguments at ->  isWfArgType at
+  TArrow this arg r -> do
+    isWfType this
+    isWfArgType arg
+    isWfType r
+  TUnion t1 t2 -> do
+    isWfType t1
+    isWfType t2
+  TObject brand fields -> do
+    r <- isBrand brand 
+    case r of
+      True -> mapM_ isWfField fields
+        where isWfField (x, ro, t) = isWfType t
+      False -> fail $ printf "the brand %s is undefined" brand
+  TId x -> do
+    tv <- lookupTVar x
+    case tv of
+      Just BoundTVar -> return ()
+      Nothing -> fail $ printf "the type variable %s is unbound" x
+  TIx x -> fail "the type is not locally closed"
+  TExists u -> freshTVar $ \x -> bindTVar x $ isWfType (openType (TId x) u)
+  TForall u -> freshTVar $ \x -> bindTVar x $ isWfType (openType (TId x) u)
+  TNamedForall x u -> bindTVar x $ isWfType u
+
+
+isWfArgType :: EnvM m => ArgType -> ErrorT String m ()
+isWfArgType (ArgType args Nothing) = mapM_ isWfType args
+isWfArgType (ArgType args (Just opt)) = do
+  mapM_ isWfType args
+  isWfType opt
+
+
+areSubtypes :: EnvM m
+            => [Type]
+            -> [Type]
+            -> m Bool
+areSubtypes [] [] = return True
+areSubtypes (s:ss) (t:ts) = isSubtype s t +++ areSubtypes ss ts
+areSubtypes _ _ = return False
+
+
 -- Width and subsumption.  'canonize' handles permutations.
 areFieldsSubtypes :: EnvM m
                   => [Field] -> [Field] -> m Bool
@@ -213,38 +255,10 @@ areFieldsSubtypes ((x1, ro1, t1):fs1) ((x2, ro2, t2):fs2)
   | x1 < x2 = areFieldsSubtypes fs1 ((x2, ro2, t2):fs2)
   | x1 == x2 = case (ro1, ro2) of
       (True, False) -> return False
-      (False, False) -> return (t1 == t2) +++ areFieldsSubtypes fs1 fs2
+      (False, False) -> 
+        isSubtype t1 t2 +++ isSubtype t2 t1 +++ areFieldsSubtypes fs1 fs2
       (_, True) -> isSubtype t1 t2 +++ areFieldsSubtypes fs1 fs2
   | otherwise = return False
-
-
-isWfType :: EnvM m
-         => Type
-         -> m Bool
-isWfType ty = case ty of
-  TAny -> return True
-  TApp c args -> liftM and (mapM isWfType args)
-  TArguments at ->  isWfArgType at
-  TArrow this arg r -> isWfType this +++ isWfArgType arg +++ isWfType r
-  TUnion t1 t2 -> isWfType t1 +++ isWfType t2
-  TObject brand fields -> isBrand brand +++ liftM and (mapM isWfField fields)
-    where isWfField (x, ro, t) = isWfType t
-  TId x -> do
-    tv <- lookupTVar x
-    case tv of
-      Just BoundTVar -> return True
-      Nothing -> return False
-  TIx x -> return False
-  TExists u -> freshTVar $ \x -> bindTVar x $ isWfType (openType (TId x) u)
-  TForall u -> freshTVar $ \x -> bindTVar x $ isWfType (openType (TId x) u)
-  TNamedForall x u -> bindTVar x $ isWfType u
-
-
-isWfArgType :: EnvM m => ArgType -> m Bool
-isWfArgType (ArgType args Nothing) =
-  liftM and (mapM isWfType args)
-isWfArgType (ArgType args (Just opt)) =
-  liftM and (mapM isWfType args) +++ isWfType opt
 
 
 -- |Assumes the arguments are in canonical forms.
@@ -264,9 +278,9 @@ isSubtype s t = case (s, t) of
     sub <- isSubbrand brand1 brand2
     case sub of
       True -> do
-        fs1' <- intersectBrand brand1
-        fs2' <- intersectBrand brand2
-        areFieldsSubtypes (overrideFields fs1 fs1') (overrideFields fs2 fs2')
+        fs1' <- liftM (overrideFields fs1) (intersectBrand brand1)
+        fs2' <- liftM (overrideFields fs2) (intersectBrand brand2)
+        areFieldsSubtypes fs1' fs2' 
       False -> return False
   (TApp c1 args1, TApp c2 args2) -> case c1 == c2 of
     True -> areSubtypes args1 args2
@@ -274,7 +288,7 @@ isSubtype s t = case (s, t) of
   (TArguments (ArgType args1 optArg1), TArguments (ArgType args2 optArg2)) ->
     areSubtypes args1 args2 -- TODO: arity, blah blah blah
   (TArrow this1 args1 r1, TArrow this2 args2 r2) ->
-    isSubtype this2 this1 +++
+    -- isSubtype this2 this1 +++
     isSubtype (TArguments args2) (TArguments args1) +++
     isSubtype r1 r2
   (TUnion s1 s2, _) -> 

@@ -96,10 +96,15 @@ expression' idl = do
       return $ TestCase $ catchException p $ case typeCheckExpr idl e of
         -- typeCheckExpr should return the type in canonical form
         Right s -> do
-          assertBool (show p) $ runTypeCheckWithoutError idl $ do
-            t <- canonize t
-            t <- brandSugar t
-            isSubtype s t
+          let f = do
+                t <- canonize t
+                t <- brandSugar t
+                isSt <- isSubtype s t
+                return (isSt, t)
+          let (r, t) = runTypeCheckWithoutError idl f
+          let msg = printf "%s: expected subtype of\n%s\n, got\n%s"
+                      (show p) (renderType t) (renderType s)
+          assertBool msg r
         Left err -> assertFailure (show p ++ ": expected succeess got, " ++ err)
     True -> return $ TestCase $ catchException p $ case typeCheckExpr idl e of
       Left err -> return ()

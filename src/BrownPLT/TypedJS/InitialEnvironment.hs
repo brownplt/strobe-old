@@ -13,6 +13,7 @@ import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.TypeTheory
 import BrownPLT.TypedJS.Infrastructure
+import Control.Monad.Error
 
 
 type IDLs = [IDL.Definition]
@@ -37,7 +38,7 @@ extras :: [(String, Type)]
 extras = 
   [ ("DOMString", stringType)
   , ("float", doubleType)
-  , ("DOMObject", TObject "DOMObject" [])
+  , ("DOMObject", TObject "Object" [])
   , ("DOMUserData", TAny)
   , ("DOMTimeStamp", intType)
   ]
