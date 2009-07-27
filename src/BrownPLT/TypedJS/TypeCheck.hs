@@ -59,6 +59,15 @@ lookupId p x = do
     otherwise -> return ty
 
 
+desugarType :: SourcePos -> Type -> TypeCheck Type
+desugarType p ty = do
+  r <- isWfType ty
+  case r of
+    True ->  canonize ty >>= brandSugar
+    False -> fatalTypeError p $ printf
+      "ill-formed type %s" (renderType ty)
+
+
 -- |Calculates the type of a local variable that does not have a type
 -- type annotation.  Extends the environment with the type of the variable.
 -- Expects the environment to contain the preceding local variables.
@@ -72,19 +81,16 @@ calcType :: TypeCheck a
          -> TypeCheck a
 calcType m decl = case decl of
   DeclType x t -> do
-    u <- canonize t
-    u <- brandSugar u
+    u <- desugarType noPos t
     extendEnv x u m
   DeclExpr x (FuncExpr _ _ t _) -> do
-    u <- canonize t
-    u <- brandSugar u
+    u <- desugarType noPos t
     extendEnv x u m
   DeclExpr x e -> do
     t <- expr e
     extendEnv x t m
   DeclField brand field (FuncExpr _ _ t _) ->  do
-    t <- canonize t
-    t <- brandSugar t
+    t <- desugarType noPos t
     extendBrand brand field t
     m
   DeclField brand field e -> do
@@ -284,13 +290,13 @@ expr e = case e of
     unless (length fields == length (nub names)) $
       fatalTypeError p "duplicate field names"
     ts <- mapM field fields
-    t <- canonize (TObject "Object" ts)
+    t <- desugarType p (TObject "Object" ts)
     s <- getBrand "Object"
     case (t, s) of
       (TObject "Object" fs1, TObject "Object" fs2) ->
         return (TObject "Object" (overrideFields fs1 fs2))
       otherwise -> 
-        catastrophe p "TypeCheck.hs : canonize/getBrand error in ObjectLit"
+        catastrophe p "TypeCheck.hs : desugarType/getBrand error in ObjectLit"
     
   CallExpr p f ts args -> do
     f_t <- expr f
@@ -307,36 +313,37 @@ expr e = case e of
         fatalTypeError p $ printf "expected a function; expression has type %s"
           (renderType f_t)
   FuncExpr p args t body -> do
-    t <- canonize t
-    t <- brandSugar t
-    case t of
-      TArrow thisType (ArgType argTypes optArgType) resultType -> do
-        unless (length args == length (nub $ map unId args)) $
-          fatalTypeError p "function argument names must be unique"
-        unless (length args == length argTypes) $
-          fatalTypeError p "argument count mismatch"
-        unless (allPathsReturn body) $ do
-          (isSubtype undefType resultType -=-
-           fatalTypeError p "all control paths in function to not return a \
-                            \result")
-          ok
-        nestEnv $ extendsEnv (zip (map unId args) argTypes) $ do
-          rtEnv <- runtimeEnv
-          case runtimeAnnotations rtEnv body of
-            Left s -> catastrophe p s
-            Right body -> case localVars (map unId args) body of
-              Left err -> fatalTypeError p err -- duplicate name error
-              Right (vars, tvars) -> do
-                -- Calculating types affects the brand store.  Scope the effects
-                -- and recompute in the calculated environment.
-                env <- tempBrandStore $ bindTVars tvars $  calcTypes vars $ ask
-                local (const env) $ stmt (Just resultType) body
-                canonize t
-      -- annotation on the function is not a function type
-      otherwise -> do
-        fatalTypeError p $ printf "expected a function type, received %s" 
-                             (renderType t)
-        return t
+    let (qtVars, t') = unForall t
+    bindTVars qtVars $ do
+      t <- desugarType p t'
+      case t of
+        TArrow thisType (ArgType argTypes optArgType) resultType -> do
+          unless (length args == length (nub $ map unId args)) $
+            fatalTypeError p "function argument names must be unique"
+          unless (length args == length argTypes) $
+            fatalTypeError p "argument count mismatch"
+          unless (allPathsReturn body) $ do
+            (isSubtype undefType resultType -=-
+             fatalTypeError p "all control paths in function to not return a \
+                              \result")
+            ok
+          nestEnv $ extendsEnv (zip (map unId args) argTypes) $ do
+            rtEnv <- runtimeEnv
+            case runtimeAnnotations rtEnv body of
+              Left s -> catastrophe p s
+              Right body -> case localVars (map unId args) body of
+                Left err -> fatalTypeError p err -- duplicate name error
+                Right (vars, tvars) -> do
+                  -- Calculating types affects the brand store.  Scope the 
+                  -- effects and recompute in the calculated environment.
+                  env <- tempBrandStore $ bindTVars tvars $ calcTypes vars $ ask
+                  local (const env) $ stmt (Just resultType) body
+                  return (foldr (\x t -> TForall (closeType x t)) t qtVars)
+        -- annotation on the function is not a function type
+        otherwise -> do
+          fatalTypeError p $ printf "expected a function type, received %s" 
+                               (renderType t)
+          return t
   AnnotatedVarRef p rt x 
     | S.null rt -> lookupId p x -- provably unreachable
     | otherwise -> do
@@ -349,8 +356,7 @@ expr e = case e of
                    x (renderType s) (show rt)
   PackExpr p e c t -> case t of
     TExists t' -> do
-      t' <- canonize t'
-      t' <- brandSugar t'
+      t' <- desugarType p t'
       s <- expr e
       case openType c t' == s of
         True -> return (TExists t')
@@ -359,6 +365,15 @@ expr e = case e of
             (renderType s) (renderType (openType c t'))
     otherwise -> fatalTypeError p $ printf
       "expected existential type to pack, received %s" (renderType t)
+  TyAppExpr p e t -> do
+    t <- desugarType p t
+    s <- expr e
+    case s of
+      TForall s' -> return (openType t s')
+      otherwise -> fatalTypeError p $ 
+        printf "expected a quantified type, received %s" (renderType s)
+        
+  
 
 
 stmt :: Maybe Type -- ^ return type
@@ -434,8 +449,7 @@ stmt returnType s = case s of
 
 decl :: VarDecl SourcePos -> TypeCheck ()
 decl (VarDecl p (Id _ x) t) = do
-  t' <- canonize t
-  t' <- brandSugar t'
+  t' <- desugarType p t
   r <- isSubtype undefType t'
   case r of
     True -> ok
@@ -443,8 +457,7 @@ decl (VarDecl p (Id _ x) t) = do
                               \have type undefined"
 decl (VarDeclExpr p (Id _ x) (Just t) e) = do
   s <- expr e
-  t' <- canonize t
-  t' <- brandSugar t'
+  t' <- desugarType p t
   r <- isSubtype s t'
   case r of
     True -> ok
@@ -461,8 +474,7 @@ decl (VarDeclExpr p (Id _ x) Nothing e) = do
       "%s :: %s, but was calculated to have type %s"
       x (renderType s) (renderType t)
 decl (UnpackDecl p (Id _ x) tVar t e) = do
-  t <- canonize t
-  t <- brandSugar t
+  t <- desugarType p t
   s <- expr e
   case s of
     TExists s' -> do

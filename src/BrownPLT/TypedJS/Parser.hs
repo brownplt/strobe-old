@@ -64,8 +64,6 @@ identifier =
         | type [,+] ... -> type?
         | constr '[' type [,*] ']'
         | forall identifier+ . type
-        | forall identifier+ : typeConstraint+ . type
-        | rec identifier . type
         | ( type )
         | identifier:{ [readonly] id: type' [,*] }
         | identifier: ; object without additional field constraints
@@ -75,6 +73,7 @@ Disambiguation:
 
  type ::= forall identifier+ . type
         | exists id+ . type
+        | forall id+ . type
         | rec identifier . type
         | type_fn
 
@@ -106,7 +105,13 @@ type_ = do
         reservedOp "."
         t <- type_
         return (foldr (\x t -> TExists (closeType x t)) t xs)
-  exists <|> type_fn
+  let forall = do
+        reserved "forall"
+        xs <- many1 Lexer.identifier
+        reservedOp "."
+        t <- type_
+        return (foldr (\x t -> TNamedForall x t) t xs)
+  exists <|> forall <|> type_fn
 
 
 type_fn :: CharParser st (Type)
@@ -698,12 +703,13 @@ dotRef e = (reservedOp "." >> withPos cstr identifier) <?> "property.ref"
 funcApp e = (parens $ withPos cstr (parseExpression `sepBy` comma)) <?> "(function application)"
     where cstr pos args = CallExpr pos e [] args
 
-parameterizedFuncApp e = do
-  reservedOp "@" 
+
+tyApp e = do
   p <- getPosition
-  types <- brackets $ (parens type_) `sepBy` comma
-  args <- parens $ parseExpression `sepBy` comma
-  return (CallExpr p e types args)
+  reservedOp "@"
+  tys <- brackets (type_ `sepBy1` comma)
+  return (foldr (\ty e -> TyAppExpr p e ty) e tys)
+
 
 bracketRef e = (brackets $ withPos cstr parseExpression) <?> "[property-ref]"
     where cstr pos key = BracketRef pos e key
@@ -735,7 +741,7 @@ parseNewExpr =
   parseSimpleExpr'
 
 parseSimpleExpr (Just e) = (do
-    e' <- dotRef e <|> funcApp e <|> parameterizedFuncApp e <|> bracketRef e
+    e' <- dotRef e <|> tyApp e <|> funcApp e <|> bracketRef e
     parseSimpleExpr $ Just e') <|> (return e)
 parseSimpleExpr Nothing = do
   e <- parseNewExpr <?> "expression (3)"

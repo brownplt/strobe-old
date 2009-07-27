@@ -66,6 +66,8 @@ type_ t = case t of
   TIx n -> text (show n)
   TExists t -> text "exists ." <+> type_ t
   TId x -> text x
+  TForall t -> text "forall ." <+> type_ t
+  TNamedForall x t -> text "forall" <+> text x <+> text "." <+> type_ t
 
 
 id :: Id a -> Doc

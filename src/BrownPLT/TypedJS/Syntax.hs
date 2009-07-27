@@ -87,6 +87,7 @@ data Expression a
   | ParenExpr a (Expression a)
   | ListExpr a [Expression a] -- expressions separated by ',' 
   | CallExpr a (Expression a) [Type] [Expression a]
+  | TyAppExpr a (Expression a) Type
   | FuncExpr a [Id a] {- arg names -} 
                Type --if TFunc, then function. if TConstr, then a constructor.
                (Statement a)    {- body -}

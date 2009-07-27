@@ -29,6 +29,8 @@ data Type
   | TApp String [Type]
   | TUnion Type Type
   | TExists Type
+  | TForall Type
+  | TNamedForall String Type
   deriving (Show, Eq, Ord, Data, Typeable)
 
 

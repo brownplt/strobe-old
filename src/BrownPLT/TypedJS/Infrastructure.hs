@@ -24,6 +24,7 @@ module BrownPLT.TypedJS.Infrastructure
   , lookupTVar
   , freshTVar
   -- * Brand Store
+  , isBrand
   , getBrand
   , getBrandWithParent
   , getBrandPath
@@ -213,6 +214,16 @@ emptyBrandStore :: BrandStore
 emptyBrandStore = BrandStore M.empty
 
 
+isBrand :: MonadState BrandStore m
+        => String
+        -> m Bool
+isBrand brand = do
+  s <- get
+  case M.lookup brand (brandStoreDict s) of
+    Just _ -> return True
+    Nothing -> return False
+
+
 getBrandWithParent :: MonadState BrandStore m
                    => String -- ^brand name
                    -> m (Type, Maybe String)
@@ -291,7 +302,7 @@ insertField name ty ((name', ro, ty'):rest)
     return ((name', ro, ty'):rest')
   | name' == name = 
     Nothing
-  | name' > name = do
+  | otherwise = do -- name' > name 
     return ((name, False, ty):(name', ro, ty'):rest)
 
 

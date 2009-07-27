@@ -12,6 +12,11 @@ import BrownPLT.JavaScript.Analysis.Intraprocedural (numberStmts, intraproc)
 import qualified BrownPLT.TypedJS.Syntax as Stx
 import BrownPLT.TypedJS.TypeErasure
 import qualified Data.Map as M
+import Control.Monad.Error
+import Control.Monad.Identity
+
+type M a = ErrorT String Identity a
+
 
 
 type Env = Map (Id, SourcePos) RuntimeTypeInfo
@@ -23,9 +28,9 @@ empty = M.empty
 
 -- |Combines two environments, ensuring that the runtime types of identifers
 -- at the same position are identical.
-unionEnv :: Env -> Env -> Either String Env
+unionEnv :: Env -> Env -> M Env
 unionEnv env1 env2 = foldM f env1 (M.toList env2)
-  where f :: Env -> ((Id, SourcePos), RuntimeTypeInfo) -> Either String Env
+  where f :: Env -> ((Id, SourcePos), RuntimeTypeInfo) -> M Env
         f env (x, t) = case M.lookup x env of
           Nothing -> return (M.insert x t env)
           Just TUnreachable -> return (M.insert x t env)
@@ -44,7 +49,7 @@ expr :: Map Id RuntimeTypeInfo
      -- ^result of @localTypes@
      -> Expr (Node, SourcePos)
      -- ^annotated result from intraprocedural graph
-     -> Either String Env
+     -> M Env
 expr env e = case e of
   Lit _ -> return empty
   VarRef (_, p) x -> case M.lookup x env of
@@ -64,7 +69,7 @@ expr env e = case e of
 
 lookupEnv :: Map Node (Map Id RuntimeTypeInfo)
           -> Node
-          -> Either String (Map Id RuntimeTypeInfo)
+          -> M (Map Id RuntimeTypeInfo)
 lookupEnv envs node = case M.lookup node envs of
   Just env -> return env
   Nothing -> fail "CATASTROPHIC FAILURE: RuntimeAnnotations.hs : environment \
@@ -75,7 +80,7 @@ stmt :: Map Node (Map Id RuntimeTypeInfo)
         -- ^result of @localTypes@
         -> Stmt (Node, SourcePos) 
         -- ^annotated result from intraprocedural graph
-        -> Either String Env
+        -> M Env
 stmt envs s = case s of
   SeqStmt _ ss -> do
     rs <- mapM (stmt envs) ss
@@ -178,7 +183,9 @@ runtimeAnnotations env body = do
   let (_, _, gr) = intraproc (FuncLit (0, noPos) [] vars' anf')
   let localEnv = M.fromList (map (\(x, _) -> (x, TUnreachable)) vars)
   let stmtEnvs = localTypes gr (M.union localEnv env)
-  localEnv <- stmt stmtEnvs anf'
-  return (everywhereBut (mkQ False isFunction) 
-                        (mkT (annotateVarRef localEnv)) 
-                        body)
+  case runIdentity (runErrorT $ stmt stmtEnvs anf') of
+    Left err -> Left err
+    Right localEnv -> Right $
+      everywhereBut (mkQ False isFunction) 
+                    (mkT (annotateVarRef localEnv)) 
+                    body

@@ -13,6 +13,7 @@ module BrownPLT.TypedJS.TypeTheory
   , closeType
   , (+++)
   , (-=-)
+  , isWfType
   , isSubtype
   , canonize
   , canonicalUnion 
@@ -25,6 +26,7 @@ module BrownPLT.TypedJS.TypeTheory
   , overrideFields
   , intersectBrand
   , brandSugar
+  , unForall
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -63,6 +65,7 @@ closeTypeRec n x t = case t of
   TUnion t1 t2 ->
     TUnion (closeTypeRec n x t1) (closeTypeRec n x t2)
   TExists u -> TExists (closeTypeRec (n + 1) x u)
+  TForall u -> TForall (closeTypeRec (n + 1) x u)
 
 
 closeArgTypeRec n x (ArgType ts opt) =
@@ -93,6 +96,7 @@ openTypeRec n s t = case t of
   TUnion t1 t2 ->
     TUnion (openTypeRec n s t1) (openTypeRec n s t2)
   TExists u -> TExists (openTypeRec (n + 1) s u)
+  TForall u -> TForall (openTypeRec (n + 1) s u)
 
 
 openArgTypeRec n s (ArgType ts opt) =
@@ -123,7 +127,7 @@ substType x s t = case t of
   TUnion t1 t2 ->
     TUnion (substType x s t1) (substType x s t2)
   TExists u -> TExists (substType x s u)
-    
+  TForall u -> TForall (substType x s u)
 
 
 substTypeInArgType x s (ArgType ts opt) =
@@ -188,6 +192,9 @@ canonize t = case t of
   TId x -> return (TId x)
   TIx x -> return (TIx x)
   TExists u -> liftM TExists (canonize u)
+  TForall u -> liftM TForall (canonize u)
+  TNamedForall x u -> liftM TForall (canonize (closeType x u))
+
 
 -- |Assumes that the components are already canonized.
 canonicalUnion :: EnvM m => Type -> Type -> m Type
@@ -209,6 +216,35 @@ areFieldsSubtypes ((x1, ro1, t1):fs1) ((x2, ro2, t2):fs2)
       (False, False) -> return (t1 == t2) +++ areFieldsSubtypes fs1 fs2
       (_, True) -> isSubtype t1 t2 +++ areFieldsSubtypes fs1 fs2
   | otherwise = return False
+
+
+isWfType :: EnvM m
+         => Type
+         -> m Bool
+isWfType ty = case ty of
+  TAny -> return True
+  TApp c args -> liftM and (mapM isWfType args)
+  TArguments at ->  isWfArgType at
+  TArrow this arg r -> isWfType this +++ isWfArgType arg +++ isWfType r
+  TUnion t1 t2 -> isWfType t1 +++ isWfType t2
+  TObject brand fields -> isBrand brand +++ liftM and (mapM isWfField fields)
+    where isWfField (x, ro, t) = isWfType t
+  TId x -> do
+    tv <- lookupTVar x
+    case tv of
+      Just BoundTVar -> return True
+      Nothing -> return False
+  TIx x -> return False
+  TExists u -> freshTVar $ \x -> bindTVar x $ isWfType (openType (TId x) u)
+  TForall u -> freshTVar $ \x -> bindTVar x $ isWfType (openType (TId x) u)
+  TNamedForall x u -> bindTVar x $ isWfType u
+
+
+isWfArgType :: EnvM m => ArgType -> m Bool
+isWfArgType (ArgType args Nothing) =
+  liftM and (mapM isWfType args)
+isWfArgType (ArgType args (Just opt)) =
+  liftM and (mapM isWfType args) +++ isWfType opt
 
 
 -- |Assumes the arguments are in canonical forms.
@@ -251,6 +287,12 @@ isSubtype s t = case (s, t) of
   (TId x, TId y) -> return (x == y)
   (TExists t1, TExists t2) -> freshTVar $ \x ->
     bindTVar x $ isSubtype (openType (TId x) t1) (openType (TId x) t2)
+  (TForall t1, TForall t2) -> freshTVar $ \x ->
+    bindTVar x $ isSubtype (openType (TId x) t1) (openType (TId x) t2)
+  (TNamedForall x s', _) ->
+    isSubtype (TForall (closeType x s')) t
+  (_, TNamedForall x t') ->
+    isSubtype s (TForall (closeType x t'))
   otherwise -> 
     return False
 
@@ -266,10 +308,10 @@ injRT bt = TKnown (S.singleton bt)
 
 runtime :: Type -> RuntimeTypeInfo
 runtime t = case t of
-  TId x -> error $ printf "TypeTheory.hs : argument of runtime contains \
-                          \free type variable %s" x
+  TId x -> TUnk
   TIx _ -> TUnk
   TExists t -> runtime t
+  TForall t -> runtime t
   TAny -> TUnk
   TApp "String" [] ->  injRT RTString
   TApp "Bool" [] ->  injRT RTBoolean
@@ -314,6 +356,11 @@ static rt st = case st of
     r <- static rt t
     case r of
       Just t' -> return (Just $ TExists t')
+      Nothing -> return Nothing
+  TForall t -> do
+    r <- static rt t
+    case r of
+      Just t' -> return (Just $ TForall t')
       Nothing -> return Nothing
   TAny -> case map flatStatic (S.toList rt) of
     [] -> return Nothing
@@ -390,3 +437,9 @@ brandSugar :: EnvM m
            => Type
            -> m Type
 brandSugar ty = everywhereM (mkM sugarTObject) ty
+
+
+unForall :: Type -> ([String], Type)
+unForall (TNamedForall x t) = (x:xs, s)
+  where (xs, s) = unForall t
+unForall t = ([], t)
