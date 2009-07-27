@@ -49,6 +49,16 @@ ok :: TypeCheck ()
 ok = return ()
 
 
+lookupId :: SourcePos -> String -> TypeCheck Type
+lookupId p x = do
+  ty <- lookupEnv p x
+  case ty of
+    TObject brand fields -> do
+      fields' <- intersectBrand brand
+      return (TObject brand (overrideFields fields fields'))
+    otherwise -> return ty
+
+
 -- |Calculates the type of a local variable that does not have a type
 -- type annotation.  Extends the environment with the type of the variable.
 -- Expects the environment to contain the preceding local variables.
@@ -123,7 +133,8 @@ numericOp loc e lhs rhs requireInts returnDouble = do
           (renderType lhs) (renderType rhs) (renderExpr e)
       return result
     False -> do
-      r <- isSubtype lhs doubleType +++ isSubtype rhs doubleType
+      r <- isSubtype lhs (TUnion doubleType intType) +++ 
+           isSubtype rhs (TUnion doubleType intType)
       unless r $
         fatalTypeError loc $ printf 
           "operator expects double/int arguments, given %s and %s" 
@@ -143,7 +154,7 @@ lvalue lv = case lv of
       True -> fail "assinging to enclosing scopes NYI"
       -- x is a local variable.  The local scope may make assumptions about
       -- its runtime type.
-      False -> return s
+      False -> lookupId p x
   LDot p obj f -> do
     tObj <- expr obj
     case tObj of
@@ -154,7 +165,7 @@ lvalue lv = case lv of
           Just (s, True) -> do
             fatalTypeError p $ printf "the field %s is readonly" f
           Nothing -> do
-            fatalTypeError p $ printf "object %s does not have the field %s" 
+            fatalTypeError p $ printf "object %s\ndoes not have the field %s" 
                                       (renderType tObj) f
       otherwise -> do
         fatalTypeError p $ printf "expected object"
@@ -169,19 +180,17 @@ expr e = case e of
   IntLit _ _ -> return intType
   BoolLit _ _ -> return boolType
   NullLit _ -> fail "NullLit NYI"
-  ThisRef p -> lookupEnv p "this"
-  VarRef p (Id _ x) -> lookupEnv p x
+  ThisRef p -> lookupId p "this"
+  VarRef p (Id _ x) -> lookupId p x
   DotRef p e (Id _ x) -> do
     t <- expr e
     case t of
       TObject brand fields -> do
-        -- TODO: This is guesswork.  It's suspect since the type language
-        -- does not have intersections.
         fields' <- intersectBrand brand
         case fieldType x (overrideFields fields fields') of
           Just (ty, _) -> return ty
           Nothing -> fatalTypeError p $ printf
-            "object %s does not have the field %s" (renderType t) x
+            "object %s\ndoes not have the field %s" (renderType t) x
       otherwise -> fatalTypeError p $ printf "expected object, received %s"
                      (renderType t)
   PrefixExpr p op e -> do
@@ -329,9 +338,9 @@ expr e = case e of
                              (renderType t)
         return t
   AnnotatedVarRef p rt x 
-    | S.null rt -> lookupEnv p x -- provably unreachable
+    | S.null rt -> lookupId p x -- provably unreachable
     | otherwise -> do
-        s <- lookupEnv p x
+        s <- lookupId p x
         u <- static rt s
         case u of
           Just t -> return t
@@ -444,7 +453,7 @@ decl (VarDeclExpr p (Id _ x) (Just t) e) = do
                   (renderType s) (renderType t)
 -- e may contain a function, therefore we must recompute the type.
 decl (VarDeclExpr p (Id _ x) Nothing e) = do
-  t <- lookupEnv p x
+  t <- lookupId p x
   s <- expr e
   case s == t of
     True -> ok
@@ -492,7 +501,7 @@ typeCheck :: InitialStoreEnv -> [Statement SourcePos] -> Either String ()
 typeCheck init body = 
   case runTypeCheck init (withInitEnv $ topLevel body) of
     Right () -> return ()
-    Left errs -> Left (show errs)
+    Left errs -> Left errs
 
 
 typeCheckExpr :: InitialStoreEnv -> Expression SourcePos -> Either String Type
@@ -502,5 +511,5 @@ typeCheckExpr init e = do
   case body of
     ExprStmt _ e -> case runTypeCheck init (withInitEnv $ expr e) of
       Right t -> return t
-      Left errs -> Left (show errs)
+      Left errs -> Left errs
     otherwise -> fail "typeCheckExpr: expression shape error"

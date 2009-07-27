@@ -26,5 +26,16 @@ expressions {
     // code.
     var m = document.write;
     m("Failure because this is wrong.");
+  };
+
+  succeed  function(element) :: HTMLElement: -> { left:: Int, top:: Int } {
+    var valueT = 0, valueL = 0;
+    do {
+      valueT += element.offsetTop || 0;
+      valueL += element.offsetLeft || 0;
+      element = element.offsetParent;
+    } while (element);
+    return { left: valueL, top: valueT };
   }
+
 }

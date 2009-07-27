@@ -6,6 +6,8 @@
  * The .zip file linked on the web page has an html/ subdirectory containing
  * an IDL file for each kind of HTML element.  The following definitions are a
  * concatenation of those files.
+ *
+ * Changes are marked with // TypedJS
  */
 
 interface HTMLElement : Element {
@@ -14,6 +16,26 @@ interface HTMLElement : Element {
            attribute  DOMString            lang;
            attribute  DOMString            dir;
            attribute  DOMString            className;
+
+// TypedJS: adapted from 
+// http://www.w3.org/TR/cssom-view/#the-documentview-interface
+
+  readonly attribute HTMLElement offsetParent; // TypedJS: was Element
+  readonly attribute float offsetTop;
+  readonly attribute float offsetLeft;
+  readonly attribute float offsetWidth;
+  readonly attribute float offsetHeight;
+
+           attribute float scrollTop;   // scroll on setting
+           attribute float scrollLeft;  // scroll on setting
+  readonly attribute float scrollWidth;
+  readonly attribute float scrollHeight;
+
+  readonly attribute float clientTop;
+  readonly attribute float clientLeft;
+  readonly attribute float clientWidth;
+  readonly attribute float clientHeight;
+
 };
 
 interface HTMLAnchorElement : HTMLElement {

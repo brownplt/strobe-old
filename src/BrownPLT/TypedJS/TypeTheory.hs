@@ -223,8 +223,15 @@ isSubtype s t = case (s, t) of
     return True
   (TApp "Int" [], TApp "Double" []) ->
     return True
-  (TObject brand1 fs1, TObject brand2 fs2) -> -- TODO: support brands
-    areFieldsSubtypes fs1 fs2
+  (TObject brand1 [], TObject brand2 []) -> isSubbrand brand1 brand2
+  (TObject brand1 fs1, TObject brand2 fs2) -> do
+    sub <- isSubbrand brand1 brand2
+    case sub of
+      True -> do
+        fs1' <- intersectBrand brand1
+        fs2' <- intersectBrand brand2
+        areFieldsSubtypes (overrideFields fs1 fs1') (overrideFields fs2 fs2')
+      False -> return False
   (TApp c1 args1, TApp c2 args2) -> case c1 == c2 of
     True -> areSubtypes args1 args2
     False -> return False

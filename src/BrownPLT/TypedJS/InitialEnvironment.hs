@@ -36,6 +36,7 @@ idlFiles =
 extras :: [(String, Type)]
 extras = 
   [ ("DOMString", stringType)
+  , ("float", doubleType)
   , ("DOMObject", TObject "DOMObject" [])
   , ("DOMUserData", TAny)
   , ("DOMTimeStamp", intType)
@@ -76,14 +77,15 @@ bindingFromIDL def cont = case def of
   IDL.Const t v _ -> extendEnv v (parseIDLType t) cont
   IDL.Interface v Nothing body -> do
     fields <- fieldsFromIDL v body
-    newRootBrand (TObject v fields)
-    extendEnv v (TObject v fields) cont -- TODO: this is a hack
+    ty <- canonize (TObject v fields)
+    newRootBrand ty
+    extendEnv v ty cont -- TODO: this is a hack
   IDL.Interface v (Just parent) body -> do
     fields <- fieldsFromIDL v body
     ty <- getBrand parent
     case ty of
       (TObject _ fields') -> do
-        let ty' = TObject v (overrideFields fields fields')
+        ty' <- canonize (TObject v (overrideFields fields fields'))
         newBrand ty' parent
         extendEnv v ty' cont
       otherwise ->
