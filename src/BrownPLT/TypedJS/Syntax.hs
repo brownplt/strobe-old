@@ -73,7 +73,7 @@ data Expression a
   | BoolLit a Bool
   | NullLit a
   | ArrayLit a [Expression a]
-  | ObjectLit a [(Prop a, Maybe Type, Expression a)] --optional type annotations on object literals
+  | ObjectLit a [(Prop a, Expression a)]
   | ThisRef a
   | VarRef a (Id a)
   | DotRef a (Expression a) (Id a)

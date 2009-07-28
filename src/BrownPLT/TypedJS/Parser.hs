@@ -629,7 +629,7 @@ parseRegexpLit = do
   return $ flags (RegexpLit pos pat)
 
 parseObjectLit:: ExpressionParser st
-parseObjectLit =
+parseObjectLit = do
   let parseProp = do
         -- Parses a string, identifier or integer as the property name.  I
         -- apologize for the abstruse style, but it really does make the code
@@ -640,10 +640,10 @@ parseObjectLit =
                 <|> (liftM2 PropNum getPosition (do x<-decimal; whiteSpace; return x))
         colon
         val <- assignExpr
-        return (name, Nothing, val)
-    in do pos <- getPosition
-          props <- braces (parseProp `sepEndBy` comma) <?> "object literal"
-          return $ ObjectLit pos props
+        return (name, val)
+  pos <- getPosition
+  props <- braces (parseProp `sepEndBy` comma) <?> "object literal"
+  return $ ObjectLit pos props
 
 --{{{ Parsing numbers.  From pg. 17-18 of ECMA-262.
 

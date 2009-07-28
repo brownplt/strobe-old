@@ -96,22 +96,14 @@ calcTypes :: [LocalDecl]
 calcTypes binds m = foldr (flip calcType) m binds
 
 
-field :: (Prop SourcePos, Maybe Type, Expression SourcePos)
+field :: (Prop SourcePos,  Expression SourcePos)
       -> TypeCheck Field
 field f = case f of
-  (PropId p (Id _ x), Nothing, e) -> do
+  (PropId p (Id _ x), e) -> do
     t <- expr e
     return (x, False, t) -- fields are mutable by default
-  (PropId p (Id _ x), Just s, e) -> do
-    t <- expr e
-    r <- isSubtype t s
-    case r of
-      True -> return (x, False, s)
-      False -> do
-        fatalTypeError p $ printf 
-          "field %s :: %s, but the expression has type %s"
-          x (renderType s) (renderType t)
-          
+         
+ 
 numericOp :: SourcePos -> Expression SourcePos
           -> Type -> Type -> Bool -> Bool -> TypeCheck Type
 numericOp loc e lhs rhs requireInts returnDouble = do
@@ -288,7 +280,7 @@ expr e = case e of
   ListExpr p es -> 
     foldM (\_ e -> expr e) undefined es -- type of the last expression
   ObjectLit p fields -> do
-    let names = map (\(x, _, _) -> x) fields
+    let names = map fst fields
     -- Confirmed in Rhino that this is not a syntax error in JavaScript.
     unless (length fields == length (nub names)) $
       fatalTypeError p "duplicate field names"

@@ -58,7 +58,7 @@ expr e = case e of
   BoolLit _ _ -> empty
   NullLit _ -> empty
   ArrayLit _ es -> unions (map expr es)
-  ObjectLit _ props -> unions (map (\(_, _, e') -> expr e') props)
+  ObjectLit _ props -> unions (map (\(_, e') -> expr e') props)
   ThisRef _ -> empty
   AnnotatedVarRef p _ x -> ref (Id p x)
   VarRef _ id -> ref id

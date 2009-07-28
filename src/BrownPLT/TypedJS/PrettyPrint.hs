@@ -273,11 +273,8 @@ expr e = case e of
   NullLit _ -> text "null"
   ArrayLit _ es -> brackets (commas (map expr es))
   ObjectLit _ xs -> 
-    braces (hsep (punctuate comma (map id' xs))) where
-      id' (n,mt,v) = prop n <+> idMaybe mt <+> colon <+> expr v
-      idMaybe mt = case mt of
-        (Just t) -> text "::" <+> type_ t
-        Nothing  -> empty
+    braces (hsep (punctuate comma (map prop_ xs)))
+      where prop_ (n, v) = prop n <+> colon <+> expr v
   ThisRef _ -> text "this"
   VarRef _ v -> id v
   AnnotatedVarRef _ rt x -> 
