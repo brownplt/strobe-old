@@ -14,9 +14,10 @@ module BrownPLT.TypedJS.TypeTheory
   , (+++)
   , (-=-)
   , isWfType
-  , isSubtype
   , canonize
   , canonicalUnion 
+  -- * Subtyping
+  , isSubtype
   -- * Interface to dataflow analysis
   -- $runtime
 	, static
@@ -237,6 +238,9 @@ isWfArgType (ArgType args (Just opt)) = do
   isWfType opt
 
 
+-- ----------------------------------------------------------------------------
+-- Subtyping
+
 areSubtypes :: EnvM m
             => [Type]
             -> [Type]
@@ -261,7 +265,7 @@ areFieldsSubtypes ((x1, ro1, t1):fs1) ((x2, ro2, t2):fs2)
   | otherwise = return False
 
 
--- |Assumes the arguments are in canonical forms.
+-- |Assumes the arguments are canonical.
 isSubtype :: EnvM m
           => Type
           -> Type
@@ -273,6 +277,8 @@ isSubtype s t = case (s, t) of
     return True
   (TApp "Int" [], TApp "Double" []) ->
     return True
+  (TApp "Array" [s1], TApp "Array" [t1]) ->
+    isSubtype s1 t1 +++ isSubtype t1 s1
   (TObject brand1 [], TObject brand2 []) -> isSubbrand brand1 brand2
   (TObject brand1 fs1, TObject brand2 fs2) -> do
     sub <- isSubbrand brand1 brand2
@@ -307,6 +313,11 @@ isSubtype s t = case (s, t) of
     isSubtype (TForall (closeType x s')) t
   (_, TNamedForall x t') ->
     isSubtype s (TForall (closeType x t'))
+  -- From "Intersection Types and Computational Effects" p.3.
+  (_, TIntersect t1 t2) ->
+    liftM2 (&&) (isSubtype s t1) (isSubtype s t2)
+  (TIntersect s1 s2, _) ->
+    liftM2 (||) (isSubtype s1 t) (isSubtype s2 t)
   otherwise -> 
     return False
 
@@ -332,6 +343,7 @@ runtime t = case t of
   TApp "Double" [] ->  injRT RTNumber
   TApp "Int" [] ->  injRT RTNumber
   TApp "Undefined" [] ->  injRT RTUndefined
+  TApp "Array" [_] -> injRT RTObject
   TApp x ts -> error $ printf "TypeTheory.hs : argument of runtime contains \
                               \unknown type constructor %s, with args %s"
                               x (show ts) 
@@ -385,6 +397,7 @@ static rt st = case st of
   TApp "Double" [] | S.member RTNumber rt -> return (Just st)
   TApp "Int" [] | S.member RTNumber rt -> return (Just st)
   TApp "Undefined" [] | S.member RTUndefined rt -> return (Just st)
+  TApp "Array" [_] | S.member RTObject rt -> return (Just st)
   TObject _ _ | S.member RTObject rt -> return (Just st)
   TArrow _ _ _ | S.member RTFunction rt -> return (Just st)
   TUnion t1 t2 -> do

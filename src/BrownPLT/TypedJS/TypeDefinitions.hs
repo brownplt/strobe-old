@@ -23,14 +23,15 @@ data Type
   | TAny
   | TArguments ArgType
   | TArrow { tArrowThis :: Type, tArrowArgs :: ArgType, tArrowResult :: Type }
-              
-  | TId String -- free type variable
-  | TIx Int -- bound type variable
+  | TId String -- ^type variable as a de Brujin index
+  | TIx Int -- ^named type variable
   | TApp String [Type]
   | TUnion Type Type
   | TExists Type
   | TForall Type
   | TNamedForall String Type
+  | TIntersect Type Type
+  | TVar String
   deriving (Show, Eq, Ord, Data, Typeable)
 
 

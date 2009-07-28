@@ -62,6 +62,7 @@ identifier =
         | '[' type ']' type [,+] ... -> type? ; explicit this
         | type [,*] -> type?
         | type [,+] ... -> type?
+        | constr
         | constr '[' type [,*] ']'
         | forall identifier+ . type
         | ( type )
@@ -91,6 +92,7 @@ Disambiguation:
           | identifier:{ [readonly] id: type' [,*] }
           | identifier:
           | { [readonly] id: type' [,*] } ; implicitly branded Object
+          | constr
           | constr '[' type [,*] ']'
           | 'literal
           | any

@@ -187,6 +187,13 @@ expr e = case e of
   BoolLit _ _ -> return boolType
   NullLit _ -> fail "NullLit NYI"
   ThisRef p -> lookupId p "this"
+  ArrayLit p [] -> fatalTypeError p $ printf
+    "empty array literals must be bound to identifiers with type annotations."
+  ArrayLit p (e1:es) -> do
+    t1 <- expr e1
+    ts <- mapM expr es
+    t <- foldM canonicalUnion t1 ts
+    return (TApp "Array" [t])
   VarRef p (Id _ x) -> lookupId p x
   DotRef p e (Id _ x) -> do
     t <- expr e
@@ -199,6 +206,12 @@ expr e = case e of
             "object %s\ndoes not have the field %s" (renderType t) x
       otherwise -> fatalTypeError p $ printf "expected object, received %s"
                      (renderType t)
+  BracketRef p e1 e2 -> do
+    t1 <- expr e1
+    t2 <- expr e2
+    case (t1, t2) of
+      (TApp "Array" [x], TApp "Int" []) -> return x
+      otherwise -> fatalTypeError p "expected array or integer index"
   PrefixExpr p op e -> do
     t <- expr e
     isDoubleSubtype <- isSubtype t doubleType
@@ -456,6 +469,9 @@ decl (VarDecl p (Id _ x) t) = do
     True -> ok
     False -> fatalTypeError p "uninitalized variable declarations must \
                               \have type undefined"
+decl (VarDeclExpr p (Id _ x) (Just t) (ArrayLit _ [])) = 
+  -- empty array literal
+  ok
 decl (VarDeclExpr p (Id _ x) (Just t) e) = do
   s <- expr e
   t' <- desugarType p t
