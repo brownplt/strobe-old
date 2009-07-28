@@ -38,7 +38,7 @@ extras :: [(String, Type)]
 extras = 
   [ ("DOMString", stringType)
   , ("float", doubleType)
-  , ("DOMObject", TObject "Object" [])
+  , ("DOMObject", TObject "Object" [] [])
   , ("DOMUserData", TAny)
   , ("DOMTimeStamp", intType)
   ]
@@ -51,7 +51,7 @@ parseIDLType t = case t of
   IDL.TVoid -> undefType
   IDL.TId id -> case lookup id extras of
     Just t -> t
-    Nothing -> TObject id []
+    Nothing -> TObject id [] []
 
 
 -- |Assumes all names are unique in the list of members.
@@ -62,7 +62,7 @@ fieldsFromIDL self members = mapM field members
         field (IDL.Attr isReadOnly t v) = return (v, isReadOnly, parseIDLType t)
         field (IDL.Method ret v args) = 
           return (v, True, 
-                  TArrow (TObject self [])
+                  TArrow (TObject self [] [])
                          -- formal arguments are named, so fst
                          (ArgType (map (parseIDLType.fst) args) Nothing)
                          (parseIDLType ret))
@@ -78,16 +78,16 @@ bindingFromIDL def cont = case def of
   IDL.Const t v _ -> extendEnv v (parseIDLType t) cont
   IDL.Interface v Nothing body -> do
     fields <- fieldsFromIDL v body
-    ty <- canonize (TObject v fields)
+    ty <- canonize (TObject v [] fields)
     newRootBrand ty
     extendEnv v ty cont -- TODO: this is a hack
   IDL.Interface v (Just parent) body -> do
     fields <- fieldsFromIDL v body
     ty <- getBrand parent
     case ty of
-      (TObject _ fields') -> do
-        ty' <- canonize (TObject v (overrideFields fields fields'))
-        newBrand ty' parent
+      (TObject _ args fields') -> do
+        ty' <- canonize (TObject v [] (overrideFields fields fields'))
+        newBrand v ty' (TObject parent args fields')
         extendEnv v ty' cont
       otherwise ->
         fail $ "bindingFromIDL: getBrand returned " ++ show ty

@@ -60,15 +60,19 @@ type_ t = case t of
   TApp s [] -> text s
   TApp s ts -> text s <> text "<" <> commas (map type_ ts) <> text ">"
   TAny -> text "any"
-  TObject "Object" fields -> braces (nest 2 (commas (map field fields)))
-  TObject brand fields ->
+  TObject "Object" [] fields -> braces (nest 2 (commas (map field fields)))
+  TObject brand [] fields ->
     text brand <> braces (nest 2 (commas (map field fields)))
+  TObject brand tyArgs fields ->
+    text brand <> brackets (commas (map type_ tyArgs)) <>
+    braces (nest 2 (commas (map field fields)))
   TUnion t1 t2 -> text "U" <> parens (type_ t1 <> comma <+> type_ t2)
   TIx n -> text (show n)
   TExists t -> text "exists ." <+> type_ t
   TId x -> text x
   TForall t -> text "forall ." <+> type_ t
   TNamedForall x t -> text "forall" <+> text x <+> text "." <+> type_ t
+  TIntersect t1 t2 -> parens (type_ t1) <> text " ^ " <> parens (type_ t2)
 
 
 id :: Id a -> Doc

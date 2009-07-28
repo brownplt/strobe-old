@@ -4,6 +4,7 @@ module BrownPLT.TypedJS.TypeTheory
   , intType
   , doubleType
   , boolType
+  , freeArrayType
   -- * Substitution
   --
   -- | We use a locally nameless representation for quantified types.  These
@@ -16,9 +17,12 @@ module BrownPLT.TypedJS.TypeTheory
   , isWfType
   , canonize
   , canonicalUnion 
+  , intersectType
+  , unionType
   -- * Subtyping
   , isSubtype
   , projFieldType
+  , projType
   -- * Interface to dataflow analysis
   -- $runtime
 	, static
@@ -50,10 +54,18 @@ doubleType = TApp "Double" []
 boolType = TApp "Bool" []
 
 
+freeArrayType = TObject "Array" [TIx 0]
+  [ ("length", True, intType)
+  , ("push", True, TArrow (TApp "Array" [TIx 0]) (ArgType [TIx 0] Nothing)
+                          undefType)
+  ]
+
+
 closeTypeRec :: Int -> String -> Type -> Type
 closeTypeRec n x t = case t of
-  TObject brand fields -> TObject brand (map f fields)
-    where f (lbl, imm, t') = (lbl, imm, closeTypeRec n x t')
+  TObject brand args fields ->
+    TObject brand (map (closeTypeRec n x) args) (map f fields)
+      where f (lbl, imm, t') = (lbl, imm, closeTypeRec n x t')
   TAny -> TAny
   TArguments arg -> TArguments (closeArgTypeRec n x arg)
   TArrow this arg ret ->
@@ -84,8 +96,9 @@ closeType x t = closeTypeRec 0 x t
 -- locally closed type 's'.
 openTypeRec :: Int -> Type -> Type -> Type
 openTypeRec n s t = case t of
-  TObject brand fields -> TObject brand (map f fields)
-    where f (lbl, imm, t') = (lbl, imm, openTypeRec n s t')
+  TObject brand args fields ->
+    TObject brand (map (openTypeRec n s) args) (map f fields)
+      where f (lbl, imm, t') = (lbl, imm, openTypeRec n s t')
   TAny -> TAny
   TArguments arg -> TArguments (openArgTypeRec n s arg)
   TArrow this arg ret ->
@@ -116,8 +129,9 @@ openType s t = openTypeRec 0 s t
 -- type 's', in the locally closed type 't'.
 substType :: String -> Type -> Type -> Type
 substType x s t = case t of
-  TObject brand fields -> TObject brand (map f fields)
-    where f (lbl, imm, t') = (lbl, imm, substType x s t')
+  TObject brand args fields ->
+    TObject brand (map (substType x s) args) (map f fields)
+      where f (lbl, imm, t') = (lbl, imm, substType x s t')
   TAny -> TAny
   TArguments arg -> TArguments (substTypeInArgType x s arg)
   TArrow this arg ret ->
@@ -172,18 +186,19 @@ canonize t = case t of
     liftM TArguments (canonizeArgType at)
   TArrow this arg r ->
     liftM3 TArrow (canonize this) (canonizeArgType arg) (canonize r)
-  TUnion t1 t2 -> do
-    u1 <- canonize t1
-    u2 <- canonize t2
-    canonicalUnion u1 u2
-  TObject brand fields -> do
+  TUnion t1 t2 ->
+    liftM2 unionType (canonize t1) (canonize t2)
+  TIntersect t1 t2 ->
+    liftM2 intersectType (canonize t1) (canonize t2)
+  TObject brand tyArgs fields -> do
     let cmp (x, _, _) (y, _, _) = compare x y
     let fields' = sortBy cmp fields
     let f (x, ro, t) = do
           t' <- canonize t
           return (x, ro, t')
     fields'' <- mapM f fields'
-    return (TObject brand fields'')
+    tyArgs' <- mapM canonize tyArgs
+    return (TObject brand tyArgs' fields'')
   TId x -> return (TId x)
   TIx x -> return (TIx x)
   TExists u -> liftM TExists (canonize u)
@@ -226,10 +241,13 @@ isWfType ty = case ty of
   TUnion t1 t2 -> do
     isWfType t1
     isWfType t2
-  TObject brand fields -> do
+  TIntersect t1 t2 -> do
+    isWfType t1
+    isWfType t2
+  TObject brand tys fields -> do
     r <- isBrand brand 
     case r of
-      True -> mapM_ isWfField fields
+      True -> mapM_ isWfType tys >> mapM_ isWfField fields
         where isWfField (x, ro, t) = isWfType t
       False -> fail $ printf "the brand %s is undefined" brand
   TId x -> do
@@ -291,15 +309,10 @@ isSubtype s t = case (s, t) of
     return True
   (TApp "Array" [s1], TApp "Array" [t1]) ->
     isSubtype s1 t1 +++ isSubtype t1 s1
-  (TObject brand1 [], TObject brand2 []) -> isSubbrand brand1 brand2
-  (TObject brand1 fs1, TObject brand2 fs2) -> do
-    sub <- isSubbrand brand1 brand2
-    case sub of
-      True -> do
-        fs1' <- liftM (overrideFields fs1) (intersectBrand brand1)
-        fs2' <- liftM (overrideFields fs2) (intersectBrand brand2)
-        areFieldsSubtypes fs1' fs2' 
-      False -> return False
+  (TObject brand1 tys1 fs1, TObject brand2 tys2 fs2) ->
+    isSubbrand brand1 brand2 +++
+    areSubtypes tys1 tys2 +++
+    areFieldsSubtypes fs1 fs2
   (TApp c1 args1, TApp c2 args2) -> case c1 == c2 of
     True -> areSubtypes args1 args2
     False -> return False
@@ -325,19 +338,17 @@ isSubtype s t = case (s, t) of
     isSubtype (TForall (closeType x s')) t
   (_, TNamedForall x t') ->
     isSubtype s (TForall (closeType x t'))
-  -- From "Intersection Types and Computational Effects" p.3.
   (_, TIntersect t1 t2) ->
     liftM2 (&&) (isSubtype s t1) (isSubtype s t2)
   (TIntersect s1 s2, _) ->
     liftM2 (||) (isSubtype s1 t) (isSubtype s2 t)
-  otherwise -> 
-    return False
+  otherwise -> return False
 
 
 projFieldType :: EnvM m => Type -> String -> m (Maybe Type)
 projFieldType ty name = case ty of
-  TObject brand fields -> do
-   fields' <- intersectBrand brand
+  TObject brand tyArgs fields -> do
+   fields' <- intersectBrand brand tyArgs
    case fieldType name (overrideFields fields fields') of
      Just (ty, _) -> return (Just ty)
      Nothing -> return Nothing
@@ -360,9 +371,9 @@ projFieldType ty name = case ty of
 
 projType :: EnvM m => (Type -> Bool) -> Type -> m (Maybe Type)
 projType isType ty = case ty of
-  TObject brand fields -> do
-   fields' <- intersectBrand brand
-   let ty' = TObject brand (overrideFields fields fields')
+  TObject brand tyArgs fields -> do
+   fields' <- intersectBrand brand tyArgs
+   let ty' = TObject brand tyArgs (overrideFields fields fields')
    case isType ty' of
      True -> return (Just ty')
      False -> return Nothing
@@ -410,9 +421,15 @@ runtime t = case t of
   TApp x ts -> error $ printf "TypeTheory.hs : argument of runtime contains \
                               \unknown type constructor %s, with args %s"
                               x (show ts) 
-  TObject _ _ -> injRT RTObject
+  TObject _ _ _ -> injRT RTObject
   TArguments _ -> injRT RTObject -- the type of the arguments array
   TArrow _ _ _ -> injRT RTFunction
+  TIntersect t1 t2 -> case (runtime t1, runtime t2) of
+    (TUnk, TKnown s2) -> TKnown s2
+    (TKnown s1, TUnk) -> TKnown s1
+    (TKnown s1, TKnown s2) -> TKnown (S.intersection s1 s2)
+    (TUnreachable, _) -> error "runtime: recursive call produced TUnreachable"
+    (_, TUnreachable) -> error "runtime: recursive call produced TUnreachable"
   TUnion t1 t2 -> case (runtime t1, runtime t2) of
     (TUnk, _) -> TUnk
     (_, TUnk) -> TUnk
@@ -461,16 +478,22 @@ static rt st = case st of
   TApp "Int" [] | S.member RTNumber rt -> return (Just st)
   TApp "Undefined" [] | S.member RTUndefined rt -> return (Just st)
   TApp "Array" [_] | S.member RTObject rt -> return (Just st)
-  TObject _ _ | S.member RTObject rt -> return (Just st)
+  TObject _ _ _ | S.member RTObject rt -> return (Just st)
   TArrow _ _ _ | S.member RTFunction rt -> return (Just st)
   TUnion t1 t2 -> do
     r1 <- static rt t1
     r2 <- static rt t2
     case (r1, r2) of
-      (Just u1, Just u2) -> liftM Just (canonicalUnion u1 u2)
+      (Just u1, Just u2) -> return (Just $ unionType u1 u2)
       (Just u1, Nothing) -> return (Just u1)
       (Nothing, Just u2) -> return (Just u2)
       (Nothing, Nothing) -> return Nothing
+  TIntersect t1 t2 -> do
+    r1 <- static rt t1
+    r2 <- static rt t2
+    case (r1, r2) of
+      (Just u1, Just u2) -> return (Just $ intersectType u1 u2)
+      otherwise -> return Nothing
   otherwise -> return Nothing
 
 
@@ -497,25 +520,53 @@ overrideFields xs@((n1, ro1, ty1):xs') ys@((n2, ro2, ty2):ys')
   | otherwise = (n2, ro2, ty2):(overrideFields xs ys')
 
 
+-- |@getBrandPath brand@
+-- 
+-- Returns the type of @brand@ and all its ancestors in order.  @brand@ is at
+-- the head of the list.
+getBrandPath :: EnvM m
+             => String -- ^brand
+             -> m [Type]
+getBrandPath brand = do
+  (ty, parent) <- getBrandWithParent brand
+  case parent of
+    Nothing -> return [ty]
+    Just (TObject parentBrand _ _) -> do
+      tys <- getBrandPath parentBrand
+      return (ty:tys)
+    Just _ -> error "getBrandPath: inconsistent brand store"
+
+tyApp :: Type -> [Type] -> Type
+tyApp t [] = t
+tyApp (TForall t) (s:ss) = tyApp (openType s t) ss
+tyApp _ _ = error "tyApp: superflous type arguments"
+
 -- TODO: This is guesswork.
 intersectBrand :: EnvM m
                => String
+               -> [Type]
                -> m [Field]
-intersectBrand brand = do
-  tys <- getBrandPath brand
-  let f (TObject _ fs) = fs
-      f t = error $ printf
-              "intersectBrand: expected TObject in brand path, got %s"
-              (renderType t)
-  return (foldr overrideFields [] (map f tys))
+intersectBrand brand tyArgs = do
+  (ty', parentTy) <- getBrandWithParent brand
+  let ty = tyApp ty' tyArgs
+  case (ty, parentTy) of
+    (TObject _ _ fields, Just (TObject parentBrand _ _)) -> do
+      tys <- getBrandPath parentBrand
+      let f (TObject _ _ fs) = fs
+          f t = error $ printf
+                  "intersectBrand: expected TObject in brand path, got %s"
+                  (renderType t)
+      return (foldr overrideFields fields (map f tys))
+    (TObject _ _ fields, Nothing) -> return fields
+    otherwise -> error "intersectBrand: need more args"
 
 
 sugarTObject :: EnvM m
              => Type
              -> m Type
-sugarTObject (TObject brand fields) = do
-  fields' <- intersectBrand brand
-  return (TObject brand (overrideFields fields fields'))
+sugarTObject (TObject brand tyArgs fields) = do
+  fields' <- intersectBrand brand tyArgs
+  return (TObject brand tyArgs (overrideFields fields fields'))
 sugarTObject ty = return ty
 
 

@@ -50,6 +50,8 @@ ok :: TypeCheck ()
 ok = return ()
 
 
+
+
 desugarType :: SourcePos -> Type -> TypeCheck Type
 desugarType p ty = do
   r <- runErrorT (isWfType ty)
@@ -154,8 +156,8 @@ lvalue lv = case lv of
   LDot p obj f -> do
     tObj <- expr obj
     case tObj of
-      TObject brand fields -> do
-        fields' <- intersectBrand brand
+      TObject brand tyArgs fields -> do
+        fields' <- intersectBrand brand tyArgs
         case fieldType f (overrideFields fields fields') of
           Just (s, False)  -> return s
           Just (s, True) -> do
@@ -183,7 +185,8 @@ expr e = case e of
     t1 <- expr e1
     ts <- mapM expr es
     t <- foldM canonicalUnion t1 ts
-    return (TApp "Array" [t])
+    -- desugaring fills in the array methods
+    desugarType p $ intersectType (TApp "Array" [t]) (openType t freeArrayType)
   VarRef p (Id _ x) -> lookupEnv p x
   DotRef p e (Id _ x) -> do
     objTy <- expr e
@@ -195,8 +198,9 @@ expr e = case e of
   BracketRef p e1 e2 -> do
     t1 <- expr e1
     t2 <- expr e2
+    t1 <- projType isArrayType t1
     case (t1, t2) of
-      (TApp "Array" [x], TApp "Int" []) -> return x
+      (Just (TApp "Array" [x]), TApp "Int" []) -> return x
       otherwise -> fatalTypeError p "expected array or integer index"
   PrefixExpr p op e -> do
     t <- expr e
@@ -289,11 +293,11 @@ expr e = case e of
     unless (length fields == length (nub names)) $
       fatalTypeError p "duplicate field names"
     ts <- mapM field fields
-    t <- desugarType p (TObject "Object" ts)
+    t <- desugarType p (TObject "Object" [] ts)
     s <- getBrand "Object"
     case (t, s) of
-      (TObject "Object" fs1, TObject "Object" fs2) ->
-        return (TObject "Object" (overrideFields fs1 fs2))
+      (TObject "Object" [] fs1, TObject "Object" [] fs2) ->
+        return (TObject "Object" [] (overrideFields fs1 fs2))
       otherwise -> 
         catastrophe p "TypeCheck.hs : desugarType/getBrand error in ObjectLit"
     
@@ -465,8 +469,8 @@ decl (VarDeclExpr p (Id _ x) (Just t) e) = do
   case r of
     True -> ok
     False -> do fatalTypeError p $ printf 
-                  "expression has type %s, expected a subtype of %s"
-                  (renderType s) (renderType t)
+                  "expression has type\n%s\n, expected a subtype of\n%s"
+                  (show s) (show t')
 -- e may contain a function, therefore we must recompute the type.
 decl (VarDeclExpr p (Id _ x) Nothing e) = do
   t <- lookupEnv p x
@@ -509,7 +513,9 @@ topLevel body = do
 
 
 withInitEnv :: TypeCheck a -> TypeCheck a
-withInitEnv m = m
+withInitEnv m = do
+  newBrand "Array" (TForall freeArrayType) (TObject "Object" [] [])
+  m
 
 
 typeCheck :: InitialStoreEnv -> [Statement SourcePos] -> Either String ()

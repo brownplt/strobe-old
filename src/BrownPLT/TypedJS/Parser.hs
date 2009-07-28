@@ -33,7 +33,7 @@ import Numeric(readDec,readOct,readHex)
 import Data.Char(chr)
 import Data.Char
 import Data.List
-import BrownPLT.TypedJS.TypeTheory (closeType)
+import BrownPLT.TypedJS.TypeTheory
  
 -- We parameterize the parse tree over source-locations.
 type ParsedStatement = Statement SourcePos
@@ -80,14 +80,13 @@ Disambiguation:
 
  type_fn ::= type' [,*] -> type?
            | type' [,+] ... -> type?
-           | '[' type ']' type' [,*] -> type?
-           | '[' type ']' type' [,+] ... -> type?
            | type'
 
  type' ::= type''?
          | type''
 
  type'' ::= identifier
+          | '[' type ']'
           | ( type )
           | identifier:{ [readonly] id: type' [,*] }
           | identifier:
@@ -119,13 +118,13 @@ type_ = do
 type_fn :: CharParser st (Type)
 type_fn = do
   p <- getPosition
-  let globalThis = TObject "Window" []
+  let globalThis = TObject "Window" [] []
   ts <- type_' `sepBy` comma
-  let thisType = TObject "Window" []
+  let thisType = TObject "Window" [] []
   let func = do
         reservedOp "->"
         r <- type_
-        return (TArrow (TObject "Window" []) (ArgType ts Nothing) r)
+        return (TArrow (TObject "Window" [] []) (ArgType ts Nothing) r)
   case ts of
     []  -> func -- function of zero arguments
     [t] -> func <|> (return t)
@@ -141,6 +140,9 @@ type_' = do
 
 type_'' :: CharParser st (Type)
 type_'' = do
+  let array = do
+        t <- brackets type_
+        return (intersectType (TApp "Array" [t]) (openType t freeArrayType))
   let union = do 
         reservedOp "U";
         elts <- parens (type_'' `sepBy1` comma)
@@ -157,7 +159,7 @@ type_'' = do
   let object = do
         fields <- braces (field `sepBy` comma)
         fields <- noDupFields fields
-        return (TObject "Object" fields)
+        return (TObject "Object" [] fields)
   -- free type variables, type constructors and objects
   let app constr = do
         args <- (brackets $ type_' `sepBy` comma) <?> "type application"
@@ -167,8 +169,8 @@ type_'' = do
         let withFields = do
               fields <- braces (field `sepBy` comma)
               fields <- noDupFields fields
-              return (TObject brand fields)
-        withFields <|> (return $ TObject brand [])
+              return (TObject brand [] fields)
+        withFields <|> (return $ TObject brand [] [])
   -- If the first letter is upper-case, an unapplied identifier is a nullary
   -- type constructor.  If it is lower-case, it is a free type variable.
   -- Therefore, basic types such as integers, booleans, etc. must be "Int",
@@ -179,7 +181,7 @@ type_'' = do
         case isUpper (head id) of
           True -> (app id) <|> (brandedObject id) <|> (return $ TApp id [])
           False -> (app id) <|> (brandedObject id) <|> (return $ TId id)
-    in (parens type_) <|> any <|> (try union) <|> object <|> other
+    in (parens type_) <|> array <|> any <|> (try union) <|> object <|> other
 
 
 field :: CharParser st (String, Bool, Type)
@@ -923,26 +925,9 @@ externalStmt = do
   t <- parseType
   semi
   return (ExternalStmt pos id t)
-typeStmt = do
-  pos <- getPosition
-  isSealed <- option False (reserved "sealed" >> return True)
-  reserved "type"
-  id <- identifier
-  let (Id _ idn) = id
-  t' <- parseType
-  t <- case (isSealed, t') of
-    (False, _) -> return t'
-    (True, TObject brand ps) -> 
-      return $ (TObject brand
-                              (("@sealed_"++idn, True, TObject "__" []):ps))
-    (True, TObject brand ps) -> 
-      return $ TObject brand (("@sealed_"++idn, True, TObject "__" []):ps)
-    (True, t) -> fail "can only seal object types"
-  semi
-  return (TypeStmt pos id t)
 
 parseToplevel :: ToplevelParser st
-parseToplevel = externalStmt <|> typeStmt
+parseToplevel = externalStmt
 
 parseToplevels = do
   whiteSpace

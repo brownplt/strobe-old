@@ -4,6 +4,7 @@ module BrownPLT.TypedJS.TypeDefinitions
   , RuntimeTypeInfo (..)
   , ArgType (..)
   , Field
+  , isArrayType
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -19,7 +20,7 @@ type Brand = String
 type Field = (String, Bool, Type) -- 'True' indicates immutable field
 
 data Type
-  = TObject Brand [Field]
+  = TObject Brand [Type] [Field]
   | TAny
   | TArguments ArgType
   | TArrow { tArrowThis :: Type, tArrowArgs :: ArgType, tArrowResult :: Type }
@@ -35,3 +36,5 @@ data Type
   deriving (Show, Eq, Ord, Data, Typeable)
 
 
+isArrayType (TApp "Array" [_]) = True
+isArrayType _ = False

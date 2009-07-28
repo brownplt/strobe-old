@@ -27,7 +27,6 @@ module BrownPLT.TypedJS.Infrastructure
   , isBrand
   , getBrand
   , getBrandWithParent
-  , getBrandPath
   , newRootBrand
   , newBrand
   , extendBrand
@@ -201,13 +200,16 @@ freshTVar k = do
 
 
 -- ----------------------------------------------------------------------------
+-- Brands
+
 
 data BrandStore = BrandStore {
   -- |Maps brand names to their complete type and the name of the brand they
   -- extend.  All user-defined brands extend @Object@, though the builtin
   -- DOM objects do not.
-  brandStoreDict :: Map String (Type, Maybe String)
+  brandStoreDict :: Map String (Type, Maybe Type)
 }
+
 
 
 emptyBrandStore :: BrandStore
@@ -226,7 +228,7 @@ isBrand brand = do
 
 getBrandWithParent :: MonadState BrandStore m
                    => String -- ^brand name
-                   -> m (Type, Maybe String)
+                   -> m (Type, Maybe Type)
 getBrandWithParent brand = do
   s <- get
   case M.lookup brand (brandStoreDict s) of
@@ -240,26 +242,10 @@ getBrand :: MonadState BrandStore m
 getBrand brand = liftM fst (getBrandWithParent brand)
 
 
--- |@getBrandPath brand@
--- 
--- Returns the type of @brand@ and all its ancestors in order.  @brand@ is at
--- the head of the list.
-getBrandPath :: MonadState BrandStore m
-             => String -- ^brand
-             -> m [Type]
-getBrandPath brand = do
-  (ty, parent) <- getBrandWithParent brand
-  case parent of
-    Nothing -> return [ty]
-    Just parentBrand -> do
-      tys <- getBrandPath parentBrand
-      return (ty:tys)
-
-
 newRootBrand :: MonadState BrandStore m
              => Type -- ^expected @TObject@
              -> m ()
-newRootBrand ty@(TObject brand fields) = do
+newRootBrand ty@(TObject brand tArgs fields) = do
   s <- get
   let dict = brandStoreDict s
   case M.lookup brand dict of
@@ -273,10 +259,11 @@ newRootBrand ty =
 -- |Assumes that the subbrand is a structural subtype of the parent.
 -- Assumes that the parent already exists.
 newBrand :: MonadState BrandStore m
-         => Type -- ^expected @TObject@
-         -> String -- ^parent
+         => String -- ^brand name
+         -> Type -- ^brand type
+         -> Type -- ^parent
          -> m ()
-newBrand ty@(TObject brand fields) parent = do
+newBrand brand ty parent = do
   s <- get
   let dict = brandStoreDict s
   case M.lookup brand dict of
@@ -285,10 +272,6 @@ newBrand ty@(TObject brand fields) parent = do
     Just (ty', _) -> 
       fail $ printf "constructor %s is already defined with the type %s"
                      brand (renderType ty')
-newBrand ty _ =
-  fail $ printf "newBrand: expected (TObject ...), received %s" 
-                (renderType ty)
-
 
 
 insertField :: String -- ^field name
@@ -306,6 +289,17 @@ insertField name ty ((name', ro, ty'):rest)
     return ((name, False, ty):(name', ro, ty'):rest)
 
 
+injectField :: String -> Type -> Type -> Maybe Type
+injectField name fieldTy ty = case ty of
+  TObject brand tyArgs fields -> do
+    fs <- insertField name fieldTy fields
+    return (TObject brand tyArgs fs)
+  TForall ty' -> do
+    t <- injectField name fieldTy ty'
+    return (TForall t)
+  otherwise -> error "injectField: expected TObject / TForall"
+
+
 extendBrand :: MonadState BrandStore m
             => String -- ^brand name
             -> String -- ^field name
@@ -315,15 +309,11 @@ extendBrand brand field ty = do
   s <- get
   let dict = brandStoreDict s
   case M.lookup brand dict of
-    Just (TObject _ fields, parent) -> case insertField field ty fields of
-      Just fields' -> 
-        put $ s { brandStoreDict = 
-                  M.insert brand (TObject brand fields', parent) dict }
+    Just (objTy, parent) -> case injectField field ty objTy of
+      Just objTy' ->
+        put $ s { brandStoreDict =  M.insert brand (objTy', parent) dict }
       Nothing -> fail $ printf "constructor %s already has a field named %s"
                                brand field
-    Just (t, _) -> error $ printf 
-      "extendBrand: brand store inconsistent, %s has the type %s"
-      brand (renderType t)
     Nothing -> fail $ printf "constructor %s is not defined" brand
 
 
@@ -340,7 +330,10 @@ isSubbrand sub sup = do
   let traverse brand 
         | brand == sup = True
         | otherwise = case M.lookup brand dict of
-            Just (_, Just parent) -> traverse parent
+            Just (_, Just (TObject parent _ _)) -> traverse parent
+            Just (_, Just invalidParentTy) -> error $ printf
+              "isSubbrand : brand store inconsistent, parent %s"
+              (renderType invalidParentTy)
             Just (_, Nothing) -> False
             Nothing -> error $ printf 
               "isSubbrand : brand store inconsistent, %s not found" brand
