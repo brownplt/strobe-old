@@ -50,16 +50,6 @@ ok :: TypeCheck ()
 ok = return ()
 
 
-lookupId :: SourcePos -> String -> TypeCheck Type
-lookupId p x = do
-  ty <- lookupEnv p x
-  case ty of
-    TObject brand fields -> do
-      fields' <- intersectBrand brand
-      return (TObject brand (overrideFields fields fields'))
-    otherwise -> return ty
-
-
 desugarType :: SourcePos -> Type -> TypeCheck Type
 desugarType p ty = do
   r <- runErrorT (isWfType ty)
@@ -160,7 +150,7 @@ lvalue lv = case lv of
       True -> fail "assinging to enclosing scopes NYI"
       -- x is a local variable.  The local scope may make assumptions about
       -- its runtime type.
-      False -> lookupId p x
+      False -> lookupEnv p x
   LDot p obj f -> do
     tObj <- expr obj
     case tObj of
@@ -186,7 +176,7 @@ expr e = case e of
   IntLit _ _ -> return intType
   BoolLit _ _ -> return boolType
   NullLit _ -> fail "NullLit NYI"
-  ThisRef p -> lookupId p "this"
+  ThisRef p -> lookupEnv p "this"
   ArrayLit p [] -> fatalTypeError p $ printf
     "empty array literals must be bound to identifiers with type annotations."
   ArrayLit p (e1:es) -> do
@@ -194,18 +184,14 @@ expr e = case e of
     ts <- mapM expr es
     t <- foldM canonicalUnion t1 ts
     return (TApp "Array" [t])
-  VarRef p (Id _ x) -> lookupId p x
+  VarRef p (Id _ x) -> lookupEnv p x
   DotRef p e (Id _ x) -> do
-    t <- expr e
-    case t of
-      TObject brand fields -> do
-        fields' <- intersectBrand brand
-        case fieldType x (overrideFields fields fields') of
-          Just (ty, _) -> return ty
-          Nothing -> fatalTypeError p $ printf
-            "object %s\ndoes not have the field %s" (renderType t) x
-      otherwise -> fatalTypeError p $ printf "expected object, received %s"
-                     (renderType t)
+    objTy <- expr e
+    fieldTy <- projFieldType objTy x
+    case fieldTy of
+      Just t -> return t
+      Nothing -> fatalTypeError p $ printf
+        "%s\ndoes not have the field %s" (renderType objTy) x
   BracketRef p e1 e2 -> do
     t1 <- expr e1
     t2 <- expr e2
@@ -358,9 +344,9 @@ expr e = case e of
                                (renderType t)
           return t
   AnnotatedVarRef p rt x 
-    | S.null rt -> lookupId p x -- provably unreachable
+    | S.null rt -> lookupEnv p x -- provably unreachable
     | otherwise -> do
-        s <- lookupId p x
+        s <- lookupEnv p x
         u <- static rt s
         case u of
           Just t -> return t
@@ -483,7 +469,7 @@ decl (VarDeclExpr p (Id _ x) (Just t) e) = do
                   (renderType s) (renderType t)
 -- e may contain a function, therefore we must recompute the type.
 decl (VarDeclExpr p (Id _ x) Nothing e) = do
-  t <- lookupId p x
+  t <- lookupEnv p x
   s <- expr e
   case s == t of
     True -> ok

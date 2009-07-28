@@ -18,6 +18,7 @@ module BrownPLT.TypedJS.TypeTheory
   , canonicalUnion 
   -- * Subtyping
   , isSubtype
+  , projFieldType
   -- * Interface to dataflow analysis
   -- $runtime
 	, static
@@ -198,6 +199,17 @@ canonicalUnion t1 t2
   | otherwise = return (TUnion t2 t1)
 
 
+unionType t1 t2
+  | t1 == t2  = t1
+  | t1 < t2   = (TUnion t1 t2)
+  | otherwise = (TUnion t2 t1)
+
+
+intersectType t1 t2
+  | t1 == t2  = t1
+  | t1 < t2   = (TIntersect t1 t2)
+  | otherwise = (TIntersect t2 t1)
+
 
 
 isWfType :: EnvM m
@@ -320,6 +332,57 @@ isSubtype s t = case (s, t) of
     liftM2 (||) (isSubtype s1 t) (isSubtype s2 t)
   otherwise -> 
     return False
+
+
+projFieldType :: EnvM m => Type -> String -> m (Maybe Type)
+projFieldType ty name = case ty of
+  TObject brand fields -> do
+   fields' <- intersectBrand brand
+   case fieldType name (overrideFields fields fields') of
+     Just (ty, _) -> return (Just ty)
+     Nothing -> return Nothing
+  TIntersect t1 t2 -> do
+    r1 <- projFieldType t1 name
+    r2 <- projFieldType t2 name
+    case (r1, r2) of
+      (Just ty1, Nothing) -> return (Just ty1)
+      (Nothing, Just ty2) -> return (Just ty2)
+      (Just ty1, Just ty2) -> return (Just (intersectType ty1 ty2))
+      (Nothing, Nothing) -> return Nothing
+  TUnion t1 t2 -> do
+    r1 <- projFieldType t1 name
+    r2 <- projFieldType t2 name
+    case (r1, r2) of
+      (Just ty1, Just ty2) -> return (Just (unionType ty1 ty2))
+      otherwise -> return Nothing
+  otherwise -> return Nothing
+
+
+projType :: EnvM m => (Type -> Bool) -> Type -> m (Maybe Type)
+projType isType ty = case ty of
+  TObject brand fields -> do
+   fields' <- intersectBrand brand
+   let ty' = TObject brand (overrideFields fields fields')
+   case isType ty' of
+     True -> return (Just ty')
+     False -> return Nothing
+  TIntersect t1 t2 -> do
+    r1 <- projType isType t1
+    r2 <- projType isType t2
+    case (r1, r2) of
+      (Just ty1, Nothing) -> return (Just ty1)
+      (Nothing, Just ty2) -> return (Just ty2)
+      (Just ty1, Just ty2) -> return (Just (intersectType ty1 ty2))
+      (Nothing, Nothing) -> return Nothing
+  TUnion t1 t2 -> do
+    r1 <- projType isType t1
+    r2 <- projType isType t2
+    case (r1, r2) of
+      (Just ty1, Just ty2) -> return (Just (unionType ty1 ty2))
+      otherwise -> return Nothing
+  otherwise -> case isType ty of
+    True -> return (Just ty)
+    False -> return Nothing
 
 
 -- ----------------------------------------------------------------------------

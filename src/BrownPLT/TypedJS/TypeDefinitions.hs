@@ -31,7 +31,7 @@ data Type
   | TForall Type
   | TNamedForall String Type
   | TIntersect Type Type
-  | TVar String
+  | TConstr [Type] Type Type
   deriving (Show, Eq, Ord, Data, Typeable)
 
 
