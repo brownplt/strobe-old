@@ -343,10 +343,14 @@ isSubtype s t = case (s, t) of
     return True
   (TApp "Array" [s1], TApp "Array" [t1]) ->
     isSubtype s1 t1 +++ isSubtype t1 s1
-  (TObject brand1 tys1 fs1, TObject brand2 tys2 fs2) ->
+  (TObject brand1 tys1 fs1, TObject brand2 tys2 fs2) -> do
+    let intersectSubtype = do
+          fs1' <- intersectBrand brand1 tys1
+          fs2' <- intersectBrand brand2 tys2
+          areFieldsSubtypes (overrideFields fs1 fs1') (overrideFields fs2 fs2')
     isSubbrand brand1 brand2 +++
-    areSubtypes tys1 tys2 +++
-    areFieldsSubtypes fs1 fs2
+      areSubtypes tys1 tys2 +++
+      (areFieldsSubtypes fs1 fs2 -=- intersectSubtype)
   (TApp c1 args1, TApp c2 args2) -> case c1 == c2 of
     True -> areSubtypes args1 args2
     False -> return False
@@ -495,6 +499,7 @@ runtime t = case t of
     (TUnk, TKnown s2) -> TKnown s2
     (TKnown s1, TUnk) -> TKnown s1
     (TKnown s1, TKnown s2) -> TKnown (S.intersection s1 s2)
+    (TUnk, TUnk) -> return TUnk
     (TUnreachable, _) -> error "runtime: recursive call produced TUnreachable"
     (_, TUnreachable) -> error "runtime: recursive call produced TUnreachable"
   TUnion t1 t2 -> case (runtime t1, runtime t2) of
@@ -575,7 +580,7 @@ desugarType :: EnvM m => SourcePos -> Type -> m Type
 desugarType p ty = do
   r <- runErrorT (isWfType ty)
   case r of
-    Right () ->  canonize ty >>= brandSugar
+    Right () ->  canonize ty
     Left msg -> fatalTypeError p $ printf "%s in type %s" msg (renderType ty)
 
 
@@ -647,25 +652,6 @@ intersectBrand brand tyArgs = do
       return (foldr overrideFields fields (map f tys))
     (TObject _ _ fields, Nothing) -> return fields
     otherwise -> error "intersectBrand: need more args"
-
-
-sugarTObject :: EnvM m
-             => Type
-             -> m Type
-sugarTObject (TObject brand tyArgs fields) = do
-  fields' <- intersectBrand brand tyArgs
-  return (TObject brand tyArgs (overrideFields fields fields'))
-sugarTObject ty = return ty
-
-
--- |Syntactic sugar for brands.  Theoretically, all the fields in an object
--- must be enumerated.  However, when a function is declared or a variable's
--- type is written, we fill in the fields that already exist in the brand
--- store.
-brandSugar :: EnvM m
-           => Type
-           -> m Type
-brandSugar ty = everywhereM (mkM sugarTObject) ty
 
 
 unForall :: Type -> ([String], Type)

@@ -94,10 +94,31 @@ expressions {
   succeed function() :: -> Undefined {
     Object.prototype.x = 93;
   };
+
+  succeed function() :: -> Int {
+    Object.prototype.x = 93;
+    return (5).x.x.x.x.x.x.x;
+  };
+  
+  succeed function() :: -> Int {
+    Object.prototype.x = 93;
+    return (5).x.x.x.x.x.x.x.x.x.x.x;
+  };
+  
+  succeed function() :: -> Int {
+    Object.prototype.x = 93;
+    return (5).x.x.x.x.x.x.x + (12).x.x;
+  };
   
   succeed function() :: -> Undefined {
     Object.prototype.x = 93;
     var obj :: { x :: Int, y :: Int } = { y : 900 };
+    var z :: Int = obj.x;
+  };
+  
+  succeed function() :: -> Undefined {
+    Object.prototype.x = 93;
+    var obj = { y : 900 };
     var z :: Int = obj.x;
   };
   

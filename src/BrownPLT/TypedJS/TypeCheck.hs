@@ -103,7 +103,7 @@ numericOp :: SourcePos -> Expression SourcePos
           -> Type -> Type -> Bool -> Bool -> TypeCheck Type
 numericOp loc e lhs rhs requireInts returnDouble = do
   result <- case returnDouble of
-    True -> desugarType loc $ intersectType doubleType numberObjectType
+    True -> return $ intersectType doubleType numberObjectType
     False -> do
       r <- isSubtype lhs intType
       case r of
@@ -167,8 +167,8 @@ expr :: Expression SourcePos
 expr e = case e of
   StringLit _ _ -> return stringType
   RegexpLit _ _ _ _ -> fail "RegexpLit NYI"
-  NumLit p _ -> desugarType p $ intersectType doubleType numberObjectType
-  IntLit p _ -> desugarType p $ intersectType intType numberObjectType
+  NumLit p _ -> return $ intersectType doubleType numberObjectType
+  IntLit p _ -> return $ intersectType intType numberObjectType
   BoolLit _ _ -> return boolType
   NullLit _ -> fail "NullLit NYI"
   ThisRef p -> lookupEnv p "this"
@@ -178,8 +178,7 @@ expr e = case e of
     t1 <- expr e1
     ts <- mapM expr es
     let t = foldr unionType t1 ts
-    -- desugaring fills in the array methods
-    desugarType p $ intersectType (TApp "Array" [t]) (openType t freeArrayType)
+    return $ intersectType (TApp "Array" [t]) (openType t freeArrayType)
   VarRef p (Id _ x) -> lookupEnv p x
   DotRef p e (Id _ x) -> do
     objTy <- expr e
@@ -291,6 +290,8 @@ expr e = case e of
     unless (length fields == length (nub names)) $
       fatalTypeError p "duplicate field names"
     ts <- mapM field fields
+    return (TObject "Object" [] ts)
+{-
     t <- desugarType p (TObject "Object" [] ts)
     s <- getBrand "Object"
     case (t, s) of
@@ -298,7 +299,7 @@ expr e = case e of
         return (TObject "Object" [] (overrideFields fs1 fs2))
       otherwise -> 
         catastrophe p "TypeCheck.hs : desugarType/getBrand error in ObjectLit"
-    
+  -}  
   CallExpr p f ts args -> do
     f_t <- expr f
     args_t <- mapM expr args
@@ -512,8 +513,9 @@ topLevel body = do
 
 
 withInitEnv m = do
-  newBrand "Array" (TForall freeArrayType) (TObject "Object" [] [])
-  newBrand "Number" numberObjectType (TObject "Object" [] [])
+  objTy <- brandType "Object" []
+  newBrand "Array" (TForall freeArrayType) objTy
+  newBrand "Number" numberObjectType objTy
   m
 
 
