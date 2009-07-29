@@ -13,17 +13,6 @@ type Object :: rec Object . {
   valueOf :: ([Object] -> any)
 };
 
-sealed type Number :: rec Number . {
-  toExponential :: ([Number] int? -> string),
-  toFixed :: ([Number] int? -> string),
-  toPrecision :: ([Number] int? -> string),
-  toString :: ([Number] -> string),
-  toLocaleString :: ([Number] -> string),
-    //toString is re-defined here because a TypeError results if the function
-    //is called on an object that is not a string.
-  valueOf :: ([Number] -> double) //should make sure this is a subtype
-                                  //of object's valueOf
-};
 
 external Number_ :: {
   //static constants

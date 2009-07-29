@@ -65,9 +65,9 @@ relation init = do
                   (if isFail then "fail" else "")
                   (renderType t1) (renderType t2)
         return $ TestCase $ catchException p $ do
-          assertBool s $ runTypeCheckWithoutError init $ do
-            u1 <- canonize t1
-            u2 <- canonize t2
+          assertBool s $ runTypeCheckWithoutError init $ withInitEnv $ do
+            u1 <- desugarType p t1
+            u2 <- desugarType p t2
             return ((u1 == u2) `xor` isFail)
   let sub = do
         reservedOp "<:"
@@ -76,9 +76,9 @@ relation init = do
                   (if isFail then "fail" else "")
                   (renderType t1) (renderType t2)
         return $ TestCase $ catchException p $ do
-          assertBool s $ runTypeCheckWithoutError init $ do
-            u1 <- canonize t1
-            u2 <- canonize t2
+          assertBool s $ runTypeCheckWithoutError init $ withInitEnv $ do
+            u1 <- desugarType p t1
+            u2 <- desugarType p t2
             r <- isSubtype u1 u2
             return (r `xor` isFail)
   eq <|> sub
@@ -97,8 +97,7 @@ expression' idl = do
         -- typeCheckExpr should return the type in canonical form
         Right s -> do
           let f = do
-                t <- canonize t
-                t <- brandSugar t
+                t <- desugarType p t
                 isSt <- isSubtype s t
                 return (isSt, t)
           let (r, t) = runTypeCheckWithoutError idl (withInitEnv f)

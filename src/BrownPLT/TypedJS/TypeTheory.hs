@@ -5,6 +5,7 @@ module BrownPLT.TypedJS.TypeTheory
   , doubleType
   , boolType
   , freeArrayType
+  , numberObjectType
   -- * Substitution
   --
   -- | We use a locally nameless representation for quantified types.  These
@@ -15,7 +16,6 @@ module BrownPLT.TypedJS.TypeTheory
   , (+++)
   , (-=-)
   , isWfType
-  , canonize
   , canonicalUnion 
   , intersectType
   , unionType
@@ -23,15 +23,18 @@ module BrownPLT.TypedJS.TypeTheory
   , isSubtype
   , projFieldType
   , projType
+  , projBrand
   -- * Interface to dataflow analysis
   -- $runtime
 	, static
 	, runtime
   -- * Utilities
+  , desugarType
+  , canonize
   , fieldType
   , overrideFields
   , intersectBrand
-  , brandSugar
+  , brandType
   , unForall
   ) where
 
@@ -55,9 +58,33 @@ boolType = TApp "Bool" []
 
 
 freeArrayType = TObject "Array" [TIx 0]
-  [ ("length", True, intType)
+  [ ("length", True, intersectType intType numberObjectType)
   , ("push", True, TArrow (TApp "Array" [TIx 0]) (ArgType [TIx 0] Nothing)
                           undefType)
+  ]
+
+-- |Note that field names must be in ascending order.
+numberObjectType = TObject "Number" []
+  [ ("toExponential", True,
+     TArrow (TObject "Number" [] []) 
+            (ArgType [unionType intType undefType] Nothing)
+            stringType)
+  , ("toFixed", True,
+     TArrow (TObject "Number" [] []) 
+            (ArgType [unionType intType undefType] Nothing)
+            stringType)
+  , ("toLocaleString", True,
+     TArrow (TObject "Number" [] []) 
+            (ArgType [] Nothing)
+            stringType)
+  , ("toPrecision", True,
+     TArrow (TObject "Number" [] []) 
+            (ArgType [unionType intType undefType] Nothing)
+            stringType)
+  , ("valueOf", True,
+     TArrow (TObject "Number" [] []) 
+            (ArgType [] Nothing)
+            doubleType)
   ]
 
 
@@ -81,6 +108,8 @@ closeTypeRec n x t = case t of
     TUnion (closeTypeRec n x t1) (closeTypeRec n x t2)
   TExists u -> TExists (closeTypeRec (n + 1) x u)
   TForall u -> TForall (closeTypeRec (n + 1) x u)
+  TIntersect t1 t2 ->
+    TIntersect (closeTypeRec n x t1) (closeTypeRec n x t2)
 
 
 closeArgTypeRec n x (ArgType ts opt) =
@@ -111,8 +140,11 @@ openTypeRec n s t = case t of
     TApp constr (map (openTypeRec n s) ts)
   TUnion t1 t2 ->
     TUnion (openTypeRec n s t1) (openTypeRec n s t2)
+  TIntersect t1 t2 ->
+    TIntersect (openTypeRec n s t1) (openTypeRec n s t2)
   TExists u -> TExists (openTypeRec (n + 1) s u)
   TForall u -> TForall (openTypeRec (n + 1) s u)
+
 
 
 openArgTypeRec n s (ArgType ts opt) =
@@ -143,6 +175,8 @@ substType x s t = case t of
     TApp constr (map (substType x s) ts)
   TUnion t1 t2 ->
     TUnion (substType x s t1) (substType x s t2)
+  TIntersect t1 t2 ->
+    TIntersect (substType x s t1) (substType x s t2)
   TExists u -> TExists (substType x s u)
   TForall u -> TForall (substType x s u)
 
@@ -345,6 +379,38 @@ isSubtype s t = case (s, t) of
   otherwise -> return False
 
 
+projBrand :: EnvM m => Type -> m (Maybe (String, [Type]))
+projBrand ty = case ty of
+  TObject brand tyArgs fields -> return (Just (brand, tyArgs))
+  TIntersect t1 t2 -> do
+    r1 <- projBrand t1
+    r2 <- projBrand t2
+    case (r1, r2) of
+      (Just (brand1, tyArgs1), Just (brand2, tyArgs2)) -> do
+        sb1 <- isSubbrand brand1 brand2 +++ areSubtypes tyArgs1 tyArgs2
+        sb2 <- isSubbrand brand2 brand1 +++ areSubtypes tyArgs2 tyArgs1
+        case (sb1, sb2) of
+          (True, _) -> return (Just (brand1, tyArgs1))
+          (_, True) -> return (Just (brand2, tyArgs2))
+          (False, False) -> error $ printf 
+            "projBrand: intersection of unrelated brands %s and %s"
+            brand1 brand2
+      (Just brand1, Nothing) -> return (Just brand1)
+      (Nothing, Just brand2) -> return (Just brand2)
+      (Nothing, Nothing) -> return Nothing
+  TUnion t1 t2 -> do
+    r1 <- projBrand t1
+    r2 <- projBrand t2
+    case (r1, r2) of
+      (Just (brand1, tyArgs1), Just (brand2, tyArgs2)) ->  do
+        isEq <- (return $ brand1 == brand2) +++ 
+                areSubtypes tyArgs1 tyArgs2 +++ 
+                areSubtypes tyArgs2 tyArgs1
+        return $ if isEq then Just (brand1, tyArgs1) else Nothing
+      otherwise -> return Nothing
+  otherwise -> return Nothing
+
+
 projFieldType :: EnvM m => Type -> String -> m (Maybe Type)
 projFieldType ty name = case ty of
   TObject brand tyArgs fields -> do
@@ -421,6 +487,7 @@ runtime t = case t of
   TApp x ts -> error $ printf "TypeTheory.hs : argument of runtime contains \
                               \unknown type constructor %s, with args %s"
                               x (show ts) 
+  TObject "Number" _ _ -> injRT RTNumber
   TObject _ _ _ -> injRT RTObject
   TArguments _ -> injRT RTObject -- the type of the arguments array
   TArrow _ _ _ -> injRT RTFunction
@@ -439,15 +506,15 @@ runtime t = case t of
     (_, TUnreachable) -> error "runtime: recursive call produced TUnreachable"
 
 
-flatStatic :: RuntimeType -> Type
+flatStatic :: EnvM m => RuntimeType -> m Type
 flatStatic rt = case rt of
-  RTBoolean -> boolType
-  RTNumber -> doubleType
-  RTUndefined -> undefType
-  RTString -> stringType
-  RTObject -> TAny
-  RTFunction -> TAny
-  RTFixedString _ -> stringType
+  RTBoolean -> return boolType
+  RTNumber -> desugarType noPos $ intersectType doubleType numberObjectType
+  RTUndefined -> return undefType
+  RTString -> return stringType
+  RTObject -> return TAny
+  RTFunction -> return TAny
+  RTFixedString _ -> return stringType
 
 
 -- |If the supplied type is canonical, the result is canonical.
@@ -468,16 +535,19 @@ static rt st = case st of
     case r of
       Just t' -> return (Just $ TForall t')
       Nothing -> return Nothing
-  TAny -> case map flatStatic (S.toList rt) of
-    [] -> return Nothing
-    [t] -> return (Just t)
-    (t:ts) -> liftM Just (foldM canonicalUnion t ts)
+  TAny -> do
+    ts <- mapM flatStatic (S.toList rt)
+    case ts of
+      [] -> return Nothing
+      [t] -> return (Just t)
+      (t:ts) -> liftM Just (foldM canonicalUnion t ts)
   TApp "String" [] | S.member RTString rt -> return (Just st)
   TApp "Bool" [] | S.member RTBoolean rt -> return (Just st)
   TApp "Double" [] | S.member RTNumber rt -> return (Just st)
   TApp "Int" [] | S.member RTNumber rt -> return (Just st)
   TApp "Undefined" [] | S.member RTUndefined rt -> return (Just st)
   TApp "Array" [_] | S.member RTObject rt -> return (Just st)
+  TObject "Number" _ _ | S.member RTNumber rt -> return (Just st)
   TObject _ _ _ | S.member RTObject rt -> return (Just st)
   TArrow _ _ _ | S.member RTFunction rt -> return (Just st)
   TUnion t1 t2 -> do
@@ -499,6 +569,14 @@ static rt st = case st of
 
 -- ----------------------------------------------------------------------------
 -- Utilities
+
+
+desugarType :: EnvM m => SourcePos -> Type -> m Type
+desugarType p ty = do
+  r <- runErrorT (isWfType ty)
+  case r of
+    Right () ->  canonize ty >>= brandSugar
+    Left msg -> fatalTypeError p $ printf "%s in type %s" msg (renderType ty)
 
 
 fieldType :: String
@@ -540,6 +618,16 @@ tyApp :: Type -> [Type] -> Type
 tyApp t [] = t
 tyApp (TForall t) (s:ss) = tyApp (openType s t) ss
 tyApp _ _ = error "tyApp: superflous type arguments"
+
+
+brandType :: EnvM m
+            => String
+            -> [Type]
+            -> m Type
+brandType brand tyArgs = do
+  fields <- intersectBrand brand tyArgs
+  return (TObject brand tyArgs fields)
+
 
 -- TODO: This is guesswork.
 intersectBrand :: EnvM m

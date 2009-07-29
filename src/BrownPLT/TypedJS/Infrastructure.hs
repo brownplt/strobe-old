@@ -92,7 +92,7 @@ runTypeCheckWithoutError (InitialStoreEnv st env) m =
   runReader (evalStateT m st) env
 
 
-fatalTypeError :: SourcePos -> String -> TypeCheck a
+fatalTypeError :: Monad m => SourcePos -> String -> m a
 fatalTypeError p msg = fail (printf "%s: %s" (show p) msg)
 
 

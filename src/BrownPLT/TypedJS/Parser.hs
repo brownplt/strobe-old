@@ -171,6 +171,12 @@ type_'' = do
               fields <- noDupFields fields
               return (TObject brand [] fields)
         withFields <|> (return $ TObject brand [] [])
+  let int = do
+        reserved "Int"
+        return $ intersectType (TApp "Int" []) numberObjectType
+  let double = do
+        reserved "Double"
+        return $ intersectType (TApp "Double" []) numberObjectType
   -- If the first letter is upper-case, an unapplied identifier is a nullary
   -- type constructor.  If it is lower-case, it is a free type variable.
   -- Therefore, basic types such as integers, booleans, etc. must be "Int",
@@ -181,7 +187,8 @@ type_'' = do
         case isUpper (head id) of
           True -> (app id) <|> (brandedObject id) <|> (return $ TApp id [])
           False -> (app id) <|> (brandedObject id) <|> (return $ TId id)
-    in (parens type_) <|> array <|> any <|> (try union) <|> object <|> other
+    in (parens type_) <|> array <|> any <|> (try union) <|> object <|> int <|> 
+       double <|> other
 
 
 field :: CharParser st (String, Bool, Type)

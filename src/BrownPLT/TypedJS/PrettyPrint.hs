@@ -2,6 +2,7 @@
 module BrownPLT.TypedJS.PrettyPrint
   ( showSp
   , renderType
+  , prettyType
   , renderStatements
   , renderExpr
   ) where
@@ -34,6 +35,11 @@ hangBraces doc = lbrace $$ (nest 2 doc) $$ rbrace
 
 renderExpr :: Expression a -> String
 renderExpr e = render (expr e)
+
+
+prettyType :: Type -> Doc
+prettyType = type_
+
 
 renderType :: Type -> String
 renderType t = render (type_ t)

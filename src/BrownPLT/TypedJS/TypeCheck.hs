@@ -53,12 +53,6 @@ ok = return ()
 
 
 
-desugarType :: SourcePos -> Type -> TypeCheck Type
-desugarType p ty = do
-  r <- runErrorT (isWfType ty)
-  case r of
-    Right () ->  canonize ty >>= brandSugar
-    Left msg -> fatalTypeError p $ printf "%s in type %s" msg (renderType ty)
 
 
 -- |Calculates the type of a local variable that does not have a type
@@ -109,7 +103,7 @@ numericOp :: SourcePos -> Expression SourcePos
           -> Type -> Type -> Bool -> Bool -> TypeCheck Type
 numericOp loc e lhs rhs requireInts returnDouble = do
   result <- case returnDouble of
-    True -> return doubleType
+    True -> desugarType loc $ intersectType doubleType numberObjectType
     False -> do
       r <- isSubtype lhs intType
       case r of
@@ -173,8 +167,8 @@ expr :: Expression SourcePos
 expr e = case e of
   StringLit _ _ -> return stringType
   RegexpLit _ _ _ _ -> fail "RegexpLit NYI"
-  NumLit _ _ -> return doubleType
-  IntLit _ _ -> return intType
+  NumLit p _ -> desugarType p $ intersectType doubleType numberObjectType
+  IntLit p _ -> desugarType p $ intersectType intType numberObjectType
   BoolLit _ _ -> return boolType
   NullLit _ -> fail "NullLit NYI"
   ThisRef p -> lookupEnv p "this"
@@ -189,17 +183,22 @@ expr e = case e of
   VarRef p (Id _ x) -> lookupEnv p x
   DotRef p e (Id _ x) -> do
     objTy <- expr e
-    fieldTy <- projFieldType objTy x
-    case fieldTy of
-      Just t -> return t
+    r <- projBrand objTy
+    case r of
+      Just (brand, tyArgs) -> do
+        prototypeTy <- brandType brand tyArgs
+        fieldTy <- projFieldType (TIntersect objTy prototypeTy) x
+        case fieldTy of
+          Just t -> return t
+          Nothing -> fatalTypeError p $ printf
+            "%s\ndoes not have the field %s" (renderType objTy) x
       Nothing -> fatalTypeError p $ printf
-        "%s\ndoes not have the field %s" (renderType objTy) x
+        "expected an object with a field %s, got\n%s" x (renderType objTy)
   BracketRef p e1 e2 -> do
-    t1 <- expr e1
-    t2 <- expr e2
-    t1 <- projType isArrayType t1
+    t1 <- expr e1 >>= projType isArrayType
+    t2 <- expr e2 >>= projType isIntType
     case (t1, t2) of
-      (Just (TApp "Array" [x]), TApp "Int" []) -> return x
+      (Just (TApp "Array" [x]), Just (TApp "Int" [])) -> return x
       otherwise -> fatalTypeError p "expected array or integer index"
   PrefixExpr p op e -> do
     t <- expr e
@@ -361,7 +360,8 @@ expr e = case e of
     case t of
       TExists t' -> do
         s <- expr e
-        case openType c t' == s of
+        isSt <- isSubtype s (openType c t')
+        case isSt of
           True -> return (TExists t')
           False -> do
             fatalTypeError p $ printf "expected %s to have the shape %s"
@@ -442,7 +442,8 @@ stmt returnType s = case s of
         r <- isSubtype t returnType
         case r of
           True -> ok
-          False -> fatalTypeError p $ printf "statement returns %s, expected %s"
+          False -> fatalTypeError p $ printf 
+            "statement returns\n%s\nExpected\n%s"
                      (renderType t) (renderType returnType)
   VarDeclStmt p decls -> mapM_ (decl) decls
   ExternalFieldStmt p (Id _ brand) (Id _ field) e -> do
@@ -468,8 +469,8 @@ decl (VarDeclExpr p (Id _ x) (Just t) e) = do
   case r of
     True -> ok
     False -> do fatalTypeError p $ printf 
-                  "expression has type\n%s\n, expected a subtype of\n%s"
-                  (show s) (show t')
+                  "expression has type\n%s\n, but was declared to have type\n%s"
+                  (renderType s) (renderType t')
 -- e may contain a function, therefore we must recompute the type.
 decl (VarDeclExpr p (Id _ x) Nothing e) = do
   t <- lookupEnv p x
@@ -512,6 +513,7 @@ topLevel body = do
 
 withInitEnv m = do
   newBrand "Array" (TForall freeArrayType) (TObject "Object" [] [])
+  newBrand "Number" numberObjectType (TObject "Object" [] [])
   m
 
 
