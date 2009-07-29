@@ -5,6 +5,7 @@ module BrownPLT.TypedJS.TypeDefinitions
   , ArgType (..)
   , Field
   , isArrayType
+  , isIntType
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -38,3 +39,7 @@ data Type
 
 isArrayType (TApp "Array" [_]) = True
 isArrayType _ = False
+
+
+isIntType (TApp "Int" []) = True
+isIntType _ = False

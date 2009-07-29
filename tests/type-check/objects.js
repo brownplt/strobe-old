@@ -202,3 +202,110 @@ expressions {
   
 
 }
+
+expressions {
+
+  succeed function(obj) :: { either :: U (Int, String) } -> Undefined {
+    obj.either = "should win";
+  };
+
+  // Type refinement does not work within mutable record fields ...
+  fail function() :: -> Undefined {
+    var x :: U(Int, String) = 42;
+    var foo :: { either :: U(Int, String) } = { either: x };
+    if (typeof (foo.x) == "string") {
+      var y :: String = foo.x;
+    }
+  };
+
+  // ... therefore, the following example is okay
+  succeed function() :: -> Undefined {
+    var changeType = function(o) :: { either :: U(Int, String) } -> Undefined {
+      o.either = "string.i.am";
+    };
+
+    var x :: U(Int, String) = 42;
+    var foo :: { either :: U(Int, String) } = { either: x };
+
+    changeType(foo);
+  };
+
+  succeed function() :: (-> Undefined) {
+  
+    // z <: y
+    var z :: { field :: Int, field2 :: Int } = { field: 50, field2: 9000 } ;
+    var y :: { field :: Int } = { field: 50 };
+  
+    var t :: Int = y.field;
+    y = z; // this assignment should succeed
+  
+    t = y.field;
+  };
+
+  fail function() :: (-> Undefined) {
+  
+    // we do not have z <: y, since subtyping of array elements is invariant
+    var z :: [{ field :: Int, field2 :: Int }]
+      = [ { field: 50, field2: 9000 }  ];
+    var y :: [{ field :: Int }] = [ { field: 50 } ];
+  
+    var t :: Int = y[0].field;
+    y = z; // this assignment fails
+  };
+
+
+  fail function() :: (-> Undefined) {
+  
+  	// we do not have z <: y, since mutable fields are invariant for subtyping.
+  	var z :: {x :: { field :: Int, field2 :: Int }} =
+  		{x : {field: 50, field2: 9000 } };
+  	var y :: {x :: { field :: Int }} =
+  		{x : {field: 50 }};
+  
+  	var t :: Int = y.x.field;
+  	y = z; // this assignment fails  
+  };
+  
+  succeed function() :: (-> Undefined) {
+  
+  	// we have z <: y
+  	var z :: {readonly x :: { field :: Int, field2 :: Int }} =
+  		{x : {field: 50, field2: 9000 } };
+  	var y :: {readonly x :: { field :: Int }} =
+  		{x : {field: 50 }};
+  
+  	var t :: Int = y.x.field;
+  	y = z; // this assignment succeeds
+  };
+
+  succeed function() :: (-> Undefined) {
+  
+  	// we have z <: y
+  	var z :: {readonly x :: { field :: Int, field2 :: Int }} =
+  		{x : {field: 50, field2: 9000 } };
+  	var y :: {readonly x :: { field :: Int }} =
+  		{x : {field: 50 }};
+  
+  	var t :: Int = y.x.field;
+  	y = z;
+    y.x.field = 999;
+  
+  };
+
+  fail function() :: (-> Undefined) {
+  
+  	// we have z <: y
+  	var z :: {readonly x :: { field :: Int, field2 :: Int }} =
+  		{x : {field: 50, field2: 9000 } };
+  	var y :: {readonly x :: { field :: Int }} =
+  		{x : {field: 50 }};
+  
+  	var t :: Int = y.x.field;
+  	y = z;
+    y.x = { field : 999 }; 
+  
+  }
+
+
+
+}

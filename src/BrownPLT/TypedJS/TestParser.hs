@@ -101,7 +101,7 @@ expression' idl = do
                 t <- brandSugar t
                 isSt <- isSubtype s t
                 return (isSt, t)
-          let (r, t) = runTypeCheckWithoutError idl f
+          let (r, t) = runTypeCheckWithoutError idl (withInitEnv f)
           let msg = printf "%s: expected subtype of\n%s\n, got\n%s"
                       (show p) (renderType t) (renderType s)
           assertBool msg r

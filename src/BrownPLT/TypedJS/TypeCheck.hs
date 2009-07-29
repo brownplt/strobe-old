@@ -1,6 +1,7 @@
 module BrownPLT.TypedJS.TypeCheck
   ( typeCheck
   , typeCheckExpr
+  , withInitEnv
   ) where
 
 import BrownPLT.TypedJS.Infrastructure
@@ -159,6 +160,12 @@ lvalue lv = case lv of
                                       (renderType tObj) f
       otherwise -> do
         fatalTypeError p $ printf "expected object"
+  LBracket p arr ix -> do
+    tyArr <- expr arr >>= projType isArrayType
+    tyIx <- expr ix >>= projType isIntType
+    case (tyArr, tyIx) of
+      (Just (TApp "Array" [tyElt]), Just _) -> return tyElt
+      otherwise -> fatalTypeError p "expected array / integer index"
 
 
 expr :: Expression SourcePos 
@@ -176,7 +183,7 @@ expr e = case e of
   ArrayLit p (e1:es) -> do
     t1 <- expr e1
     ts <- mapM expr es
-    t <- foldM canonicalUnion t1 ts
+    let t = foldr unionType t1 ts
     -- desugaring fills in the array methods
     desugarType p $ intersectType (TApp "Array" [t]) (openType t freeArrayType)
   VarRef p (Id _ x) -> lookupEnv p x
@@ -494,17 +501,15 @@ topLevel body = do
   rtEnv <- runtimeEnv
   case preTypeCheck globals body of
     Right e -> case runtimeAnnotations rtEnv (BlockStmt noPos e) of
-      Left s -> catastrophe noPos s
       Right body -> case localVars globals body of
-        Left err -> fatalTypeError noPos err
         Right (vars, tvars) -> do
-          bindTVars tvars $
-            calcTypes vars $
-              stmt Nothing body
+          env <- tempBrandStore $ bindTVars tvars $ calcTypes vars $ ask
+          local (const env) $ stmt Nothing body
+        Left err -> fatalTypeError noPos err
+      Left s -> catastrophe noPos s
     Left str -> fatalTypeError noPos str
 
 
-withInitEnv :: TypeCheck a -> TypeCheck a
 withInitEnv m = do
   newBrand "Array" (TForall freeArrayType) (TObject "Object" [] [])
   m

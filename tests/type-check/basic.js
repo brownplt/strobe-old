@@ -1496,6 +1496,37 @@ expressions {
   function(x) :: Int -> Bool {
     if (typeof x == "number") { return true; }
     return false;
-  } :: Int -> Bool
+  } :: Int -> Bool;
+
+  succeed function() :: (-> Undefined) {
+    var fac :: Int -> Int = function(n) :: Int -> Int {
+      if (n == 0) { return 1; }
+      else { return n * fac(n-1); }
+    }
+  };
+  
+  
+  succeed function() :: (-> Undefined) {
+    var fac = function(n) :: Int -> Int {
+       if (n == 0) { return 1; }
+      else { return n * fac(n-1); }
+    } 
+  };
+  
+  fail function() :: (-> Undefined) {
+    var fac = function(n) :: Int -> Int {
+       if (n == 0) { return 1; }
+      else { return n * fac("hello"); }
+    } 
+  };
+
+  fail function() :: (-> Undefined) {
+    var fac :: Int -> Int = function(n) :: Int -> Int {
+       if (n == 0) { return 1; }
+      else { return n * fac("hello"); }
+    } 
+  }
+  
+
 
 }
