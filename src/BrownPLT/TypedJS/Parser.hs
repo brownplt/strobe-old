@@ -52,53 +52,62 @@ type ToplevelParser state = CharParser state ParsedToplevel
 identifier =
   liftM2 Id getPosition Lexer.identifier
 
-{- The syntax for types is:
-
- type ::= identifier
-        | any
-        | 'literal
-        | type?
-        | this :: type, type [,*] -> type?     ; explicit this
-        | this :: type, type [,+] ... -> type? ; explicit this
-        | type [,*] -> type?
-        | type [,+] ... -> type?
-        | constr
-        | constr '[' type [,*] ']'
-        | forall identifier+ . type
-        | ( type )
-        | identifier:{ [readonly] id: type' [,*] }
-        | identifier: ; object without additional field constraints
-        | { [readonly] id: type' [,*] } ; implicitly branded Object
-
-Disambiguation:
-
- type ::= forall identifier+ . type
-        | exists id+ . type
-        | forall id+ . type
-        | rec identifier . type
-        | type_fn
-
- type_fn ::= type' [,*] -> type?
-           | type' [,+] ... -> type?
-           | this :: type', type' [,*] -> type?
-           | this :: type', type' [,+] ... -> type?
-           | type'
-
- type' ::= type''?
-         | type''
-
- type'' ::= identifier
-          | '[' type ']'
-          | ( type )
-          | identifier:{ [readonly] id: type' [,*] }
-          | identifier:
-          | { [readonly] id: type' [,*] } ; implicitly branded Object
-          | constr
-          | constr '[' type [,*] ']'
-          | 'literal
-          | any
-
- -} 
+-- The syntax for types is:
+-- 
+--  type ::= identifier
+--         | any
+--         | 'literal
+--         | type?
+--         | this :: type, type [,*] -> type?     ; explicit this
+--         | this :: type, type [,+] ... -> type? ; explicit this
+--         | type [,*] -> type?
+--         | type [,+] ... -> type?
+--         | constr
+--         | constr '[' type [,*] ']'
+--         | forall identifier+ . type
+--         | ( type )
+--         | identifier:{ [readonly] id: type' [,*] }
+--         | identifier: ; object without additional field constraints
+--         | { [readonly] id: type' [,*] } ; implicitly branded Object
+--
+--
+-- Disambiguation:
+-- 
+--  type ::= forall identifier+ . type
+--         | exists id+ . type
+--         | forall id+ . type
+--         | rec identifier . type
+--         | fnTy
+-- 
+--  fnTy ::= type' [,*] -> type?
+--            | type' [,+] ... -> type?
+--            | this :: type', type' [,*] -> type?
+--            | this :: type', type' [,+] ... -> type?
+--            | type'
+-- 
+--  type' ::= type''?
+--          | type''
+-- 
+--  type'' ::= identifier
+--           | '[' type ']'
+--           | ( type )
+--           | identifier:{ [readonly] id: type' [,*] }
+--           | identifier:
+--           | { [readonly] id: type' [,*] } ; implicitly branded Object
+--           | constr
+--           | constr '[' type [,*] ']'
+--           | 'literal
+--           | any
+-- 
+--
+-- In addition, the syntax for constructor types is:
+--
+-- constrTy ::=  type' [,*] -> { [readonly] id: type' [,*] }
+--            |  forall id+ . type' [,*] -> { [readonly] id: type' }
+-- 
+-- The structural object type on the right hand side of the arrow is the type
+-- of the constructed object.  It is implicitly branded with the name of the
+-- constructor.
 
 type_ :: CharParser st (Type)
 type_ = do
@@ -114,11 +123,11 @@ type_ = do
         reservedOp "."
         t <- type_
         return (foldr (\x t -> TNamedForall x t) t xs)
-  exists <|> forall <|> type_fn
+  exists <|> forall <|> fnTy
 
 
-type_fn :: CharParser st (Type)
-type_fn = explicitThis <|> implicitThis
+fnTy :: CharParser st (Type)
+fnTy = explicitThis <|> implicitThis
   where -- If @this ::@ is specified, it must be a function ...
         explicitThis = do
           reserved "this"
@@ -213,6 +222,24 @@ field = do
   reservedOp "::"
   t <- type_'
   return (name, ro, t)
+
+
+constrTy :: String -> CharParser st Type
+constrTy brand = withForall <|> withoutForall
+  where constr tyArgs = do
+          argTys <- type_' `sepBy` comma
+          reservedOp "->"
+          fields <- braces (field `sepBy` comma)
+          return (TConstr argTys (error "constrTy: initty NYI")
+                          (TObject brand tyArgs fields))
+        withForall = do
+          reserved "forall"
+          tyArgs <- many1 Lexer.identifier
+          reservedOp "."
+          t <- constr (map TId tyArgs)
+          return (foldr (\x t -> TNamedForall x t) t tyArgs)
+        withoutForall = constr []
+      
  
 parseType' :: CharParser st Type
 parseType' = type_
@@ -227,6 +254,8 @@ parseMaybeType :: MaybeTypeParser st
 parseMaybeType = do
   (do t <- parseType
       return (Just t)) <|> (return Nothing)
+
+
 
 -- ----------------------------------------------------------------------------
 -- Statements
@@ -478,17 +507,16 @@ parseFunctionStmt = do
                                        (FuncExpr pos args functype body)])
 
 
-{-parseConstructorStmt :: StatementParser st
-parseConstructorStmt = do
+-- constrStmt ::= constructor BrandId(argId, ...) :: constrTy blockStmt
+constrStmt = do
+  p <- getPosition
   reserved "constructor"
-  name <- identifier
-  pos <- getPosition
-  args <- parens (identifier `sepBy` comma)
-  constrtype <- parseType <?> "constructor type annotation"
-  body <- parseBlockStmt <?> "constructor body in { ... }"
-  return (VarDeclStmt pos [VarDeclExpr pos name (Just constrtype) 
-                                       (FuncExpr pos args constrtype body)])
--}
+  brand <- Lexer.identifier
+  args <- parens (Lexer.identifier `sepBy` comma)
+  reservedOp "::"
+  ty <- constrTy brand
+  body <- parseBlockStmt
+  return (ConstructorStmt p brand args ty body)
 
 {-
 parseTypeStmt :: StatementParser st

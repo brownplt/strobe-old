@@ -150,7 +150,7 @@ data Statement a
   | ReturnStmt a (Maybe (Expression a))
   | VarDeclStmt a [VarDecl a]
   -- |@ConstructorStmt loc brand body@
-  | ConstructorStmt a (Id a) (Expression a)
+  | ConstructorStmt a String [String] Type (Statement a)
   -- |@ExternalFieldStmt loc brand field expr@
   -- corresponds to
   -- @brand.prototype.field = expr@
