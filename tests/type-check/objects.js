@@ -124,8 +124,39 @@ expressions {
   
   succeed function() :: -> Undefined {
     Object.prototype.x = 93;
-    var obj = { y : 900 }; // requires calcType to account for previous stmt.
+    var obj :: { x :: Int } = { y : 900 }; 
     var z :: Int = obj.x;
+  };
+  
+  succeed function() :: -> Undefined {
+    Object.prototype.x = 93;
+    var obj :: { } = { y : 900 }; 
+    var z :: Int = obj.x;
+  };
+
+  succeed function() :: -> Undefined {
+    Object.prototype.x = { z : 3.14159 };
+    var s :: Double = (10).x.z.x.z.x.z.x.z;
+  };
+
+  succeed function() :: -> Undefined {
+    Object.prototype.x = { z : 3.14159 };
+    var obj = (10).x; 
+    var s :: Double = obj.z;
+  };
+  
+  succeed function() :: -> Undefined {
+    Object.prototype.x = { z : 3.14159 };
+    var obj :: { z :: Double } = (10).x; 
+    var s :: Double = obj.z;
+  };
+
+  fail function() :: -> Undefined {
+    Object.prototype.x = { z : 3.14159 };
+    var obj :: {} = (10).x; 
+    // The Object brand does not have a field z.  So, if obj is declared to 
+    // have type  {}, that field is effectively hidden and obj.z fails below.
+    var s :: Double = obj.z;
   };
 
   succeed function() :: -> Undefined {
