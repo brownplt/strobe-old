@@ -34,8 +34,10 @@ unionEnv env1 env2 = foldM f env1 (M.toList env2)
         f env (x, t) = case M.lookup x env of
           Nothing -> return (M.insert x t env)
           Just TUnreachable -> return (M.insert x t env)
+          Just TUnk -> return env -- necessary for DoWhileStmt
           Just t' -> case t of
             TUnreachable -> return env
+            TUnk -> return (M.insert x TUnk env)
             otherwise -> case t == t' of
               True -> return env
               False -> fail $ printf 

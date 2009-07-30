@@ -358,6 +358,35 @@ expressions {
   
   }
 
+}
 
+expressions {
+
+  succeed function() :: -> {} {
+    Object.prototype.x = { };
+    return {};
+  };
+
+
+  succeed function() :: -> {} {
+    Object.prototype.x = { };
+    return {}.x.x.x.x.x;
+  };
+
+  succeed function() :: -> Undefined {
+    Object.prototype.x = { };
+    var obj = {};
+    while (obj.x) { 
+      obj = obj.x;
+    }
+  };
+
+  succeed function() :: -> Undefined {
+    Object.prototype.x = { };
+    var obj = {};
+    do {
+      obj = obj.x;
+    } while (obj.x);
+  }
 
 }

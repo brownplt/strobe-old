@@ -499,7 +499,7 @@ runtime t = case t of
     (TUnk, TKnown s2) -> TKnown s2
     (TKnown s1, TUnk) -> TKnown s1
     (TKnown s1, TKnown s2) -> TKnown (S.intersection s1 s2)
-    (TUnk, TUnk) -> return TUnk
+    (TUnk, TUnk) -> TUnk
     (TUnreachable, _) -> error "runtime: recursive call produced TUnreachable"
     (_, TUnreachable) -> error "runtime: recursive call produced TUnreachable"
   TUnion t1 t2 -> case (runtime t1, runtime t2) of

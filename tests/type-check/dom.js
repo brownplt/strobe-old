@@ -28,7 +28,19 @@ expressions {
     m("Failure because this is wrong.");
   };
 
-  succeed  function(element) :: HTMLElement: -> { left:: Int, top:: Int } {
+  succeed  function(element) :: HTMLElement: 
+                             -> { left:: Double, top:: Double } {
+    var valueT = 0.0, valueL = 0.0;
+    while (element) {
+      valueT += element.offsetTop || 0;
+      valueL += element.offsetLeft || 0;
+      element = element.offsetParent;
+    }
+    return { left: valueL, top: valueT };
+  };
+
+  succeed  function(element) :: HTMLElement: 
+                             -> { left:: Double, top:: Double } {
     var valueT = 0, valueL = 0;
     do {
       valueT += element.offsetTop || 0;
