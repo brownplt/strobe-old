@@ -2,6 +2,8 @@
 module BrownPLT.TypedJS.Prelude
   ( module Data.Generics
   , module Control.Monad
+  , ErrorT
+  , MonadError
   , module Data.List
   , module Data.Maybe
   , module Data.Tree
@@ -41,6 +43,7 @@ import Text.Printf
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.Graph.Inductive (Node, Graph)
 import System.IO.Unsafe
+import Control.Monad.Error
 
 trace :: String -> a -> a
 trace s r = (unsafePerformIO $ putStrLn s) `seq` r

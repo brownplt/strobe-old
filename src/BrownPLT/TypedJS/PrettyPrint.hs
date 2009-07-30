@@ -2,6 +2,7 @@
 module BrownPLT.TypedJS.PrettyPrint
   ( renderType
   , prettyType
+  , prettyTopLevel
   , renderStatements
   , renderExpr
   ) where
@@ -310,3 +311,16 @@ expr e = case e of
     text "in" <+> expr e
   TyAppExpr _ e ty -> expr e <> text "@" <> brackets (type_ ty)
 
+
+topLevel :: TopLevel SourcePos -> Doc
+topLevel tl = case tl of
+  TopLevelStmt s -> stmt s
+  ExternalFieldStmt _ brand field e ->
+    id brand <> text ".prototype." <> id field <+> text "=" <+> expr e
+  ConstructorStmt _ brand args ty body ->
+    text "constructor" <+> text brand <+> parens (commas $ map text args) <+>
+    text "::" <+> type_ ty <+> stmt body
+
+
+prettyTopLevel :: [TopLevel SourcePos] -> String
+prettyTopLevel tls = render (vcat $ map topLevel tls)

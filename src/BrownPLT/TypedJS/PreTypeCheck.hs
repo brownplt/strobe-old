@@ -10,6 +10,7 @@
 -- * All variables are defined before they are used.
 module BrownPLT.TypedJS.PreTypeCheck
   ( preTypeCheck
+  , preTypeCheckTopLevel
   , allPathsReturn
   ) where
 
@@ -28,6 +29,7 @@ import BrownPLT.JavaScript.Analysis.DefineBeforeUse
 import BrownPLT.TypedJS.TypeErasure
 import BrownPLT.TypedJS.ReachableStatements
 import qualified BrownPLT.JavaScript.Analysis.AllPathsReturn as AllPathsReturn
+
 
 type ANF = ([(String, SourcePos)], [Stmt SourcePos])
 
@@ -53,6 +55,20 @@ checkReachability anf = case unreachableStatements anf of
   [] -> return ()
   ss -> fail $ "Unreachable statements at " ++ show ss
 
+
+preTypeCheckTopLevel :: (MonadError String m)
+                     => [String] -- ^globals
+                     -> [TopLevel SourcePos] -- ^source
+                     -> m ()
+preTypeCheckTopLevel globals program = do
+  -- TODO: checkClosed globals body
+  case toANF (map eraseTypesTopLevel program) of
+    Right anf -> case checkReachability anf of
+      Right _ -> case defineBeforeUse (S.fromList ("this":globals)) anf of
+        Right () -> return ()
+        Left err -> fail (show err)
+      Left err -> fail err
+    Left err -> fail err
 
 
 preTypeCheck :: [String] -- ^globals

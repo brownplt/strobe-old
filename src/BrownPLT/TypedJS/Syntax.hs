@@ -16,6 +16,7 @@ module BrownPLT.TypedJS.Syntax
   , Type(..)
   , LValue (..)
   , ArgType (..)
+  , TopLevel (..)
   , unId
   ) where
 
@@ -140,13 +141,17 @@ data Statement a
   | ThrowStmt a (Expression a)
   | ReturnStmt a (Maybe (Expression a))
   | VarDeclStmt a [VarDecl a]
-  -- |@ConstructorStmt loc brand body@
-  | ConstructorStmt a String [String] Type (Statement a)
+  deriving (Show, Eq, Ord, Data, Typeable)
+
+data TopLevel a
+  -- |@ConstructorStmt loc brand args constrTy body@
+  = ConstructorStmt a String [String] Type (Statement a)
   -- |@ExternalFieldStmt loc brand field expr@
   -- corresponds to
   -- @brand.prototype.field = expr@
   | ExternalFieldStmt a (Id a) (Id a) (Expression a)
-  deriving (Show, Eq, Ord, Data, Typeable)  
+  | TopLevelStmt (Statement a)
+  deriving (Show, Eq, Ord, Data, Typeable)
   
 
 unId (Id _ s) = s

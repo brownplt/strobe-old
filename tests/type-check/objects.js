@@ -92,169 +92,163 @@ expressions {
   { a = b; }
 }
 
-expressions {
-  succeed function() :: -> Undefined {
+body { Object.prototype.x = 93 }
+
+body {
+  Object.prototype.x = 93;
+  var v :: Int = (5).x.x.x.x.x.x.x;
+}
+  
+body {
     Object.prototype.x = 93;
-  };
-
-  succeed function() :: -> Int {
-    Object.prototype.x = 93;
-    return (5).x.x.x.x.x.x.x;
-  };
+    var v :: Int = (5).x.x.x.x.x.x.x.x.x.x.x;
+}
   
-  succeed function() :: -> Int {
-    Object.prototype.x = 93;
-    return (5).x.x.x.x.x.x.x.x.x.x.x;
-  };
-  
-  succeed function() :: -> Int {
-    Object.prototype.x = 93;
-    return (5).x.x.x.x.x.x.x + (12).x.x;
-  };
-  
-  succeed function() :: -> Undefined {
-    Object.prototype.x = 93;
-    var obj :: { x :: Int, y :: Int } = { y : 900 };
-    var z :: Int = obj.x;
-  };
-  
-  succeed function() :: -> Undefined {
-    Object.prototype.x = 93;
-    var obj = { y : 900 };
-    var z :: Int = obj.x;
-  };
-  
-  succeed function() :: -> Undefined {
-    Object.prototype.x = 93;
-    var obj :: { x :: Int } = { y : 900 }; 
-    var z :: Int = obj.x;
-  };
-  
-  succeed function() :: -> Undefined {
-    Object.prototype.x = 93;
-    var obj :: { } = { y : 900 }; 
-    var z :: Int = obj.x;
+body {
+  Object.prototype.x = 93;
+  var v :: Int = (5).x.x.x.x.x.x.x + (12).x.x;
+}
+
+body {
+  Object.prototype.x = 93;
+  var obj :: { x :: Int, y :: Int } = { y : 900 };
+  var z :: Int = obj.x;
+}
+
+body {
+  Object.prototype.x = 93;
+  var obj = { y : 900 };
+  var z :: Int = obj.x;
+}
+
+body {
+  Object.prototype.x = 93;
+  var obj :: { x :: Int } = { y : 900 }; 
+  var z :: Int = obj.x;
+}
+
+body {
+  Object.prototype.x = 93;
+  var obj :: { } = { y : 900 }; 
+  var z :: Int = obj.x;
+}
+
+body {
+  Object.prototype.x = { z : 3.14159 };
+  var s :: Double = (10).x.z.x.z.x.z.x.z;
+}
+
+body {
+  Object.prototype.x = { z : 3.14159 };
+  var obj = (10).x; 
+  var s :: Double = obj.z;
+}
+
+body {
+  Object.prototype.x = { z : 3.14159 };
+  var obj :: { z :: Double } = (10).x; 
+  var s :: Double = obj.z;
+}
+
+body fail {
+  Object.prototype.x = { z : 3.14159 };
+  var obj :: {} = (10).x; 
+  // The Object brand does not have a field z.  So, if obj is declared to 
+  // have type  {}, that field is effectively hidden and obj.z fails below.
+  var s :: Double = obj.z;
+}
+
+body {
+  var obj :: { y :: Int } = { y : 900 };
+  Object.prototype.x = 93;
+  var z :: Int = obj.x; // requires an intersection
+}
+
+body fail {
+  var obj :: { y :: Int } = { y : 900 };
+  var g :: Int = obj.x; // hasn't been added yet
+  Object.prototype.x = 93;
+  var z :: Int = obj.x;
+}
+
+body {
+  var f = function(obj) :: { x :: Int, y :: String } -> String {
+    return obj.y;
   };
 
-  succeed function() :: -> Undefined {
-    Object.prototype.x = { z : 3.14159 };
-    var s :: Double = (10).x.z.x.z.x.z.x.z;
+  f({ x : 45, y : "hello" });
+  Object.prototype.y = "I AM THE PROTOTYPE";
+  f({ x : 90 });
+}
+
+body fail {
+  var f = function(obj) :: { x :: Int, y :: String } -> String {
+    return obj.y;
   };
 
-  succeed function() :: -> Undefined {
-    Object.prototype.x = { z : 3.14159 };
-    var obj = (10).x; 
-    var s :: Double = obj.z;
-  };
-  
-  succeed function() :: -> Undefined {
-    Object.prototype.x = { z : 3.14159 };
-    var obj :: { z :: Double } = (10).x; 
-    var s :: Double = obj.z;
+  f({ x : 90 }); // y not added yet
+  Object.prototype.y = "I AM THE PROTOTYPE";
+}
+
+body {
+  var f = function(obj) :: { x :: Int, y :: String } -> String {
+    return obj.y;
   };
 
-  fail function() :: -> Undefined {
-    Object.prototype.x = { z : 3.14159 };
-    var obj :: {} = (10).x; 
-    // The Object brand does not have a field z.  So, if obj is declared to 
-    // have type  {}, that field is effectively hidden and obj.z fails below.
-    var s :: Double = obj.z;
+  Object.prototype.y = 92;
+  f({ x : 70, y : "field override, or something" });
+}
+
+body fail {
+  var f = function(obj) :: { x :: Int, y :: String } -> String {
+    return obj.y;
   };
 
-  succeed function() :: -> Undefined {
-    var obj :: { y :: Int } = { y : 900 };
-    Object.prototype.x = 93;
-    var z :: Int = obj.x; // requires an intersection
-  };
-  
-  fail function() :: -> Undefined {
-    var obj :: { y :: Int } = { y : 900 };
-    var g :: Int = obj.x; // hasn't been added yet
-    Object.prototype.x = 93;
-    var z :: Int = obj.x;
-  };
-  
-  succeed function() :: -> Undefined {
-    var f = function(obj) :: { x :: Int, y :: String } -> String {
-      return obj.y;
-    };
+  Object.prototype.y = 92;
+  f({ x : 70 }); // prototype.y has the wrong type
+}
 
-    f({ x : 45, y : "hello" });
-    Object.prototype.y = "I AM THE PROTOTYPE";
-    f({ x : 90 });
+
+body fail {
+  var f = function(obj) :: { x :: Int, y :: String } -> String {
+    return obj.y;
   };
 
-  fail function() :: -> Undefined {
-    var f = function(obj) :: { x :: Int, y :: String } -> String {
-      return obj.y;
-    };
+  Object.prototype.y = 92;
+  Object.prototype.y = "we could support this if we wanted to";
+  f({ x : 70 });
+}
 
-    f({ x : 90 }); // y not added yet
-    Object.prototype.y = "I AM THE PROTOTYPE";
-  };
+body {
+   Object.prototype.x = 34;
+   // Without constraints, x :: Int is filled in.
+   var f = function(obj) :: {} -> Int {
+     return obj.x;
+   }
+}
 
-  succeed function() :: -> Undefined {
-    var f = function(obj) :: { x :: Int, y :: String } -> String {
-      return obj.y;
-    };
+body {
+   Object.prototype.x = 34;
+   // same as above
+   var f = function(obj) :: Object: -> Int {
+     return obj.x;
+   }
+}
 
-    Object.prototype.y = 92;
-    f({ x : 70, y : "field override, or something" });
-  };
-  
-  fail function() :: -> Undefined {
-    var f = function(obj) :: { x :: Int, y :: String } -> String {
-      return obj.y;
-    };
+body {
+   Object.prototype.x = 34;
+   // explicit constraint override the prototype
+   var f = function(obj) :: { x :: String } -> String {
+     return obj.x;
+   }
+}
 
-    Object.prototype.y = 92;
-    f({ x : 70 }); // prototype.y has the wrong type
-  };
-  
-
-  fail function() :: -> Undefined {
-    var f = function(obj) :: { x :: Int, y :: String } -> String {
-      return obj.y;
-    };
-
-    Object.prototype.y = 92;
-    Object.prototype.y = "we could support this if we wanted to";
-    f({ x : 70 });
-  };
-
-  succeed function() :: -> Undefined {
-     Object.prototype.x = 34;
-     // Without constraints, x :: Int is filled in.
-     var f = function(obj) :: {} -> Int {
-       return obj.x;
-     }
-  };
-  
-  succeed function() :: -> Undefined {
-     Object.prototype.x = 34;
-     // same as above
-     var f = function(obj) :: Object: -> Int {
-       return obj.x;
-     }
-  };
-
-  succeed function() :: -> Undefined {
-     Object.prototype.x = 34;
-     // explicit constraint override the prototype
-     var f = function(obj) :: { x :: String } -> String {
-       return obj.x;
-     }
-  };
-  
-  fail function() :: -> Undefined {
-     // x :: Int is not declared yet, so it is not filled in.
-     var f = function(obj) :: {} -> Int {
-       return obj.x;
-     }
-     Object.prototype.x = 34;
-  }
-  
-
+body fail {
+   // x :: Int is not declared yet, so it is not filled in.
+   var f = function(obj) :: {} -> Int {
+     return obj.x;
+   }
+   Object.prototype.x = 34;
 }
 
 expressions {
@@ -362,33 +356,31 @@ expressions {
 
 }
 
-expressions {
 
-  succeed function() :: -> {} {
+body {
     Object.prototype.x = { };
-    return {};
-  };
+    var x :: {} = {};
+}
 
 
-  succeed function() :: -> {} {
+body {
     Object.prototype.x = { };
-    return {}.x.x.x.x.x;
-  };
+    var x :: {} =  {}.x.x.x.x.x;
+}
 
-  succeed function() :: -> Undefined {
+body {
     Object.prototype.x = { };
     var obj = {};
     while (obj.x) { 
       obj = obj.x;
     }
-  };
+}
 
-  succeed function() :: -> Undefined {
+body {
     Object.prototype.x = { };
     var obj = {};
     do {
       obj = obj.x;
     } while (obj.x);
-  }
-
 }
+

@@ -252,19 +252,6 @@ parseMaybeType = do
 -- ----------------------------------------------------------------------------
 -- Statements
 
-externalFieldStmt :: StatementParser st
-externalFieldStmt = do
-  p <- getPosition
-  -- avoid ambiguity with ExprStmt.
-  brand <- try $ do brand <- identifier
-                    reservedOp "."
-                    reserved "prototype"
-                    return brand
-  reservedOp "."
-  field <- identifier
-  reservedOp "="
-  e <- expr 
-  return (ExternalFieldStmt p brand field e)
 
 -- Keep in mind that Token.reserved parsers (exported from the lexer) do not
 -- consume any input on failure.  Note that all statements (expect for labelled
@@ -499,16 +486,6 @@ parseFunctionStmt = do
                                        (FuncExpr pos args functype body)])
 
 
--- constrStmt ::= constructor BrandId(argId, ...) :: constrTy blockStmt
-constrStmt = do
-  p <- getPosition
-  reserved "constructor"
-  brand <- Lexer.identifier
-  args <- parens (Lexer.identifier `sepBy` comma)
-  reservedOp "::"
-  ty <- constrTy brand
-  body <- parseBlockStmt
-  return (ConstructorStmt p brand args ty body)
 
 {-
 parseTypeStmt :: StatementParser st
@@ -529,7 +506,6 @@ parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt
   -- added for tJS
   -- <|> parseConstructorStmt 
   -- order matters to handle ambiguity
-  <|> externalFieldStmt
   <|> parseLabelledStmt
   <|> parseExpressionStmt
   <?> "statement"
@@ -963,16 +939,54 @@ parseExpression = assignExpr
 parseListExpr =
   liftM2 ListExpr getPosition (assignExpr `sepBy1` comma)
 
+-- ----------------------------------------------------------------------------
+-- Parsing top-level definitions
 
-parseScript = do
+
+externalFieldStmt = do
+  p <- getPosition
+  -- avoid ambiguity with ExprStmt.
+  brand <- try $ do brand <- identifier
+                    reservedOp "."
+                    reserved "prototype"
+                    return brand
+  reservedOp "."
+  field <- identifier
+  reservedOp "="
+  e <- expr 
+  return (ExternalFieldStmt p brand field e)
+
+
+-- |@constrStmt ::= constructor BrandId(argId, ...) :: constrTy blockStmt@
+constrStmt = do
+  p <- getPosition
+  reserved "constructor"
+  brand <- Lexer.identifier
+  args <- parens (Lexer.identifier `sepBy` comma)
+  reservedOp "::"
+  ty <- constrTy brand
+  body <- parseBlockStmt
+  return (ConstructorStmt p brand args ty body)
+
+topLevel =
+  constrStmt <|>
+  externalFieldStmt <|>
+  liftM TopLevelStmt parseStatement
+
+
+parseScript :: CharParser st [TopLevel SourcePos]
+parseScript = many topLevel
+
+
+parseScript' = do
   whiteSpace
-  stmts <- many parseStatement
+  stmts <- many topLevel
   eof
   return stmts
 
 
-parseTypedJavaScript :: String -> String -> [Statement SourcePos]
-parseTypedJavaScript src str = case parse parseScript src str of
+parseTypedJavaScript :: String -> String -> [TopLevel SourcePos]
+parseTypedJavaScript src str = case parse parseScript' src str of
     Left err -> error (show err)
     Right stmts -> stmts
 

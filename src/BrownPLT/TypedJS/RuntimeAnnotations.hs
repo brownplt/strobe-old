@@ -2,6 +2,7 @@
 -- JavaScript.  This module applies its results to Typed JavaScript.
 module BrownPLT.TypedJS.RuntimeAnnotations 
   ( runtimeAnnotations
+  , topLevelRuntimeAnnotations
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -164,6 +165,31 @@ removeFunction e = e
 isFunction :: Stx.Expression SourcePos -> Bool
 isFunction (Stx.FuncExpr {}) = True
 isFunction e = False
+
+
+topLevelRuntimeAnnotations :: Map Id RuntimeTypeInfo
+                           -- ^types of formal arguments and identifiers in the 
+                           -- enclosing environment
+                           -> [Stx.TopLevel SourcePos]
+                           -> Either String [Stx.TopLevel SourcePos]
+                           -- ^body with @VarRef@s transformed to 
+                           -- @AnnotatedVarRef@s
+                           -- where possible.
+topLevelRuntimeAnnotations env body = do
+  let body' = everywhere' (mkT removeFunction) body -- efficiency only
+  (vars, anf) <- toANF (map eraseTypesTopLevel  body')
+  let wrapped = SeqStmt noPos ((EnterStmt noPos) : (anf ++ [ExitStmt noPos]))
+  let (anf', _) = numberStmts 0 wrapped
+  let vars' = map (\(x,p) -> (x, (0, p))) vars
+  let (_, _, gr) = intraproc (FuncLit (0, noPos) [] vars' anf')
+  let localEnv = M.fromList (map (\(x, _) -> (x, TUnreachable)) vars)
+  let stmtEnvs = localTypes gr (M.union localEnv env)
+  case runIdentity (runErrorT $ stmt stmtEnvs anf') of
+    Left err -> Left err
+    Right localEnv -> Right $
+      everywhereBut (mkQ False isFunction) 
+                    (mkT (annotateVarRef localEnv)) 
+                    body
 
 
 

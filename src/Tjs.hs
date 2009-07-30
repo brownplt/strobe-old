@@ -27,8 +27,6 @@ import BrownPLT.TypedJS.TypeCheck
 import BrownPLT.TypedJS.RuntimeAnnotations
 import BrownPLT.TypedJS.InitialEnvironment
 
-pretty :: [ParsedStatement] -> String
-pretty = renderStatements
 
 data Flag
   = Help
@@ -96,9 +94,9 @@ annotatedAction [path] = do
   src <- readFile path
   let script = parseTypedJavaScript path src
   putStrLn "Successfully parsed..."
-  case runtimeAnnotations M.empty (BlockStmt noPos script) of
+  case topLevelRuntimeAnnotations M.empty script of
     Left err -> putStrLn err
-    Right script' -> putStrLn (pretty [script'])
+    Right script' -> putStrLn (prettyTopLevel script')
 annotatedAction _ = fail "invalid command-line arguments"
 
 
@@ -106,10 +104,11 @@ anfAction [] [path] = do
   src <- readFile path
   let script = parseTypedJavaScript path src
   putStrLn "Successfully parsed..."
-  let js = eraseTypes script
+  let js = map eraseTypesTopLevel script
   case toANF js of
     Left err -> putStrLn err
     Right (_, anf) -> putStrLn (prettyANF anf)
+anfAction _ _ = fail "invalid command-line arguments"
 
 {-
 

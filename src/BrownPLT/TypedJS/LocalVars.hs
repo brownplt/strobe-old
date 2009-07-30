@@ -3,6 +3,7 @@
 -- expression, if the variable does not have a type annotation.
 module BrownPLT.TypedJS.LocalVars
   ( localVars
+  , topLevelVars
   , LocalDecl(..)
   ) where
 
@@ -117,8 +118,24 @@ stmt s = case s of
   ThrowStmt _ _ -> return ()
   ReturnStmt _ _ -> return ()
   VarDeclStmt _ decls -> mapM_ varDecl decls
-  ExternalFieldStmt _ (Id _ brand) (Id _ field) e ->
-    bindField brand field e
+
+topLevel :: TopLevel SourcePos -> Locals ()
+topLevel tl = case tl of
+  TopLevelStmt s -> stmt s
+  ExternalFieldStmt _ (Id _ brand) (Id _ field) e -> bindField brand field e
+  ConstructorStmt _ brand _ ty _ -> bind brand ty
+
+
+topLevelVars :: MonadError String m
+             => [String] -- ^imports
+             -> [TopLevel SourcePos]
+             -> m ([LocalDecl], [String])
+topLevelVars binds tl = 
+  case runState (runErrorT $ mapM_ topLevel tl)
+                (S [] S.empty (S.fromList binds)) of
+    (Left err, _) -> fail err
+    (Right (), S vars tvars _) -> return (reverse vars, S.toList tvars)
+             
 
 
 localVars :: [String] -- ^ function arguments

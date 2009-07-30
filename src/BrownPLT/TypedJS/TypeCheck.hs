@@ -7,7 +7,7 @@ module BrownPLT.TypedJS.TypeCheck
 import BrownPLT.TypedJS.Infrastructure
 import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.LocalVars
-import BrownPLT.TypedJS.RuntimeAnnotations (runtimeAnnotations)
+import BrownPLT.TypedJS.RuntimeAnnotations
 import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.TypeTheory
 import BrownPLT.TypedJS.PrettyPrint
@@ -472,17 +472,7 @@ stmt returnType s = case s of
             "statement returns\n%s\nExpected\n%s"
                      (renderType t) (renderType returnType)
   VarDeclStmt p decls -> mapM_ (decl) decls
-  ExternalFieldStmt p (Id _ brand) (Id _ field) e -> do
-    ty <- expr e
-    extendBrand brand field ty
-{-
-  -- TODO: Typecheck the body of the constructor
-  ConstructorStmt p brand args constrTy body -> 
-    case constrTy of
-      TConstr argTys initTy objTy -> do
-        argTys <- mapM desugarType argTys
-        newBrand brand objTy (TObject "Object" [] [])
--}  
+
     
 
 decl :: VarDecl SourcePos -> TypeCheck ()
@@ -529,20 +519,35 @@ decl (UnpackDecl p (Id _ x) tVar t e) = do
       "unpack used on an expression of type %s" (renderType s)
 
 
+topLevel :: TopLevel SourcePos -> TypeCheck ()
+topLevel tl = case tl of
+  ExternalFieldStmt p (Id _ brand) (Id _ field) e -> do
+    ty <- expr e
+    extendBrand brand field ty
+  TopLevelStmt s -> stmt Nothing s
+{-
+  -- TODO: Typecheck the body of the constructor
+  ConstructorStmt p brand args constrTy body -> 
+    case constrTy of
+      TConstr argTys initTy objTy -> do
+        argTys <- mapM desugarType argTys
+        newBrand brand objTy (TObject "Object" [] [])
+-}  
+
+
 -- |This code should be almost identical to the code for function bodies.
-topLevel :: [Statement SourcePos] -> TypeCheck ()
-topLevel body = do
+topLevelM :: [TopLevel SourcePos] -> TypeCheck ()
+topLevelM body = do
   globals <- domEnv
   rtEnv <- runtimeEnv
-  case preTypeCheck globals body of
-    Right e -> case runtimeAnnotations rtEnv (BlockStmt noPos e) of
-      Right body -> case localVars globals body of
-        Right (vars, tvars) -> do
-          env <- tempBrandStore $ bindTVars tvars $ calcTypes vars $ ask
-          local (const env) $ stmt Nothing body
-        Left err -> fatalTypeError noPos err
+  preTypeCheckTopLevel globals body
+  case topLevelRuntimeAnnotations rtEnv body of
+      -- body below is annotated with runtime type information
+      Right body -> do
+        (vars, tvars) <- topLevelVars globals body
+        env <- tempBrandStore $ bindTVars tvars $ calcTypes vars $ ask
+        local (const env) $ mapM_ topLevel body
       Left s -> catastrophe noPos s
-    Left str -> fatalTypeError noPos str
 
 
 withInitEnv m = do
@@ -552,9 +557,9 @@ withInitEnv m = do
   m
 
 
-typeCheck :: InitialStoreEnv -> [Statement SourcePos] -> Either String ()
+typeCheck :: InitialStoreEnv -> [TopLevel SourcePos] -> Either String ()
 typeCheck init body = 
-  case runTypeCheck init (withInitEnv $ topLevel body) of
+  case runTypeCheck init (withInitEnv $ topLevelM body) of
     Right () -> return ()
     Left errs -> Left errs
 

@@ -2,6 +2,8 @@
 --
 -- testcase ::= relations { relation [;*] }
 --            | expressions { expression [;*] }
+--            | body { topLevel* }
+--            | body error { topLevel* }
 --
 -- relation ::= [fail] type = type
 --            | [fail] type <: type
@@ -44,7 +46,7 @@ catchException p assert =E.catch assert f
 
 
 testcase :: InitialStoreEnv -> CharParser st Test
-testcase idl = relations <|> expressions
+testcase idl = relations <|> expressions <|> body idl
   where relations = do
           reserved "relations"
           liftM TestList (braces $ relation idl `sepBy` semi)
@@ -119,6 +121,18 @@ expressionSucceed idl = do
   return $ TestCase $ catchException p $ case typeCheckExpr idl e of
     Right _ -> return ()
     Left err -> assertFailure (show p ++ ": " ++ err)
+
+
+body :: InitialStoreEnv -> CharParser st Test
+body init = do
+  p <- getPosition
+  reserved "body"
+  isFail <- option False (reserved "fail" >> return True)
+  script <- braces Parser.parseScript
+  return $ TestCase $ catchException p $ case typeCheck init script of
+    Right () -> 
+      assertBool (printf "%s : expected failure" (show p)) (not isFail)
+    Left err -> assertBool (printf "%s : %s" (show p) err) isFail
 
 
 expression idl = expressionSucceed idl <|> expression' idl
