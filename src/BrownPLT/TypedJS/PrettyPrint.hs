@@ -1,7 +1,6 @@
 -- |Pretty-printing Typed JavaScript.
 module BrownPLT.TypedJS.PrettyPrint
-  ( showSp
-  , renderType
+  ( renderType
   , prettyType
   , renderStatements
   , renderExpr
@@ -122,14 +121,6 @@ varDecl decl = case decl of
   UnpackDecl _ x tVar t e -> 
     id x <+> text ":: unpack " <+> text tVar <+> text "." <+> type_ t <+> 
    equals <+> expr e
-
-
-topLevelStatement :: ToplevelStatement a -> Doc
-topLevelStatement s = case s of
-  TypeStmt _ v t -> 
-    text "type " <+> id v <+> text " :: " <+> type_ t
-  ExternalStmt _ v t ->
-    text "external " <+> id v <+> text " :: " <+> type_ t
 
 
 stmt :: Statement a -> Doc
@@ -315,3 +306,7 @@ expr e = case e of
   FuncExpr _ args t body ->
     text "function" <+> parens (commas $ map id args) <+> text "::" 
                     <+> type_ t $$ inBlock body
+  PackExpr _ e cTy ty -> text "pack" <+> type_ cTy <+> type_ ty <+>
+    text "in" <+> expr e
+  TyAppExpr _ e ty -> expr e <> text "@" <> brackets (type_ ty)
+

@@ -1,12 +1,22 @@
 -- |JavaScript's syntax.
-module BrownPLT.TypedJS.Syntax(Expression(..),CaseClause(..),Statement(..),
-         InfixOp(..),CatchClause(..),VarDecl(..),JavaScript(..),
-         AssignOp(..),Id(..),PrefixOp(..),UnaryAssignOp(..),Prop(..),
-         ForInit(..),ForInInit(..),Type(..)
-  , ToplevelStatement(..)
+module BrownPLT.TypedJS.Syntax
+  ( Expression(..)
+  , CaseClause(..)
+  , Statement(..)
+  , InfixOp(..)
+  , CatchClause(..)
+  , VarDecl(..)
+  , AssignOp(..)
+  , Id(..)
+  , PrefixOp(..)
+  , UnaryAssignOp(..)
+  , Prop(..)
+  , ForInit(..)
+  , ForInInit(..)
+  , Type(..)
   , LValue (..)
   , ArgType (..)
-  , showSp, propToString, unId, eqLit
+  , unId
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -17,53 +27,28 @@ import BrownPLT.JavaScript.Analysis.ANF (Lit, eqLit)
 import BrownPLT.TypedJS.LocalFlows (RuntimeType (..))
 import BrownPLT.TypedJS.TypeDefinitions
 
-data JavaScript a
-  -- |A script in <script> ... </script> tags.  This may seem a little silly,
-  -- but the Flapjax analogue has an inline variant and attribute-inline 
-  -- variant.
-  = Script a [Statement a] 
-  deriving (Eq,Ord)
-
-unId (Id _ s) = s
 
 data Id a = Id a String 
-  deriving (Show, Ord, Data, Typeable)
-
-
--- the following are constructs which just assign types to IDs, either
--- in the variable environment (ExternalStmt) or in the type
--- environment (TypeStmt).
-data ToplevelStatement a 
-  = TypeStmt a (Id a) Type
-  | ExternalStmt a (Id a) Type
-  deriving (Show)
+  deriving (Show, Eq, Ord, Data, Typeable)
 
 
 data LatentPred = LPType Type | LPNone
     deriving (Show, Eq, Ord, Data, Typeable)
 
---equalities:
-instance Eq (Id a) where
-  Id _ s1 == Id _ s2 = s1 == s2
 
---property within an object literal
---TODO: remove PropString?
 data Prop a 
-  = PropId a (Id a) | PropString a String | PropNum a Integer
-  deriving (Show, Ord, Data, Typeable)
+  = PropId a (Id a) 
+  | PropString a String 
+  | PropNum a Integer
+  deriving (Show, Eq, Ord, Data, Typeable)
 
-propToString (PropId _ (Id _ s)) = s
-propToString (PropString _ s)    = s
-propToString (PropNum _ i)       = show i
-
-instance Eq (Prop a) where
-  x == y = (propToString x) == (propToString y) where
 
 data LValue a
   = LVar a String
   | LDot a (Expression a) String
   | LBracket a (Expression a) (Expression a)
   deriving (Show, Eq, Ord, Data, Typeable)
+
 
 data Expression a
   = StringLit a String
@@ -98,26 +83,31 @@ data Expression a
   | PackExpr a (Expression a) Type {- concrete -} Type {- existential -}
   deriving (Show, Eq, Ord, Data, Typeable)
 
+
 data CaseClause a 
   = CaseClause a (Expression a) [Statement a]
   | CaseDefault a [Statement a]
   deriving (Show, Eq, Ord, Data, Typeable)
+
   
 data CatchClause a 
   = CatchClause a (Id a) (Statement a) 
   deriving (Show, Eq, Ord, Data, Typeable)
+
 
 data VarDecl a 
   = VarDecl a (Id a) Type
   | VarDeclExpr a (Id a) (Maybe Type) (Expression a)
   | UnpackDecl a (Id a) String Type (Expression a)
   deriving (Show, Eq, Ord, Data, Typeable)
-  
+
+
 data ForInit a
   = NoInit
   | VarInit [VarDecl a]
   | ExprInit (Expression a)
   deriving (Show, Eq, Ord, Data, Typeable)
+
 
 data ForInInit a
  -- |These terms introduce a name to the enclosing function's environment.
@@ -126,6 +116,7 @@ data ForInInit a
  = ForInVar (Id a) 
  | ForInNoVar (Id a) 
  deriving (Show, Eq, Ord, Data, Typeable)
+
 
 data Statement a
   = BlockStmt a [Statement a]
@@ -157,6 +148,5 @@ data Statement a
   | ExternalFieldStmt a (Id a) (Id a) (Expression a)
   deriving (Show, Eq, Ord, Data, Typeable)  
   
-showSp :: SourcePos -> String
-showSp pos = (sourceName pos) ++ ":" ++ (show $ sourceLine pos) ++ 
-  ":" ++ (show $ sourceColumn pos)
+
+unId (Id _ s) = s

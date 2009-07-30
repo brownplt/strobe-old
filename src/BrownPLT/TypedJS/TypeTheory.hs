@@ -237,6 +237,9 @@ canonize t = case t of
   TIx x -> return (TIx x)
   TExists u -> liftM TExists (canonize u)
   TForall u -> liftM TForall (canonize u)
+  TConstr argTys initTy objTy -> 
+    -- TODO: canonize initTy
+    liftM3 TConstr (mapM canonize argTys) (return initTy) (canonize objTy)
   TNamedForall x u -> liftM TForall (canonize (closeType x u))
 
 
@@ -292,6 +295,10 @@ isWfType ty = case ty of
   TIx x -> fail "the type is not locally closed"
   TExists u -> freshTVar $ \x -> bindTVar x $ isWfType (openType (TId x) u)
   TForall u -> freshTVar $ \x -> bindTVar x $ isWfType (openType (TId x) u)
+  TConstr tyArgs initTy constrTy -> do
+    --TODO: Check that initTy is well-formed
+    mapM_ isWfType tyArgs
+    isWfType constrTy
   TNamedForall x u -> bindTVar x $ isWfType u
 
 
@@ -481,6 +488,7 @@ runtime t = case t of
   TIx _ -> TUnk
   TExists t -> runtime t
   TForall t -> runtime t
+  TNamedForall _ t -> runtime t
   TAny -> TUnk
   TApp "String" [] ->  injRT RTString
   TApp "Bool" [] ->  injRT RTBoolean

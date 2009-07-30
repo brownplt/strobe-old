@@ -72,7 +72,7 @@ type Action = [Flag] -> [String] -> IO ()
 typeCheckAction :: Action
 typeCheckAction [] [path] = do
   src <- readFile path
-  let (_, script) = parseTypedJavaScript path src
+  let script = parseTypedJavaScript path src
   idl <- loadIDLs
   case typeCheck idl script of
     Right () -> putStrLn "Type-checking successful."
@@ -94,7 +94,7 @@ testingAction _ _ = fail "invalid command-line arguments"
 
 annotatedAction [path] = do
   src <- readFile path
-  let (_, script) = parseTypedJavaScript path src
+  let script = parseTypedJavaScript path src
   putStrLn "Successfully parsed..."
   case runtimeAnnotations M.empty (BlockStmt noPos script) of
     Left err -> putStrLn err
@@ -104,7 +104,7 @@ annotatedAction _ = fail "invalid command-line arguments"
 
 anfAction [] [path] = do
   src <- readFile path
-  let (_, script) = parseTypedJavaScript path src
+  let script = parseTypedJavaScript path src
   putStrLn "Successfully parsed..."
   let js = eraseTypes script
   case toANF js of

@@ -3,20 +3,15 @@ module BrownPLT.TypedJS.Parser
   , parseExpression
   , parseType
   , parseType'
-  , parseString
   , parseFuncExpr
-  , parseScriptFromString
-  , emptyParsedJavaScript
   , ParsedStatement
   , ParsedExpression
-  , parseJavaScriptFromFile
   , parseSimpleExpr'
   , parseBlockStmt
   , parseStatement
   , StatementParser
   , ExpressionParser
   , assignExpr
-  , parseToplevel, parseToplevels
   , parseTypedJavaScript
   ) where
 
@@ -39,15 +34,12 @@ import BrownPLT.TypedJS.TypeTheory
 type ParsedStatement = Statement SourcePos
 type ParsedExpression = Expression SourcePos
 type ParsedType = Type
-type ParsedToplevel = ToplevelStatement SourcePos
 type MaybeParsedType = Maybe (Type)
 
--- These parsers can store some arbitrary state
 type StatementParser state = CharParser state ParsedStatement
 type ExpressionParser state = CharParser state ParsedExpression
 type TypeParser state = CharParser state ParsedType
 type MaybeTypeParser state = CharParser state MaybeParsedType
-type ToplevelParser state = CharParser state ParsedToplevel
 
 identifier =
   liftM2 Id getPosition Lexer.identifier
@@ -968,61 +960,20 @@ parseExpression:: ExpressionParser st
 parseExpression = assignExpr
 
 
-externalStmt = do
-  pos <- getPosition
-  reserved "external"
-  id <- identifier
-  t <- parseType
-  semi
-  return (ExternalStmt pos id t)
-
-parseToplevel :: ToplevelParser st
-parseToplevel = externalStmt
-
-parseToplevels = do
-  whiteSpace
-  parseToplevel `sepBy` whiteSpace
-
 parseListExpr =
   liftM2 ListExpr getPosition (assignExpr `sepBy1` comma)
 
---}}}
 
-parseScript:: CharParser state ([ToplevelStatement SourcePos], 
-                                 JavaScript SourcePos)
 parseScript = do
   whiteSpace
-  toplevels <- parseToplevels
-  script <- liftM2 Script getPosition (parseStatement `sepBy` whiteSpace)
-  return (toplevels, script)
-
-parseJavaScriptFromFile :: MonadIO m => String 
-                        -> m ([ToplevelStatement SourcePos], 
-                              [Statement SourcePos])
-parseJavaScriptFromFile filename = do
-  chars <- liftIO $ readFile filename
-  case parse parseScript filename chars of
-    Left err               -> fail (show err)
-    Right (toplevs, (Script _ stmts)) -> return (toplevs, stmts)
+  stmts <- many parseStatement
+  eof
+  return stmts
 
 
-parseScriptFromString :: String -> String 
-                      -> Either ParseError ([ToplevelStatement SourcePos],
-                                            JavaScript SourcePos)
-parseScriptFromString src script = parse parseScript src script
-
-emptyParsedJavaScript = 
-  Script (error "Parser.emptyParsedJavaScript--no annotation") []
-
---parse a series of toplevels, then parse a script
-parseTypedJavaScript :: String -> String -> ([ToplevelStatement SourcePos],
-                                             [Statement SourcePos])
+parseTypedJavaScript :: String -> String -> [Statement SourcePos]
 parseTypedJavaScript src str = case parse parseScript src str of
-    Left err -> error (show err )
-    Right (toplevels, (Script _ stmts)) -> (toplevels, stmts)
+    Left err -> error (show err)
+    Right stmts -> stmts
 
-parseString :: String -> ([ToplevelStatement SourcePos],[Statement SourcePos])
-parseString str = case parse parseScript "" str of
-  Left err -> error (show err)
-  Right (toplevels, (Script _ stmts)) -> (toplevels, stmts)
 

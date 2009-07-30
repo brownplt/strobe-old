@@ -312,7 +312,12 @@ expr e = case e of
   ListExpr p es -> 
     foldM (\_ e -> expr e) undefined es -- type of the last expression
   ObjectLit p fields -> do
-    let names = map fst fields
+    let unProp p = case p of
+          PropId _ (Id _ x) -> x
+          PropString _ x -> x
+          PropNum _ n -> show n
+    let names = map (unProp.fst) fields
+        
     -- Confirmed in Rhino that this is not a syntax error in JavaScript.
     unless (length fields == length (nub names)) $
       fatalTypeError p "duplicate field names"
@@ -470,6 +475,14 @@ stmt returnType s = case s of
   ExternalFieldStmt p (Id _ brand) (Id _ field) e -> do
     ty <- expr e
     extendBrand brand field ty
+{-
+  -- TODO: Typecheck the body of the constructor
+  ConstructorStmt p brand args constrTy body -> 
+    case constrTy of
+      TConstr argTys initTy objTy -> do
+        argTys <- mapM desugarType argTys
+        newBrand brand objTy (TObject "Object" [] [])
+-}  
     
 
 decl :: VarDecl SourcePos -> TypeCheck ()
