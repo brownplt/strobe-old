@@ -41,15 +41,17 @@ expressions {
   function() :: -> Undefined {
     var gadget = {
       debug : { error: function(s) :: String -> Undefined { return; },
-                trace: function(s) :: (String -> Undefined) { return; },
-                warning: function(s) :: (String -> Undefined) { return; } },
+                trace: function(s) :: this :: Object:, String -> Undefined { 
+                         return; },
+                warning: function(s) :: this :: Object:, String -> Undefined { 
+                           return; } },
       storage : { extract: function(s) :: (String -> String) { return s; },
                   openText: function(s) :: (String -> String) { return s; } } };
   
     var debugfunc = gadget.debug.warning;
     var extractfunc = gadget.storage.extract;
-    debugfunc(extractfunc("NUMBER_PROCESSORS"));
-    debugfunc("The number of RAMs is: " + extractfunc("MEMORY_SIZE"));
+    // debugfunc(extractfunc("NUMBER_PROCESSORS"));
+    // debugfunc("The number of RAMs is: " + extractfunc("MEMORY_SIZE"));
     gadget.debug.warning("You are being warned.");
     gadget.debug.trace = gadget.debug.error;
     gadget.debug.trace("This is showing an error, because I messed around with the functions.");

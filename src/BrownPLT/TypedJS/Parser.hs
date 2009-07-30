@@ -58,8 +58,8 @@ identifier =
         | any
         | 'literal
         | type?
-        | '[' type ']' type [,*] -> type?     ; explicit this
-        | '[' type ']' type [,+] ... -> type? ; explicit this
+        | this :: type, type [,*] -> type?     ; explicit this
+        | this :: type, type [,+] ... -> type? ; explicit this
         | type [,*] -> type?
         | type [,+] ... -> type?
         | constr
@@ -80,6 +80,8 @@ Disambiguation:
 
  type_fn ::= type' [,*] -> type?
            | type' [,+] ... -> type?
+           | this :: type', type' [,*] -> type?
+           | this :: type', type' [,+] ... -> type?
            | type'
 
  type' ::= type''?
@@ -116,19 +118,31 @@ type_ = do
 
 
 type_fn :: CharParser st (Type)
-type_fn = do
-  p <- getPosition
-  let globalThis = TObject "Window" [] []
-  ts <- type_' `sepBy` comma
-  let thisType = TObject "Window" [] []
-  let func = do
-        reservedOp "->"
-        r <- type_
-        return (TArrow (TObject "Window" [] []) (ArgType ts Nothing) r)
-  case ts of
-    []  -> func -- function of zero arguments
-    [t] -> func <|> (return t)
-    ts  -> func
+type_fn = explicitThis <|> implicitThis
+  where -- If @this ::@ is specified, it must be a function ...
+        explicitThis = do
+          reserved "this"
+          reservedOp "::"
+          thisTy <- type_'
+          comma
+          argTys <- type_' `sepBy` comma
+          reservedOp "->"
+          resultTy <- type_
+          return (TArrow thisTy (ArgType argTys Nothing) resultTy)
+        -- ... otherwise, we may fall through to type'
+        implicitThis = do
+          argTys <- type_' `sepBy` comma
+          let func = do
+                reservedOp "->"
+                resultTy <- type_
+                return (TArrow (TObject "Window" [] []) 
+                               (ArgType argTys Nothing) 
+                               resultTy)
+          case argTys of
+            []  -> func -- function of zero arguments
+            [ty] -> func <|> (return ty)
+            otherwise -> func
+
 
 type_' :: CharParser st (Type)
 type_' = do
@@ -149,6 +163,7 @@ type_'' = do
         case elts of
           [t] -> return t
           (t:ts) -> return (foldr TUnion t ts)
+          [] -> error "Parser.hs : sepBy1 returned an empty list"
   let any = do
         reserved "any"
         return TAny
@@ -462,7 +477,7 @@ parseFunctionStmt = do
   return (VarDeclStmt pos [VarDeclExpr pos name (Just functype) 
                                        (FuncExpr pos args functype body)])
 
---same as function stmt
+
 {-parseConstructorStmt :: StatementParser st
 parseConstructorStmt = do
   reserved "constructor"

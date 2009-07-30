@@ -41,7 +41,7 @@ expressions {
 
   succeed  function(element) :: HTMLElement: 
                              -> { left:: Double, top:: Double } {
-    var valueT = 0, valueL = 0;
+    var valueT = 0.0, valueL = 0.0;
     do {
       valueT += element.offsetTop || 0;
       valueL += element.offsetLeft || 0;

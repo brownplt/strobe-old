@@ -47,12 +47,39 @@ unLVal (LDot p e x) = DotRef p e (Id p x)
 unLVal (LBracket p e1 e2) = BracketRef p e1 e2
 
 
+-- |JavaScript's function call syntax is overloaded for three kinds of
+-- function invocations.  These are @obj.method(arg, ...)@,
+-- @obj[method](arg, ...)@ and @func(arg, ...)@.
+--
+-- This function returns the type of the object (@Window:{}@ in the first case,
+-- @obj@ in the latter cases) and the type of the function.
+callObj :: Expression SourcePos -> TypeCheck (Type, Type)
+callObj e = case e of
+  DotRef p obj (Id _ method) -> do
+    objTy <- expr obj
+    -- Based on the DotRef case of expr.
+    r <- projBrand objTy
+    case r of
+      Just (brand, tyArgs) -> do
+        prototypeTy <- brandType brand tyArgs
+        fieldTy <- projFieldType (TIntersect objTy prototypeTy) method
+        case fieldTy of
+          Just t -> return (objTy, t)
+          Nothing -> fatalTypeError p $ printf
+            "%s\ndoes not have the field %s" (renderType objTy) method
+      Nothing -> fatalTypeError p $ printf
+        "expected an object with a field %s, got\n%s" method (renderType objTy)
+  BracketRef p obj method -> 
+    error "calling BracketRef NYI"
+  otherwise -> do
+    objTy <- brandType "Window" []
+    funcTy <- expr e
+    return (objTy, funcTy)
+    
+
+
 ok :: TypeCheck ()
 ok = return ()
-
-
-
-
 
 
 -- |Calculates the type of a local variable that does not have a type
@@ -291,29 +318,24 @@ expr e = case e of
       fatalTypeError p "duplicate field names"
     ts <- mapM field fields
     return (TObject "Object" [] ts)
-{-
-    t <- desugarType p (TObject "Object" [] ts)
-    s <- getBrand "Object"
-    case (t, s) of
-      (TObject "Object" [] fs1, TObject "Object" [] fs2) ->
-        return (TObject "Object" [] (overrideFields fs1 fs2))
-      otherwise -> 
-        catastrophe p "TypeCheck.hs : desugarType/getBrand error in ObjectLit"
-  -}  
   CallExpr p f ts args -> do
-    f_t <- expr f
+    (objTy, fTy) <- callObj f
     args_t <- mapM expr args
-    case f_t of
-      TArrow thisType (ArgType argTypes optArgType) resultType -> do
+    case fTy of
+      TArrow thisTy (ArgType argTypes optArgType) resultType -> do
         unless (length args == length argTypes) $ 
           fatalTypeError p "argument count mismatch"
         argsMatch <- liftM and (mapM (uncurry isSubtype) (zip args_t argTypes))
         unless argsMatch $
           fatalTypeError p "argument type mismatch"
+        thisMatch <- isSubtype objTy thisTy
+        unless thisMatch $ fatalTypeError p $ printf 
+          "function expects the type of this to be\n%s\ncalled with\n%s"
+          (renderType thisTy) (renderType objTy)
         return resultType
       otherwise -> do
         fatalTypeError p $ printf "expected a function; expression has type %s"
-          (renderType f_t)
+          (renderType fTy)
   FuncExpr p args t body -> do
     let (qtVars, t') = unForall t
     bindTVars qtVars $ do
@@ -377,8 +399,6 @@ expr e = case e of
       otherwise -> fatalTypeError p $ 
         printf "expected a quantified type, received %s" (renderType s)
         
-  
-
 
 stmt :: Maybe Type -- ^ return type
      -> Statement SourcePos
