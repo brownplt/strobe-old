@@ -21,6 +21,7 @@ module BrownPLT.TypedJS.TypeTheory
   , unionType
   -- * Subtyping
   , isSubtype
+  , areSubtypes
   , projFieldType
   , projType
   , projBrand
@@ -110,6 +111,10 @@ closeTypeRec n x t = case t of
   TForall u -> TForall (closeTypeRec (n + 1) x u)
   TIntersect t1 t2 ->
     TIntersect (closeTypeRec n x t1) (closeTypeRec n x t2)
+  TConstr argTys initTy objTy -> 
+    TConstr (map (closeTypeRec n x) argTys) 
+            (closeTypeRec n x initTy)
+            (closeTypeRec n x objTy)
 
 
 closeArgTypeRec n x (ArgType ts opt) =
@@ -144,7 +149,10 @@ openTypeRec n s t = case t of
     TIntersect (openTypeRec n s t1) (openTypeRec n s t2)
   TExists u -> TExists (openTypeRec (n + 1) s u)
   TForall u -> TForall (openTypeRec (n + 1) s u)
-
+  TConstr argTys initTy objTy -> 
+    TConstr (map (openTypeRec n s) argTys)
+            (openTypeRec n s initTy)
+            (openTypeRec n s objTy)
 
 
 openArgTypeRec n s (ArgType ts opt) =

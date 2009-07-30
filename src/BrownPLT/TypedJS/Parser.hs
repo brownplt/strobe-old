@@ -222,7 +222,7 @@ constrTy brand = withForall <|> withoutForall
           argTys <- type_' `sepBy` comma
           reservedOp "->"
           fields <- braces (field `sepBy` comma)
-          return (TConstr argTys (error "constrTy: initty NYI")
+          return (TConstr argTys boolType -- TODO: wrong!
                           (TObject brand tyArgs fields))
         withForall = do
           reserved "forall"
@@ -729,7 +729,7 @@ funcApp e = (parens $ withPos cstr (parseExpression `sepBy` comma)) <?> "(functi
 tyApp e = do
   p <- getPosition
   reservedOp "@"
-  tys <- brackets (type_ `sepBy1` comma)
+  tys <- brackets (type_' `sepBy1` comma)
   return (foldr (\ty e -> TyAppExpr p e ty) e tys)
 
 

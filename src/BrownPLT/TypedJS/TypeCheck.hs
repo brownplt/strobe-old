@@ -81,6 +81,13 @@ callObj e = case e of
 ok :: TypeCheck ()
 ok = return ()
 
+getConstrObj :: Type -> Type
+getConstrObj ty = case ty of
+  TConstr _ _ objTy -> objTy
+  TForall ty' -> TForall (getConstrObj ty')
+  TNamedForall x ty' -> TForall (getConstrObj $ closeType x ty')
+  otherwise -> error $ "getConstrObj : missed parse error " ++ show ty
+
 
 -- |Calculates the type of a local variable that does not have a type
 -- type annotation.  Extends the environment with the type of the variable.
@@ -111,6 +118,18 @@ calcType m decl = case decl of
     t <- expr e
     extendBrand brand field t
     m
+  DeclConstr brand ty -> do
+    newBrand brand (getConstrObj ty) (TObject "Object" [] [])
+    ty <- desugarType noPos ty
+    extendEnv brand ty m
+--   DeclConstr brand ty -> case ty of
+--     TConstr argTys initTy objTy -> do
+--       newBrand brand objTy (TObject "Object" [] [])
+--       extendEnv brand ty m
+--     TForall
+--     
+--     otherwise -> error $ printf
+--       "calcType: unrecognized DeclConstr %s %s" brand (show ty)
 
 calcTypes :: [LocalDecl]
           -> TypeCheck a
@@ -323,6 +342,17 @@ expr e = case e of
       fatalTypeError p "duplicate field names"
     ts <- mapM field fields
     return (TObject "Object" [] ts)
+  NewExpr p constr args -> do
+    constrTy <- expr constr
+    argTys <- mapM expr args
+    case constrTy of
+      TConstr formalTys _ objTy -> do
+        argsMatch <- areSubtypes argTys formalTys
+        unless argsMatch $ fatalTypeError p $ printf
+          "argument count/type mismatch"
+        return objTy
+      otherwise -> fatalTypeError p $ printf
+        "'new' expected an a constructor; received\n%s" (renderType constrTy)
   CallExpr p f ts args -> do
     (objTy, fTy) <- callObj f
     args_t <- mapM expr args
@@ -525,14 +555,11 @@ topLevel tl = case tl of
     ty <- expr e
     extendBrand brand field ty
   TopLevelStmt s -> stmt Nothing s
-{-
   -- TODO: Typecheck the body of the constructor
-  ConstructorStmt p brand args constrTy body -> 
-    case constrTy of
-      TConstr argTys initTy objTy -> do
-        argTys <- mapM desugarType argTys
-        newBrand brand objTy (TObject "Object" [] [])
--}  
+  ConstructorStmt p brand args constrTy body -> do
+    newBrand brand (getConstrObj constrTy) (TObject "Object" [] [])
+    -- TODO: newBrands need to be added at first. extensions added later
+    -- for recursion, etc.
 
 
 -- |This code should be almost identical to the code for function bodies.

@@ -105,6 +105,9 @@ eraseTypesTopLevel tl = case tl of
                     (JS.LDot p (JS.VarRef p (id brand)) field) 
                     (expr e)
   TopLevelStmt s -> stmt s
+  ConstructorStmt p brand args _ body -> JS.VarDeclStmt p [decl]
+    where decl = JS.VarDecl p (JS.Id p brand) (Just e)
+          e = JS.FuncExpr p (map (JS.Id p) args) (stmt body)
 
 
 eraseTypes :: [Statement a] -> [JS.Statement a]

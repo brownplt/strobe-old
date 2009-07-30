@@ -384,3 +384,121 @@ body {
     } while (obj.x);
 }
 
+body {
+
+  constructor Point(x, y) :: Int, Int -> { x :: Int, y :: Int } {
+    this.x = x;
+    this.y = y;
+  }
+  
+  var pt = new Point(10, 34);
+  
+  var zz :: Int = pt.x + pt.y;
+
+  Point.prototype.z = "LOL";
+  
+  var t :: String = pt.z;
+}
+
+body {
+
+  function f(o) :: {x :: String } -> String {
+    return o.x + " good day";
+  };
+
+  f({ x : " Hello " });
+}
+
+body {
+
+  function maybeobj(obj) :: {x :: Int?, y :: String?} -> String {
+    var z = obj.y;
+    z = "broohaha!!!!!!!!!!!!!!!";
+    return z;
+  }
+  // This function call fails because it is computed to have the type
+  // { mutable x :: Int, mutable y :: String }
+  // Is it reasonable to give object literals immutable fields by default
+  // and constructors mutable fields by default?
+  //
+  // I have a hunch that that's how they are usually used in the wild: anonymous
+  // object literals are used for functional programming in JavaScript, while
+  // objects constructed with "new" are a sign of Java-esque imperative code.
+  maybeobj({x : 34, y : "hello" });
+
+}
+
+body {
+  constructor MyObj(xVal) :: Int -> {x::Int,y::Int} {
+    this.x = xVal;
+    this.y = 0;
+  }
+  var o = new MyObj(5);
+  var z :: Int = o.x + o.y;
+}
+
+body {
+  constructor MyObj(xVal) :: Int -> {x::U(String,Int),y::Int} {
+    this.x = "phooey";
+    this.y = 0;
+  }
+  var o :: Int = (new MyObj(5)).y;
+}
+
+body {
+  constructor MyObj(xVal) :: Int -> { x::U(String,Int), y::Int } {
+    this.x = 99;
+    this.y = 0;
+  }
+  var o = new MyObj(5);
+  var x :: Int = o.y;
+}
+
+
+//the following is strange. this has a different type in the true and the
+//false cases. we have to union the field together and keep 'this' as
+//an object, not a union of objects. special case FTW
+//we can special case cause we know 'this' cannot be assigned =).
+
+body {
+  constructor MyObj(y) :: Bool -> {x::U(String,Int),y::Int} {
+    if (y)
+      this.x = 99;
+    else
+      this.x = "O MY GOD";
+    //here, this has type U({x::Int},{x::String}). maybe it should be
+    //{x::U(Int, String)} ?
+    //should really act like variablz do.
+
+    this.y = 0;
+  }
+  var o = new MyObj(false);
+  var t :: Int = o.y;
+}
+
+body {
+  constructor MyObj(y) :: Bool -> {x::U(String,Int),y::Int} {
+    if (y)
+      var krom = 99;
+    else
+      var krom = "O MY GOD";
+    this.x = krom;
+    this.y = 0;
+  }
+  var o = new MyObj(false);
+  var t :: Int = o.y ;
+}
+
+body {
+
+  constructor Pair(x, y) :: forall a . a, a -> { x :: a, y :: a } {
+    this.x = x;
+    this.y = y;
+  };
+
+  var p1 = new (Pair@[Int])(50, 99);
+  var p11 :: Int = p1.x;
+
+  var p2 = new (Pair@[String])("Bee","Gees");
+  var p22 :: String = p2.x;
+}

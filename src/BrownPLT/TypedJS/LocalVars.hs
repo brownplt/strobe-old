@@ -19,6 +19,7 @@ data LocalDecl
   = DeclType String Type
   | DeclExpr String (Expression SourcePos)
   | DeclField String String (Expression SourcePos)
+  | DeclConstr String Type
 
 
 data S =  S {
@@ -60,6 +61,14 @@ bindField :: String
 bindField brand field e = do
   s <- get
   put $ s { sVarList = (DeclField brand field e):(sVarList s) }
+
+
+bindConstr :: String
+           -> Type
+           -> Locals ()
+bindConstr brand ty = do
+  s <- get
+  put $ s { sVarList = (DeclConstr brand ty):(sVarList s) }
 
 
 bindTVar :: String -> Locals ()
@@ -123,7 +132,7 @@ topLevel :: TopLevel SourcePos -> Locals ()
 topLevel tl = case tl of
   TopLevelStmt s -> stmt s
   ExternalFieldStmt _ (Id _ brand) (Id _ field) e -> bindField brand field e
-  ConstructorStmt _ brand _ ty _ -> bind brand ty
+  ConstructorStmt _ brand _ ty _ -> bindConstr brand ty
 
 
 topLevelVars :: MonadError String m

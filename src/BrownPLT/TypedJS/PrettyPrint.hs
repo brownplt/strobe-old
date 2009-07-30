@@ -79,6 +79,8 @@ type_ t = case t of
   TForall t -> text "forall ." <+> type_ t
   TNamedForall x t -> text "forall" <+> text x <+> text "." <+> type_ t
   TIntersect t1 t2 -> parens (type_ t1) <> text " ^ " <> parens (type_ t2)
+  TConstr args initTy objTy -> commas (map type_ args) <+> text "->" <+>
+    type_ objTy
 
 
 id :: Id a -> Doc
