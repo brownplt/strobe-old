@@ -181,12 +181,10 @@ type_'' = do
         args <- (brackets $ type_' `sepBy` comma) <?> "type application"
         return (TApp constr args)
   let brandedObject brand = do
+        tyArgs <- option [] $ brackets (type_' `sepBy` comma)
         colon
-        let withFields = do
-              fields <- braces (field `sepBy` comma)
-              fields <- noDupFields fields
-              return (TObject brand [] fields)
-        withFields <|> (return $ TObject brand [] [])
+        fields <- option [] $ braces (field `sepBy` comma) >>= noDupFields
+        return (TObject brand tyArgs fields)
   let int = do
         reserved "Int"
         return $ intersectType (TApp "Int" []) numberObjectType
@@ -201,9 +199,9 @@ type_'' = do
   let other = do
         id <- Lexer.identifier
         case isUpper (head id) of
-          True -> (app id) <|> (brandedObject id) <|> (return $ TApp id [])
-          False -> (app id) <|> (brandedObject id) <|> (return $ TId id)
-    in (parens type_) <|> array <|> any <|> (try union) <|> object <|> int <|> 
+          True -> brandedObject id <|> (return $ TApp id [])
+          False ->return (TId id)
+    in parens type_ <|> array <|> any <|> (try union) <|> object <|> int <|> 
        double <|> other
 
 
