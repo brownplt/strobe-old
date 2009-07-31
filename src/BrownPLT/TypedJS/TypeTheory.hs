@@ -191,6 +191,9 @@ substType x s t = case t of
     TIntersect (substType x s t1) (substType x s t2)
   TExists u -> TExists (substType x s u)
   TForall u -> TForall (substType x s u)
+  TNamedForall y u -- TODO: Not capture free!
+    | x == y -> TNamedForall y u
+    | otherwise -> TNamedForall y (substType x s u)
 
 
 substTypeInArgType x s (ArgType ts opt) =

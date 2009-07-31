@@ -372,7 +372,9 @@ expr e = case e of
       TConstr formalTys _ objTy -> do
         argsMatch <- areSubtypes argTys formalTys
         unless argsMatch $ fatalTypeError p $ printf
-          "argument count/type mismatch"
+          "constructor expects\n%s\n\nbut it received\n%s"
+            (concat $ intersperse ",\n" $ map renderType formalTys)
+            (concat $ intersperse ",\n" $ map renderType argTys)
         return objTy
       otherwise -> fatalTypeError p $ printf
         "'new' expected an a constructor; received\n%s" (renderType constrTy)

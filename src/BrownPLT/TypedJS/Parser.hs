@@ -242,7 +242,7 @@ parseType' = type_
  
 parseType :: TypeParser st
 parseType = do
-  reservedOp "::" <?> "type annotation (:: followed by a type)"
+  reservedOp "::" <?> "type annotation"
   t <- type_
   return t
 
@@ -734,7 +734,7 @@ tyApp e = do
   p <- getPosition
   reservedOp "@"
   tys <- brackets (type_' `sepBy1` comma)
-  return (foldr (\ty e -> TyAppExpr p e ty) e tys)
+  return (foldl (\e ty -> TyAppExpr p e ty) e tys)
 
 
 bracketRef e = (brackets $ withPos cstr parseExpression) <?> "[property-ref]"
