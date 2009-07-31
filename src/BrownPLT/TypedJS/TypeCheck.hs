@@ -182,7 +182,12 @@ lvalue lv = case lv of
     m <- scopeEnv
     case n < m of
       -- x is a variable in an enclosing scope.
-      True -> fail "assinging to enclosing scopes NYI"
+      True -> do
+        t <- lookupEnv p x
+        case t of
+          TUnion _ _ -> fatalTypeError p $ printf 
+            "cannot assign to union types in an enclosing scope"
+          otherwise -> return t
       -- x is a local variable.  The local scope may make assumptions about
       -- its runtime type.
       False -> lookupEnv p x
@@ -196,8 +201,10 @@ lvalue lv = case lv of
           Just (s, True) -> do
             fatalTypeError p $ printf "the field %s is readonly" f
           Nothing -> do
-            fatalTypeError p $ printf "object %s\ndoes not have the field %s" 
-                                      (renderType tObj) f
+            fatalTypeError p $ printf 
+              "object %s\ndoes not have the field %s\n%s" 
+              (renderType tObj) f
+              (show $ overrideFields fields fields')
       otherwise -> do
         fatalTypeError p $ printf "expected object"
   LBracket p arr ix -> do
@@ -236,7 +243,10 @@ expr e = case e of
         case fieldTy of
           Just t -> return t
           Nothing -> fatalTypeError p $ printf
-            "%s\ndoes not have the field %s" (renderType objTy) x
+            "%s\ndoes not have the field %s\n%s" (renderType objTy) x
+             (renderType (TIntersect objTy prototypeTy))
+ 
+
       Nothing -> fatalTypeError p $ printf
         "expected an object with a field %s, got\n%s" x (renderType objTy)
   BracketRef p e1 e2 -> do
@@ -359,17 +369,22 @@ expr e = case e of
     case fTy of
       TArrow thisTy (ArgType argTypes optArgType) resultType -> do
         unless (length args == length argTypes) $ 
-          fatalTypeError p "argument count mismatch"
+          fatalTypeError p $ printf 
+            "function expects %s arguments but %s were supplied"
+            (show $ length argTypes) (show $ length args)
         argsMatch <- liftM and (mapM (uncurry isSubtype) (zip args_t argTypes))
         unless argsMatch $
-          fatalTypeError p "argument type mismatch"
+          fatalTypeError p $ printf
+            "argument type mismatch, expected\n%s\n received\n%s"
+            (concat $ intersperse ", " $ map renderType argTypes)
+            (concat $ intersperse ", " $ map renderType args_t)
         thisMatch <- isSubtype objTy thisTy
         unless thisMatch $ fatalTypeError p $ printf 
           "function expects the type of this to be\n%s\ncalled with\n%s"
           (renderType thisTy) (renderType objTy)
         return resultType
       otherwise -> do
-        fatalTypeError p $ printf "expected a function; expression has type %s"
+        fatalTypeError p $ printf "expected a function; expression has type\n%s"
           (renderType fTy)
   FuncExpr p args t body -> do
     let (qtVars, t') = unForall t
@@ -422,7 +437,7 @@ expr e = case e of
         case isSt of
           True -> return (TExists t')
           False -> do
-            fatalTypeError p $ printf "expected %s to have the shape %s"
+            fatalTypeError p $ printf "expected\n%s\nto have the shape\n%s"
               (renderType s) (renderType (openType c t'))
       otherwise -> fatalTypeError p $ printf
         "expected existential type to pack, received %s" (renderType t)
@@ -543,8 +558,8 @@ decl (UnpackDecl p (Id _ x) tVar t e) = do
       case r of
         True -> ok
         False -> fatalTypeError p $ printf
-          "expression has type %s, bound to an identifier of type %s"
-          (renderType (openType (TId x) s')) (renderType t)
+          "right-hand-side expression has type\n%s\nidentifier has type\n%s"
+          (renderType (openType (TId tVar) s')) (renderType t)
     otherwise -> fatalTypeError p $ printf
       "unpack used on an expression of type %s" (renderType s)
 
@@ -557,7 +572,8 @@ topLevel tl = case tl of
   TopLevelStmt s -> stmt Nothing s
   -- TODO: Typecheck the body of the constructor
   ConstructorStmt p brand args constrTy body -> do
-    newBrand brand (getConstrObj constrTy) (TObject "Object" [] [])
+    objTy <- desugarType p (getConstrObj constrTy)
+    newBrand brand objTy (TObject "Object" [] [])
     -- TODO: newBrands need to be added at first. extensions added later
     -- for recursion, etc.
 

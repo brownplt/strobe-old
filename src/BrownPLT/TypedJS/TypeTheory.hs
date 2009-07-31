@@ -109,6 +109,9 @@ closeTypeRec n x t = case t of
     TUnion (closeTypeRec n x t1) (closeTypeRec n x t2)
   TExists u -> TExists (closeTypeRec (n + 1) x u)
   TForall u -> TForall (closeTypeRec (n + 1) x u)
+  TNamedForall y u 
+    | y == x -> t
+    | otherwise -> TNamedForall y (closeTypeRec (n + 1) x u)
   TIntersect t1 t2 ->
     TIntersect (closeTypeRec n x t1) (closeTypeRec n x t2)
   TConstr argTys initTy objTy -> 
@@ -290,11 +293,15 @@ isWfType ty = case ty of
     isWfType t1
     isWfType t2
   TObject brand tys fields -> do
+    mapM_ isWfType tys >> mapM_ isWfField fields
+      where isWfField (x, ro, t) = isWfType t
+{-
     r <- isBrand brand 
     case r of
       True -> mapM_ isWfType tys >> mapM_ isWfField fields
         where isWfField (x, ro, t) = isWfType t
       False -> fail $ printf "the brand %s is undefined" brand
+-}
   TId x -> do
     tv <- lookupTVar x
     case tv of
@@ -433,8 +440,8 @@ projBrand ty = case ty of
 projFieldType :: EnvM m => Type -> String -> m (Maybe Type)
 projFieldType ty name = case ty of
   TObject brand tyArgs fields -> do
-   fields' <- intersectBrand brand tyArgs
-   case fieldType name (overrideFields fields fields') of
+--   fields' <- intersectBrand brand tyArgs
+   case fieldType name fields of -- (overrideFields fields fields') of
      Just (ty, _) -> return (Just ty)
      Nothing -> return Nothing
   TIntersect t1 t2 -> do
@@ -497,6 +504,7 @@ runtime t = case t of
   TExists t -> runtime t
   TForall t -> runtime t
   TNamedForall _ t -> runtime t
+  TConstr _ _ _ -> injRT RTFunction
   TAny -> TUnk
   TApp "String" [] ->  injRT RTString
   TApp "Bool" [] ->  injRT RTBoolean

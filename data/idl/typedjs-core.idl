@@ -20,6 +20,8 @@ interface Object {
   boolean propertyIsEnumerable(in DOMString propname);
 };
 
+interface Math { };
+
 const void undefined = 0;
 
 const HTMLDocument document = 0;

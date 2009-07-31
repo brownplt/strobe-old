@@ -125,11 +125,17 @@ fnTy = explicitThis <|> implicitThis
           reserved "this"
           reservedOp "::"
           thisTy <- type_'
-          comma
-          argTys <- type_' `sepBy` comma
-          reservedOp "->"
-          resultTy <- type_
-          return (TArrow thisTy (ArgType argTys Nothing) resultTy)
+          let noArgs = do
+                reservedOp "->"
+                resultTy <- type_
+                return (TArrow thisTy (ArgType [] Nothing) resultTy)
+          let args = do
+                comma
+                argTys <- type_' `sepBy` comma
+                reservedOp "->"
+                resultTy <- type_
+                return (TArrow thisTy (ArgType argTys Nothing) resultTy)
+          noArgs <|> args
         -- ... otherwise, we may fall through to type'
         implicitThis = do
           argTys <- type_' `sepBy` comma

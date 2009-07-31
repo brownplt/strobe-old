@@ -502,3 +502,38 @@ body {
   var p2 = new (Pair@[String])("Bee","Gees");
   var p22 :: String = p2.x;
 }
+
+
+body {
+
+  constructor Pair(x, y) :: forall a . a, a -> { x :: a, y :: a } {
+    this.x = x;
+    this.y = y;
+  };
+
+  var f = function(p) :: Pair[Int]: -> Int {
+    return p.x + p.y;
+  }
+
+  var p1 = new (Pair@[Int])(50, 99);
+  var p11 :: Int = f(p1);
+
+}
+
+
+body {
+
+  constructor Pair(x, y) :: forall a . a, a -> { x :: a, y :: a } {
+    this.x = x;
+    this.y = y;
+  };
+
+  var f = function(g, p) :: forall p . (p -> Int), Pair[p]: -> Int {
+    return g(p.x) + g(p.y);
+  }
+
+  var p1 = new (Pair@[String])("hello", "goodbye");
+  var p11 :: Int = (f@[String])(function(_) :: String -> Int { return 5; },
+                                p1);
+
+}
