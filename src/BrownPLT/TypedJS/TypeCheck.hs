@@ -84,9 +84,21 @@ ok = return ()
 getConstrObj :: Type -> Type
 getConstrObj ty = case ty of
   TConstr _ _ objTy -> objTy
-  TForall ty' -> TForall (getConstrObj ty')
-  TNamedForall x ty' -> TForall (getConstrObj $ closeType x ty')
+  TNamedForall x ty' -> TNamedForall x (getConstrObj ty')
   otherwise -> error $ "getConstrObj : missed parse error " ++ show ty
+
+
+brandTVars :: SourcePos
+           -> String -- ^brand
+           -> TypeCheck [String]
+brandTVars p brand = do
+  let f t = case t of
+        TNamedForall x u -> x:(f u)
+        TConstr{} -> []
+        otherwise -> catastrophe p $ printf "quantifyExternalFieldType got %s"
+          (renderType t)
+  constrTy <- getBrand brand
+  return (f constrTy)
 
 
 -- |Calculates the type of a local variable that does not have a type
@@ -103,16 +115,17 @@ calcType :: TypeCheck a
 calcType m decl = case decl of
   DeclType x t -> do
     u <- desugarType noPos t
-    extendEnv x u m
+    extendEnv x (lcType u) m
   DeclExpr x (FuncExpr _ _ t _) -> do
     u <- desugarType noPos t
-    extendEnv x u m
+    extendEnv x (lcType u) m
   DeclExpr x e -> do
     t <- expr e
     extendEnv x t m
-  DeclField brand field (FuncExpr _ _ t _) ->  do
-    t <- desugarType noPos t
-    extendBrand brand field t
+  DeclField brand field (FuncExpr _ _ ty _) ->  do
+    tVars <- brandTVars noPos brand
+    ty <- bindTVars tVars $ desugarType noPos ty
+    extendBrand brand field (lcType ty)
     m
   DeclField brand field e -> do
     t <- expr e
@@ -121,7 +134,7 @@ calcType m decl = case decl of
   DeclConstr brand ty -> do
     newBrand brand (getConstrObj ty) (TObject "Object" [] [])
     ty <- desugarType noPos ty
-    extendEnv brand ty m
+    extendEnv brand (lcType ty) m
 --   DeclConstr brand ty -> case ty of
 --     TConstr argTys initTy objTy -> do
 --       newBrand brand objTy (TObject "Object" [] [])
@@ -401,7 +414,8 @@ expr e = case e of
              fatalTypeError p "all control paths in function to not return a \
                               \result")
             ok
-          nestEnv $ extendsEnv (zip (map unId args) argTypes) $ do
+          nestEnv $ extendsEnv (zip (map unId args) argTypes) $ 
+            extendEnv "this" thisType $ do
             rtEnv <- runtimeEnv
             case runtimeAnnotations rtEnv body of
               Left s -> catastrophe p s
@@ -567,13 +581,14 @@ decl (UnpackDecl p (Id _ x) tVar t e) = do
 topLevel :: TopLevel SourcePos -> TypeCheck ()
 topLevel tl = case tl of
   ExternalFieldStmt p (Id _ brand) (Id _ field) e -> do
-    ty <- expr e
+    tVars <- brandTVars p brand
+    ty <- bindTVars tVars $ expr e
     extendBrand brand field ty
   TopLevelStmt s -> stmt Nothing s
   -- TODO: Typecheck the body of the constructor
   ConstructorStmt p brand args constrTy body -> do
-    objTy <- desugarType p (getConstrObj constrTy)
-    newBrand brand objTy (TObject "Object" [] [])
+    constrTy <- desugarType p constrTy
+    newBrand brand (getConstrObj constrTy) (TObject "Object" [] [])
     -- TODO: newBrands need to be added at first. extensions added later
     -- for recursion, etc.
 

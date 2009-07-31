@@ -32,6 +32,7 @@ module BrownPLT.TypedJS.TypeTheory
   -- * Utilities
   , desugarType
   , canonize
+  , lcType
   , fieldType
   , overrideFields
   , intersectBrand
@@ -222,6 +223,31 @@ canonizeArgType (ArgType args (Just opt)) = do
   return (ArgType args (Just opt))
 
 
+lcArgType (ArgType args Nothing) = ArgType (map lcType args) Nothing
+lcArgType (ArgType args (Just opt)) =
+  ArgType (map lcType args) (Just $ lcType opt)
+
+
+lcType :: Type -> Type
+lcType ty = case ty of
+  TAny -> TAny
+  TApp c args -> TApp c (map lcType args)
+  TArguments at -> TArguments (lcArgType at)
+  TArrow this arg r ->TArrow (lcType this) (lcArgType arg) (lcType r)
+  TUnion t1 t2 -> TUnion (lcType t1) (lcType t2)
+  TIntersect t1 t2 -> TIntersect (lcType t1) (lcType t2)
+  TObject brand tyArgs fields ->
+    TObject brand (map lcType tyArgs) (map lcField fields)
+    where lcField (x, ro, t) = (x, ro, lcType t)
+  TId x -> TId x
+  TIx x -> TIx x
+  TExists u -> TExists (lcType u)
+  TForall u -> TForall (lcType u)
+  TConstr argTys initTy objTy -> 
+    TConstr (map lcType argTys) (lcType initTy) (lcType objTy)
+  TNamedForall x u -> TForall (lcType (closeType x u))
+
+
 -- |Canonizes types such as int U int to int.  Orders fields lexicographically.
 canonize:: EnvM m => Type -> m Type
 canonize t = case t of
@@ -249,9 +275,8 @@ canonize t = case t of
   TExists u -> liftM TExists (canonize u)
   TForall u -> liftM TForall (canonize u)
   TConstr argTys initTy objTy -> 
-    -- TODO: canonize initTy
-    liftM3 TConstr (mapM canonize argTys) (return initTy) (canonize objTy)
-  TNamedForall x u -> liftM TForall (canonize (closeType x u))
+    liftM3 TConstr (mapM canonize argTys) (canonize initTy) (canonize objTy)
+  TNamedForall x u -> liftM (TNamedForall x) (canonize u)
 
 
 -- |Assumes that the components are already canonized.
@@ -564,6 +589,11 @@ static rt st = case st of
     case r of
       Just t' -> return (Just $ TForall t')
       Nothing -> return Nothing
+  TNamedForall x t -> do
+    r <- static rt t
+    case r of
+      Just t' -> return (Just $ TNamedForall x t')
+      Nothing -> return Nothing
   TAny -> do
     ts <- mapM flatStatic (S.toList rt)
     case ts of
@@ -646,6 +676,7 @@ getBrandPath brand = do
 tyApp :: Type -> [Type] -> Type
 tyApp t [] = t
 tyApp (TForall t) (s:ss) = tyApp (openType s t) ss
+tyApp (TNamedForall x t) (s:ss) = tyApp (substType x s t) ss
 tyApp _ _ = error "tyApp: superflous type arguments"
 
 

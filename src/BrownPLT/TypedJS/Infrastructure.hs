@@ -297,6 +297,9 @@ injectField name fieldTy ty = case ty of
   TForall ty' -> do
     t <- injectField name fieldTy ty'
     return (TForall t)
+  TNamedForall x ty' -> do
+    t <- injectField name fieldTy ty'
+    return (TNamedForall x t)
   otherwise -> error "injectField: expected TObject / TForall"
 
 

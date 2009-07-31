@@ -55,6 +55,7 @@ expr :: Map Id RuntimeTypeInfo
      -> M Env
 expr env e = case e of
   Lit _ -> return empty
+  VarRef _ "this" -> return empty
   VarRef (_, p) x -> case M.lookup x env of
     Just rt -> return (M.singleton (x, p) rt)
     Nothing -> catastrophe p $

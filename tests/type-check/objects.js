@@ -537,3 +537,19 @@ body {
                                 p1);
 
 }
+
+
+body {
+
+  constructor Pair(x, y) :: forall a . a, a -> { x :: a, y :: a } {
+    this.x = x;
+    this.y = y;
+  };
+
+  Pair.prototype.setX = function(x) :: this :: Pair[a]:, a -> Undefined {
+    this.x = x;
+  };
+
+  var p1 = new (Pair@[String])("hello", "goodbye");
+  p1.setX("arjun");
+}
