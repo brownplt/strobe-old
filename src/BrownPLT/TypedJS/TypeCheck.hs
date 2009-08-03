@@ -12,6 +12,7 @@ import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.TypeTheory
 import BrownPLT.TypedJS.PrettyPrint
 import BrownPLT.TypedJS.Syntax
+import BrownPLT.TypedJS.Unification
 import qualified Data.Map as M
 import qualified Data.Set as S
 import BrownPLT.TypedJS.PreTypeCheck
@@ -45,6 +46,29 @@ unLVal :: LValue SourcePos -> Expression SourcePos
 unLVal (LVar p x) = VarRef p (Id p x)
 unLVal (LDot p e x) = DotRef p e (Id p x)
 unLVal (LBracket p e1 e2) = BracketRef p e1 e2
+
+
+-- | @implicitlyPack  (actualTy, declaredTy, expr)@
+--
+-- @pack X in pack Y in e@, where @e :: t@, has the type 
+-- @exists X . exists Y . t@
+--
+-- e :: s and t = exists X . exists Y . t
+--
+-- pack X in pack Y in e has the type exists X . exists Y . t
+-- pack Y in e has the type exists Y . t
+implicitlyPack :: (Type, Type, Expression SourcePos)
+               -> TypeCheck (Expression SourcePos, Type)
+implicitlyPack (actualTy, declaredTy, e) = case (actualTy, declaredTy) of
+  (TExists _, TExists _) -> return (e, actualTy)
+  (_, TExists ty) -> freshTVar $ \x -> do
+    let ty' = openType (TId x) ty
+    (e, actualTy) <- implicitlyPack (actualTy, ty', e)
+    s <-  unify actualTy ty'
+    let e' = PackExpr (initialPos "implicit pack")
+                      e (subst s (TId x)) (subst s (TExists ty))
+    return (e', subst s $ TExists ty)
+  otherwise -> return (e, actualTy)
 
 
 -- |JavaScript's function call syntax is overloaded for three kinds of
@@ -364,7 +388,7 @@ expr e = case e of
     unless (length fields == length (nub names)) $
       fatalTypeError p "duplicate field names"
     ts <- mapM field fields
-    return (TObject "Object" [] ts)
+    desugarType p (TObject "Object" [] ts) -- rearrange fields
   NewExpr p constr args -> do
     constrTy <- expr constr
     argTys <- mapM expr args
@@ -387,6 +411,9 @@ expr e = case e of
           fatalTypeError p $ printf 
             "function expects %s arguments but %s were supplied"
             (show $ length argTypes) (show $ length args)
+        args <- liftM (map fst) $ 
+          mapM implicitlyPack (zip3 args_t argTypes args)
+        args_t <- mapM expr args
         argsMatch <- liftM and (mapM (uncurry isSubtype) (zip args_t argTypes))
         unless argsMatch $
           fatalTypeError p $ printf
@@ -446,6 +473,7 @@ expr e = case e of
                    x (renderType s) (show rt)
   PackExpr p e c t -> do
     t <- desugarType p t
+    c <- desugarType p c
     case t of
       TExists t' -> do
         s <- expr e
@@ -525,6 +553,8 @@ stmt returnType s = case s of
                      "empty return, expected %s" 
                      (renderType returnType)
       Just e -> do
+        t <- expr e
+        (e, _) <- implicitlyPack (t, returnType, e)
         t <- expr e
         r <- isSubtype t returnType
         case r of

@@ -27,6 +27,7 @@ import BrownPLT.TypedJS.Infrastructure
 import BrownPLT.TypedJS.TypeCheck
 import BrownPLT.TypedJS.PrettyPrint
 import BrownPLT.TypedJS.InitialEnvironment
+import BrownPLT.TypedJS.Unification
 import Control.Exception as E
 
 
@@ -46,13 +47,16 @@ catchException p assert =E.catch assert f
 
 
 testcase :: InitialStoreEnv -> CharParser st Test
-testcase idl = relations <|> expressions <|> body idl
+testcase idl = relations <|> expressions <|> unification <|> body idl
   where relations = do
           reserved "relations"
           liftM TestList (braces $ relation idl `sepBy` semi)
         expressions = do
           reserved "expressions"
           liftM TestList (braces $ expression idl `sepBy` semi)
+        unification = do
+          reserved "unification"
+          liftM TestList (braces $ unifyTest idl `sepBy` semi)
 
 
 relation :: InitialStoreEnv -> CharParser st Test
@@ -82,6 +86,39 @@ relation init = do
             u1 <- desugarType p t1
             u2 <- desugarType p t2
             r <- isSubtype u1 u2
+            return (r `xor` isFail)
+  eq <|> sub
+
+
+unifyTest:: InitialStoreEnv -> CharParser st Test
+unifyTest init = do
+  p <- getPosition
+  isFail <- option False (reserved "fail" >> return True)
+  t1 <- Parser.parseType'
+  let eq = do
+        reservedOp "="
+        t2 <- Parser.parseType'
+        let s = printf "%s : %s %s = %s" (show p) 
+                  (if isFail then "fail" else "")
+                  (renderType t1) (renderType t2)
+        return $ TestCase $ catchException p $ do
+          assertBool s $ runTypeCheckWithoutError init $ withInitEnv $ do
+            u1 <- canonize t1
+            u2 <- canonize t2
+            s <- unify t1 t2
+            return ((subst s u1 == subst s u2) `xor` isFail)
+  let sub = do
+        reservedOp "<:"
+        t2 <- Parser.parseType'
+        let s = printf "%s : %s %s <: %s" (show p) 
+                  (if isFail then "fail" else "")
+                  (renderType t1) (renderType t2)
+        return $ TestCase $ catchException p $ do
+          assertBool s $ runTypeCheckWithoutError init $ withInitEnv $ do
+            u1 <- canonize t1
+            u2 <- canonize t2
+            s <- unify t1 t2
+            r <- isSubtype (subst s u1) (subst s u2)
             return (r `xor` isFail)
   eq <|> sub
 
