@@ -56,6 +56,14 @@ checkReachability anf = case unreachableStatements anf of
   ss -> fail $ "Unreachable statements at " ++ show ss
 
 
+importedNames :: [TopLevel SourcePos]
+              -> [String]
+importedNames [] = []
+importedNames (tl:tls) = case tl of
+  ImportStmt _ name _ _ -> (unId name):(importedNames tls)
+  otherwise -> importedNames tls  
+
+
 preTypeCheckTopLevel :: (MonadError String m)
                      => [String] -- ^globals
                      -> [TopLevel SourcePos] -- ^source
@@ -64,9 +72,10 @@ preTypeCheckTopLevel globals program = do
   -- TODO: checkClosed globals body
   case toANF (map eraseTypesTopLevel program) of
     Right anf -> case checkReachability anf of
-      Right _ -> case defineBeforeUse (S.fromList ("this":globals)) anf of
-        Right () -> return ()
-        Left err -> fail (show err)
+      Right _ -> let names = "this":(importedNames program ++ globals)
+        in case defineBeforeUse (S.fromList names) anf of
+             Right () -> return ()
+             Left err -> fail (show err)
       Left err -> fail err
     Left err -> fail err
 

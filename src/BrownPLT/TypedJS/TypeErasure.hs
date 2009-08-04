@@ -108,6 +108,7 @@ eraseTypesTopLevel tl = case tl of
   ConstructorStmt p brand args _ body -> JS.VarDeclStmt p [decl]
     where decl = JS.VarDecl p (JS.Id p brand) (Just e)
           e = JS.FuncExpr p (map (JS.Id p) args) (stmt body)
+  ImportStmt p name isAssumed ty -> JS.EmptyStmt p
 
 
 eraseTypes :: [Statement a] -> [JS.Statement a]

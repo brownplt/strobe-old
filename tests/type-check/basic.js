@@ -1530,3 +1530,11 @@ expressions {
 
 
 }
+
+body {
+  import assumed myIsNaN :: Double -> Bool;
+
+  var foo = function (dubfun, x) :: (Double -> Bool), U(Double,String) -> Bool {
+    return ((typeof(x)=='number') && myIsNaN(x)) || false;
+  };
+}

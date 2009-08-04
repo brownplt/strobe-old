@@ -945,6 +945,17 @@ parseListExpr =
 -- Parsing top-level definitions
 
 
+-- |@import [assumed] name :: type_@
+importStmt = do
+  p <- getPosition
+  reserved "import"
+  isAssumed <- option False (reserved "assumed" >> return True)
+  name <- identifier
+  reservedOp "::"
+  ty <- type_
+  return (ImportStmt p name isAssumed ty) 
+
+
 externalFieldStmt = do
   p <- getPosition
   -- avoid ambiguity with ExprStmt.
@@ -972,6 +983,7 @@ constrStmt = do
 
 topLevel =
   constrStmt <|>
+  importStmt <|>
   externalFieldStmt <|>
   liftM TopLevelStmt parseStatement
 

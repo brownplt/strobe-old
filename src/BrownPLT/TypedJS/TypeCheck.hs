@@ -662,6 +662,7 @@ topLevel tl = case tl of
     tVars <- brandTVars p brand
     ty <- bindTVars tVars $ expr e
     extendBrand brand field ty
+  ImportStmt p name isAssumed ty -> ok
   TopLevelStmt s -> stmt Nothing s
   -- TODO: Typecheck the body of the constructor
   ConstructorStmt p brand args constrTy body -> do

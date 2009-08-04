@@ -143,6 +143,7 @@ data Statement a
   | VarDeclStmt a [VarDecl a]
   deriving (Show, Eq, Ord, Data, Typeable)
 
+
 data TopLevel a
   -- |@ConstructorStmt loc brand args constrTy body@
   = ConstructorStmt a String [String] Type (Statement a)
@@ -151,6 +152,9 @@ data TopLevel a
   -- @brand.prototype.field = expr@
   | ExternalFieldStmt a (Id a) (Id a) (Expression a)
   | TopLevelStmt (Statement a)
+  -- |@ImportStmt loc name isAssumed ty@
+  -- If @isAssumed@ is @true@, we do not use contracts.
+  | ImportStmt a (Id a) Bool Type
   deriving (Show, Eq, Ord, Data, Typeable)
   
 
