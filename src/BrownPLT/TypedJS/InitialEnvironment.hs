@@ -13,6 +13,8 @@ import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.TypeTheory
 import BrownPLT.TypedJS.Infrastructure
+import BrownPLT.TypedJS.Syntax (TopLevel (..), unId)
+import BrownPLT.TypedJS.Parser (parseTypedJavaScript)
 import Control.Monad.Error
 
 
@@ -101,11 +103,23 @@ withIDLs []         cont = cont
 withIDLs (def:defs) cont = bindingFromIDL def (withIDLs defs cont)
 
 
+loadDecls [] cont = cont
+loadDecls (tl:tls) cont  = case tl of
+  ImportStmt p name True ty -> do
+    extendEnv (unId name) ty (loadDecls tls cont)
+  otherwise -> fail $ printf "error loading preamble.jst: unexpected %s"
+    (show tl)
+
+
 loadIDLs :: IO InitialStoreEnv
 loadIDLs = do
   dataDir <- getDataDir
   let idlPaths = map (dataDir </>) idlFiles
+  let corePath = dataDir </> "preamble.jst"
   idls <- liftM concat (mapM IDL.parseIDLFromFile idlPaths)
-  case runEmptyTypeCheck (withIDLs idls getInitialStoreEnv) of
+  src <- readFile corePath
+  let stx = parseTypedJavaScript corePath src
+  let m = withIDLs idls $ loadDecls stx getInitialStoreEnv
+  case runEmptyTypeCheck m of
     Left s -> fail $ "error loading IDLs: " ++ s
     Right st -> return st

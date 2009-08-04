@@ -1,8 +1,3 @@
-//debugging in typechecker:
-external $printtype$ :: any ->;
-external $printvp$ :: any ->;
-
-
 type Object :: rec Object . {
   constructor :: (any... -> any), //super-type of all functions
   hasOwnProperty :: ([Object] string -> bool),
@@ -92,13 +87,8 @@ type Date :: rec self . {getDate :: ([self] -> int),
                         };
 external Date :: ([{...}] int?, int?, int?, int?, int?, int?, int? ~~> Date);
 
-external isNaN :: double -> bool;
 
 
-external decodeURI :: (string -> string);
-external encodeURIComponent :: (string -> string);
-
-external undefined :: undefined;
 
 //hax until arrays act like objects:
 external push :: forall a . Array<a>, a ->;
