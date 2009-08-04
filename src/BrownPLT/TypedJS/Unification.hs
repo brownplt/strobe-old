@@ -1,5 +1,6 @@
 module BrownPLT.TypedJS.Unification 
   ( unify
+  , unifyList
   , subst
   ) where
 
@@ -145,6 +146,14 @@ unifyM ty1 ty2 s = case (ty1, ty2) of
     unifyM ty1 (subst (M.singleton y (TId x)) ty2) (extendSubst s y (TId x))
   otherwise -> fail $ printf "unification failed: cannot unify\n%s\nwith\n%s"
     (renderType ty1) (renderType ty2)
+
+
+unifyList :: EnvM m
+          => [Type]
+          -> [Type]
+          -> m Subst
+unifyList tys1 tys2 = unifyAllM tys1 tys2 M.empty
+
 
 unify :: EnvM m
       => Type

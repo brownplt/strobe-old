@@ -568,3 +568,19 @@ body {
 
 
 }
+
+
+body {
+
+  constructor Pair(a, b) :: forall a b . a, b -> { x :: a, y :: b } {
+    this.x = a;
+    this.y = b;
+  }
+
+  var j = function(x, y) :: forall a b c . Pair[a,b]:, Pair[b,c]:
+                         -> (Pair[a,c]:) {
+    return new Pair(x.x, y.y);
+  }
+
+
+}

@@ -71,6 +71,13 @@ implicitlyPack (actualTy, declaredTy, e) = case (actualTy, declaredTy) of
   otherwise -> return (e, actualTy)
 
 
+openUniversals :: Type -> TypeCheck ([String], Type)
+openUniversals (TForall ty) = freshTVar $ \x -> do
+  (xs, ty') <- openUniversals (openType (TId x) ty)
+  return (x:xs, ty')
+openUniversals ty = return ([], ty)
+
+
 -- |JavaScript's function call syntax is overloaded for three kinds of
 -- function invocations.  These are @obj.method(arg, ...)@,
 -- @obj[method](arg, ...)@ and @func(arg, ...)@.
@@ -401,42 +408,76 @@ expr e = case e of
   NewExpr p constr args -> do
     constrTy <- expr constr
     argTys <- mapM expr args
+    let check constrTy = case constrTy of
+          TConstr formalTys _ objTy -> do
+            argsMatch <- areSubtypes argTys formalTys
+            unless argsMatch $ fatalTypeError p $ printf
+              "constructor expects\n%s\n\nbut it received\n%s"
+                (concat $ intersperse ",\n" $ map renderType formalTys)
+                (concat $ intersperse ",\n" $ map renderType argTys)
+            return objTy
+          otherwise -> fatalTypeError p $ printf
+            "'new' expected an a constructor; received\n%s" 
+            (renderType constrTy)
     case constrTy of
-      TConstr formalTys _ objTy -> do
-        argsMatch <- areSubtypes argTys formalTys
-        unless argsMatch $ fatalTypeError p $ printf
-          "constructor expects\n%s\n\nbut it received\n%s"
-            (concat $ intersperse ",\n" $ map renderType formalTys)
-            (concat $ intersperse ",\n" $ map renderType argTys)
-        return objTy
-      otherwise -> fatalTypeError p $ printf
-        "'new' expected an a constructor; received\n%s" (renderType constrTy)
+      TConstr{} -> check constrTy
+      otherwise -> do
+        (tVars, ty) <- openUniversals constrTy
+        case ty of
+          TConstr formalTys _ _ -> do
+            s <- unifyList argTys formalTys
+            let tyApp e tVar =
+                  TyAppExpr (initialPos "implicit TyAppExpr")
+                            e
+                            (subst s (TId tVar))
+            constrTy <- expr (foldl tyApp constr tVars)
+            check constrTy
+          otherwise -> fatalTypeError p $ printf
+            "'new' expected an a constructor; received\n%s" 
+            (renderType constrTy)
   CallExpr p f ts args -> do
     (objTy, fTy) <- callObj f
-    args_t <- mapM expr args
+    argTys <- mapM expr args
+    let check fTy = case fTy of
+          TArrow thisTy (ArgType argTypes optArgType) resultType -> do
+            unless (length args == length argTypes) $ 
+              fatalTypeError p $ printf 
+                "function expects %s arguments but %s were supplied"
+                (show $ length argTypes) (show $ length args)
+            args <- liftM (map fst) $ 
+              mapM implicitlyPack (zip3 argTys argTypes args)
+            argTys <- mapM expr args
+            argsMatch <- liftM and (mapM (uncurry isSubtype) 
+                                   (zip argTys argTypes))
+            unless argsMatch $
+              fatalTypeError p $ printf
+                "argument type mismatch, expected\n%s\n received\n%s"
+                (concat $ intersperse ", " $ map renderType argTypes)
+                (concat $ intersperse ", " $ map renderType argTys)
+            thisMatch <- isSubtype objTy thisTy
+            unless thisMatch $ fatalTypeError p $ printf 
+              "function expects the type of this to be\n%s\ncalled with\n%s"
+              (renderType thisTy) (renderType objTy)
+            return resultType
+          otherwise -> do
+            fatalTypeError p $ printf 
+              "expected a function; expression has type\n%s"
+              (renderType fTy)
     case fTy of
-      TArrow thisTy (ArgType argTypes optArgType) resultType -> do
-        unless (length args == length argTypes) $ 
-          fatalTypeError p $ printf 
-            "function expects %s arguments but %s were supplied"
-            (show $ length argTypes) (show $ length args)
-        args <- liftM (map fst) $ 
-          mapM implicitlyPack (zip3 args_t argTypes args)
-        args_t <- mapM expr args
-        argsMatch <- liftM and (mapM (uncurry isSubtype) (zip args_t argTypes))
-        unless argsMatch $
-          fatalTypeError p $ printf
-            "argument type mismatch, expected\n%s\n received\n%s"
-            (concat $ intersperse ", " $ map renderType argTypes)
-            (concat $ intersperse ", " $ map renderType args_t)
-        thisMatch <- isSubtype objTy thisTy
-        unless thisMatch $ fatalTypeError p $ printf 
-          "function expects the type of this to be\n%s\ncalled with\n%s"
-          (renderType thisTy) (renderType objTy)
-        return resultType
+      TArrow{} -> check fTy
       otherwise -> do
-        fatalTypeError p $ printf "expected a function; expression has type\n%s"
-          (renderType fTy)
+        (tVars, ty) <- openUniversals fTy
+        case ty of
+          TArrow _ (ArgType formalTys Nothing) _ -> do
+            s <- unifyList argTys formalTys
+            let tyApp e tVar =
+                  TyAppExpr (initialPos "implicit TyAppExpr")
+                            e
+                            (subst s (TId tVar))
+            fTy <- expr (foldl tyApp f tVars)
+            check fTy
+          otherwise -> fatalTypeError p $ printf
+            "expected a function; expression has type %s" (renderType ty)
   FuncExpr p args t body -> do
     let (qtVars, t') = unForall t
     bindTVars qtVars $ do

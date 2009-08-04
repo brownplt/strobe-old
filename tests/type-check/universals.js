@@ -73,3 +73,60 @@ expressions {
 
 
 }
+  
+body {
+    function id(x) :: forall a . a -> a { return x; }
+
+    var id2 = function(x) :: forall b . b -> b {
+      var r :: b -> b = id@[b];
+      return r(x);
+    };
+
+
+    var id3 = function(x) :: forall b . b -> b {
+      return id@[b](x);
+    };
+
+  var z = id(23);
+
+  var g = id("hello claudiu");
+
+  var z1 = id2@[Int](23);
+
+  var g2 = id2("hello claudiu");
+
+}
+  
+body {
+ var foo =  function(f, x, y) :: forall a b . (a, b -> b), a , b -> b {
+    return f(x, y);
+  };
+
+ var f = function(x,y) :: Int, String -> String { return y + "junta"; };
+
+ foo@[Int, String](f, 99, "helo");
+
+}
+
+
+body {
+ var foo =  function(f, x, y) :: forall a b . (a, b -> b), a , b -> b {
+    return f(x, y);
+  };
+
+ var f = function(x,y) :: Int, String -> String { return y + "junta"; };
+
+ foo(f, 99, "helo");
+
+}
+
+body fail {
+ var foo =  function(f, x, y) :: forall a b . (a, b -> b), a , b -> b {
+    return f(x, y);
+  };
+
+ var f = function(x,y) :: Int, String -> Int { return x + x; };
+
+ foo(f, 99, "helo");
+
+}
