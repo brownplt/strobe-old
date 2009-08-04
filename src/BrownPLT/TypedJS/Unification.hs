@@ -124,8 +124,11 @@ unifyM ty1 ty2 s = case (ty1, ty2) of
     unless (constr1 == constr2) $ fail $ printf
       "cannot unify %s with %s" constr1 constr2
     unifyAllM argTys1 argTys2 s
-  (TId v1, TId v2) | v1 == v2 -> return s
-                   | otherwise -> return (extendSubst s v2 (TId v1))
+  (TId v1, TId v2) 
+    | v1 == v2 -> return s
+    | otherwise -> case (v1, v2) of
+        ('#':_, _) -> return (extendSubst s v1 (TId v2))
+        otherwise -> return (extendSubst s v2 (TId v1))
   (TId v1, ty2) 
     | v1 `doesOccurIn` ty2 -> fail $ printf
         "unification failed: %s occurs in %s" v1 (renderType ty2)

@@ -425,9 +425,9 @@ expr e = case e of
         (tVars, ty) <- openUniversals constrTy
         case ty of
           TConstr formalTys _ _ -> do
-            s <- unifyList argTys formalTys
+            s <- unifyList formalTys argTys
             let tyApp e tVar =
-                  TyAppExpr (initialPos "implicit TyAppExpr")
+                  TyAppExpr (initialPos "implicit type application at new")
                             e
                             (subst s (TId tVar))
             constrTy <- expr (foldl tyApp constr tVars)
