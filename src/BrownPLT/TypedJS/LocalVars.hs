@@ -20,6 +20,7 @@ data LocalDecl
   | DeclExpr String (Expression SourcePos)
   | DeclField String String (Expression SourcePos)
   | DeclConstr String Type
+  | DeclUnpack String [String] (Expression SourcePos)
 
 
 data S =  S {
@@ -71,6 +72,15 @@ bindConstr brand ty = do
   put $ s { sVarList = (DeclConstr brand ty):(sVarList s) }
 
 
+bindUnpack :: String
+           -> [String]
+           -> Expression SourcePos
+           -> Locals ()
+bindUnpack x tVars e = do
+  s <- get
+  put s { sVarList = (DeclUnpack x tVars e):(sVarList s) }
+
+
 bindTVar :: String -> Locals ()
 bindTVar x = do
  s <- get
@@ -83,9 +93,7 @@ varDecl :: VarDecl SourcePos -> Locals ()
 varDecl (VarDecl _ x t) = bind (unId x) t
 varDecl (VarDeclExpr _ x (Just t) _) = bind (unId x) t
 varDecl (VarDeclExpr _ x Nothing e) = bindExpr (unId x) e
-varDecl (UnpackDecl _ x tVar t _) = do
-  bind (unId x) t
-  bindTVar tVar
+varDecl (UnpackDecl _ x tVars e) = bindUnpack (unId x) tVars e
  
  
 caseClause :: CaseClause SourcePos -> Locals ()

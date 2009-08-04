@@ -64,7 +64,7 @@ catchClause (CatchClause p x s) = JS.CatchClause p (id x) (stmt s)
 
 varDecl (VarDecl p x _) = JS.VarDecl p (id x) Nothing
 varDecl (VarDeclExpr p x _ e) = JS.VarDecl p (id x) (Just $ expr e)
-varDecl (UnpackDecl p x _ _ e) = JS.VarDecl p (id x)  (Just $ expr e)
+varDecl (UnpackDecl p x _ e) = JS.VarDecl p (id x)  (Just $ expr e)
 
 forInit NoInit = JS.NoInit
 forInit (VarInit ds) = JS.VarInit (map varDecl ds)

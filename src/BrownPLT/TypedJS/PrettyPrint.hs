@@ -121,9 +121,8 @@ varDecl decl = case decl of
     id v <+> equals <+> expr e
   VarDeclExpr _ v (Just t) e -> 
     id v <+> text "::" <+> type_ t <+> equals <+> expr e
-  UnpackDecl _ x tVar t e -> 
-    id x <+> text ":: unpack " <+> text tVar <+> text "." <+> type_ t <+> 
-   equals <+> expr e
+  UnpackDecl _ x tVars e -> 
+    id x <+> text ":: unpack " <+> hsep (map text tVars) <+> equals <+> expr e
 
 
 stmt :: Statement a -> Doc

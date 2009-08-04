@@ -155,6 +155,15 @@ calcType m decl = case decl of
     t <- expr e
     extendBrand brand field t
     m
+  DeclUnpack x tVars e -> bindTVars tVars $ do
+    t <- expr e
+    let unpack ty tVar = case ty of
+          TExists s -> return (openType (TId tVar) s)
+          otherwise -> fatalTypeError noPos $ printf
+            "RHS has type %s, but the type variables specified were %s"
+            (renderType t) (show tVars)
+    s <- foldM unpack t tVars
+    extendEnv x s m
   DeclConstr brand ty -> do
     newBrand brand (getConstrObj ty) (TObject "Object" [] [])
     ty <- desugarType noPos ty
@@ -595,19 +604,15 @@ decl (VarDeclExpr p (Id _ x) Nothing e) = do
     False -> catastrophe p $ printf 
       "%s :: %s, but was calculated to have type %s"
       x (renderType s) (renderType t)
-decl (UnpackDecl p (Id _ x) tVar t e) = do
-  t <- desugarType p t
-  s <- expr e
-  case s of
-    TExists s' -> do
-      r <- isSubtype (openType (TId tVar) s') t
-      case r of
-        True -> ok
-        False -> fatalTypeError p $ printf
-          "right-hand-side expression has type\n%s\nidentifier has type\n%s"
-          (renderType (openType (TId tVar) s')) (renderType t)
-    otherwise -> fatalTypeError p $ printf
-      "unpack used on an expression of type %s" (renderType s)
+decl (UnpackDecl p (Id _ x) tVars e) = do
+  t <- expr e
+  let unpack ty tVar = case ty of
+        TExists s -> return (openType (TId tVar) s)
+        otherwise -> fatalTypeError p $ printf
+          "RHS has type %s, but the type variables specified were %s"
+          (renderType t) (show tVars)
+  foldM unpack t tVars
+  ok
 
 
 topLevel :: TopLevel SourcePos -> TypeCheck ()

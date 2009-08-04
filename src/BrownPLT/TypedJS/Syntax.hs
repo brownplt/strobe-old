@@ -99,7 +99,7 @@ data CatchClause a
 data VarDecl a 
   = VarDecl a (Id a) Type
   | VarDeclExpr a (Id a) (Maybe Type) (Expression a)
-  | UnpackDecl a (Id a) String Type (Expression a)
+  | UnpackDecl a (Id a) [String] (Expression a)
   deriving (Show, Eq, Ord, Data, Typeable)
 
 

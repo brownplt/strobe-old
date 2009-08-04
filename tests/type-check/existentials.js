@@ -20,25 +20,25 @@ expressions {
       return pack Int (exists x . x) in x;
      };
 
-     var z :: unpack t . t = f(y);
+     var z :: unpack t = f(y);
      return;
   } :: Int -> Undefined;
 
   function(packed) :: (exists x . Int -> x) -> (exists y . Int -> y) {
-    var f :: unpack x . Int -> x = packed;
+    var f :: unpack x = packed;
     return pack x (exists y . Int -> y) in function(a) :: Int -> x {
       return f(a + 900);
     }
   } :: (exists x . Int -> x) -> (exists y . Int -> y);
 
   function(packed) :: (exists x . Int -> x) -> Int {
-    var f :: unpack x . Int -> x = packed;
+    var f :: unpack x  = packed;
     var z :: x = f(500);
     return 9;
   } :: (exists x . Int -> x) -> Int;
   
   fail function(packed) :: (exists x . Int -> x) -> Double {
-    var f :: unpack x . Int -> x = packed;
+    var f :: unpack x = packed;
     var z :: x = f(500);
     // The point is reflection is to discriminate unions, not defeat the
     // type system.
@@ -48,7 +48,7 @@ expressions {
   };
 
   fail function(packed) :: (exists x . Int -> x) -> Double {
-    var f :: unpack x . Int -> x = packed;
+    var f :: unpack x  = packed;
     var z :: x = f(500);
     if (typeof z == "number") {
       return z;
@@ -57,7 +57,7 @@ expressions {
   };
 
   fail function(packed) :: (exists x . Int -> x) -> Double {
-    var f :: unpack x . Int -> x = packed;
+    var f :: unpack x  = packed;
     var z :: x = f(500);
     if (typeof z == "number") {
       return z;
@@ -84,12 +84,12 @@ expressions {
       return x;
      };
 
-     var z :: unpack t . t = f(y);
+     var z :: unpack t = f(y);
      return;
   } :: Int -> Undefined;
 
   function(packed) :: (exists x . Int -> x) -> (exists y . Int -> y) {
-    var f :: unpack x . Int -> x = packed;
+    var f :: unpack x = packed;
     return function(a) :: Int -> x {
       return f(a + 900);
     }
@@ -103,7 +103,7 @@ body {
   var f = function(pkg) 
     :: (exists x . { z :: x, s :: (x -> x), c :: (x -> Int) })
     -> Int {
-    var obj :: unpack x . { z :: x, s :: (x -> x), c :: (x -> Int) } = pkg;
+    var obj :: unpack x = pkg;
     var succ = obj.s; // avoid silly this-type errors
     var toInt = obj.c;
     return toInt(succ(succ(succ(obj.z))));
@@ -121,7 +121,7 @@ body {
   var f = function(pkg) 
     :: (exists x . { z :: x, s :: (x -> x), c :: (x -> Int) })
     -> Int {
-    var obj :: unpack x . { z :: x, s :: (x -> x), c :: (x -> Int) } = pkg;
+    var obj :: unpack x = pkg;
     var succ = obj.s; // avoid silly this-type errors
     var toInt = obj.c;
     return toInt(succ(succ(succ(obj.z))));
@@ -138,9 +138,26 @@ body {
   var f = function(pkg) 
     :: (exists x y . { z :: y, s :: (y -> x), c :: (x -> Int) })
     -> Int {
-    var obj_ :: unpack x . exists y . { z :: y, s :: (y -> x), c :: (x -> Int) } 
-             = pkg;
-    var obj :: unpack y . { z :: y, s :: (y -> x), c :: (x -> Int) } = obj_;
+    var obj :: unpack y x = pkg;
+
+    var succ = obj.s; // avoid silly this-type errors
+    var toInt = obj.c;
+    return toInt(succ((obj.z)));
+  }
+
+  f({ z : 90
+    , s : function(x) :: Int -> Int { return x * x; }
+    , c : function(x) :: Int -> Int { return -x; }
+    });
+}
+
+body {
+
+  var f = function(pkg) 
+    :: (exists x y . { z :: y, s :: (y -> x), c :: (x -> Int) })
+    -> Int {
+    var obj_ :: unpack x = pkg;
+    var obj :: unpack y = obj_;
 
     var succ = obj.s; // avoid silly this-type errors
     var toInt = obj.c;

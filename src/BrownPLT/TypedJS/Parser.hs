@@ -451,12 +451,10 @@ varDecl = do
         return (VarDeclExpr p id Nothing expr)
   let elimExistential = do
         reserved "unpack"
-        x <- Lexer.identifier
-        reservedOp "."
-        t <- type_
+        xs <- many1 Lexer.identifier
         reservedOp "="
         e <- parseExpression
-        return (UnpackDecl p id x t e)
+        return (UnpackDecl p id xs e)
   let withExpr t = do
         reservedOp "="
         e <- parseExpression
