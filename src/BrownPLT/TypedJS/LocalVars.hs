@@ -141,6 +141,7 @@ topLevel tl = case tl of
   TopLevelStmt s -> stmt s
   ExternalFieldStmt _ (Id _ brand) (Id _ field) e -> bindField brand field e
   ConstructorStmt _ brand _ ty _ -> bindConstr brand ty
+  ImportConstrStmt _ brand _ ty -> bindConstr (unId brand) ty
   ImportStmt _ name _ ty -> bind (unId name) ty
 
 

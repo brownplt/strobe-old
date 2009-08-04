@@ -155,6 +155,7 @@ data TopLevel a
   -- |@ImportStmt loc name isAssumed ty@
   -- If @isAssumed@ is @true@, we do not use contracts.
   | ImportStmt a (Id a) Bool Type
+  | ImportConstrStmt a (Id a) Bool Type
   deriving (Show, Eq, Ord, Data, Typeable)
   
 

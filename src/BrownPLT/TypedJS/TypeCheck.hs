@@ -112,12 +112,6 @@ callObj e = case e of
 ok :: TypeCheck ()
 ok = return ()
 
-getConstrObj :: Type -> Type
-getConstrObj ty = case ty of
-  TConstr _ _ objTy -> objTy
-  TNamedForall x ty' -> TNamedForall x (getConstrObj ty')
-  otherwise -> error $ "getConstrObj : missed parse error " ++ show ty
-
 
 brandTVars :: SourcePos
            -> String -- ^brand
@@ -670,6 +664,9 @@ topLevel tl = case tl of
     newBrand brand (getConstrObj constrTy) (TObject "Object" [] [])
     -- TODO: newBrands need to be added at first. extensions added later
     -- for recursion, etc.
+  ImportConstrStmt p (Id _ brand) isAssumed constrTy -> do
+    constrTy <- desugarType p constrTy
+    newBrand brand (getConstrObj constrTy) (TObject "Object" [] [])
 
 
 -- |This code should be almost identical to the code for function bodies.

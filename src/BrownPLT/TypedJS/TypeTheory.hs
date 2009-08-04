@@ -38,6 +38,7 @@ module BrownPLT.TypedJS.TypeTheory
   , intersectBrand
   , brandType
   , unForall
+  , getConstrObj
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -716,3 +717,10 @@ unForall :: Type -> ([String], Type)
 unForall (TNamedForall x t) = (x:xs, s)
   where (xs, s) = unForall t
 unForall t = ([], t)
+
+
+getConstrObj :: Type -> Type
+getConstrObj ty = case ty of
+  TConstr _ _ objTy -> objTy
+  TNamedForall x ty' -> TNamedForall x (getConstrObj ty')
+  otherwise -> error $ "getConstrObj : missed parse error " ++ show ty

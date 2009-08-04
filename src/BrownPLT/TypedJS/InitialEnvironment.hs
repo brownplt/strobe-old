@@ -13,7 +13,7 @@ import BrownPLT.TypedJS.Prelude
 import BrownPLT.TypedJS.TypeDefinitions
 import BrownPLT.TypedJS.TypeTheory
 import BrownPLT.TypedJS.Infrastructure
-import BrownPLT.TypedJS.Syntax (TopLevel (..), unId)
+import BrownPLT.TypedJS.Syntax (TopLevel (..), unId, Id (..))
 import BrownPLT.TypedJS.Parser (parseTypedJavaScript)
 import Control.Monad.Error
 
@@ -105,6 +105,10 @@ withIDLs (def:defs) cont = bindingFromIDL def (withIDLs defs cont)
 
 loadDecls [] cont = cont
 loadDecls (tl:tls) cont  = case tl of
+  ImportConstrStmt p (Id _ brand) True ty -> do
+    newBrand brand (getConstrObj ty) (TObject "Object" [] [])
+    ty <- desugarType noPos ty
+    extendEnv brand (lcType ty) cont
   ImportStmt p name True ty -> do
     extendEnv (unId name) ty (loadDecls tls cont)
   otherwise -> fail $ printf "error loading preamble.jst: unexpected %s"

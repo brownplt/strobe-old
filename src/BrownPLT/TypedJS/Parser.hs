@@ -61,6 +61,7 @@ identifier =
 --         | identifier:{ [readonly] id: type' [,*] }
 --         | identifier: ; object without additional field constraints
 --         | { [readonly] id: type' [,*] } ; implicitly branded Object
+--         | constructor brand constrTy
 --
 --
 -- Disambiguation:
@@ -951,9 +952,15 @@ importStmt = do
   reserved "import"
   isAssumed <- option False (reserved "assumed" >> return True)
   name <- identifier
-  reservedOp "::"
-  ty <- type_
-  return (ImportStmt p name isAssumed ty) 
+  let constr = do
+        reserved "constructor"
+        ty <- constrTy (unId name)
+        return (ImportConstrStmt p name isAssumed ty)
+  let other = do
+        reservedOp "::"
+        ty <- type_
+        return (ImportStmt p name isAssumed ty) 
+  constr <|> other
 
 
 externalFieldStmt = do
