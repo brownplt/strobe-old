@@ -102,72 +102,73 @@ identifier =
 -- of the constructed object.  It is implicitly branded with the name of the
 -- constructor.
 
-type_ :: CharParser st (Type)
-type_ = do
+defaultThisTy :: Type
+defaultThisTy = TObject "Window" [] []
+
+type_ :: Type -> CharParser st Type
+type_ thisTy = do
   let exists = do
         reserved "exists"
         xs <- many1 Lexer.identifier
         reservedOp "."
-        t <- type_
+        t <- type_ thisTy
         return (foldr (\x t -> TExists (closeType x t)) t xs)
   let forall = do
         reserved "forall"
         xs <- many1 Lexer.identifier
         reservedOp "."
-        t <- type_
+        t <- type_ thisTy
         return (foldr (\x t -> TNamedForall x t) t xs)
-  exists <|> forall <|> fnTy
+  exists <|> forall <|> fnTy thisTy
 
 
-fnTy :: CharParser st (Type)
-fnTy = explicitThis <|> implicitThis
+fnTy :: Type -> CharParser st Type
+fnTy thisTy = explicitThis <|> implicitThis
   where -- If @this ::@ is specified, it must be a function ...
         explicitThis = do
           reserved "this"
           reservedOp "::"
-          thisTy <- type_'
+          thisTy <- type_' defaultThisTy
           let noArgs = do
                 reservedOp "->"
-                resultTy <- type_
+                resultTy <- type_ thisTy
                 return (TArrow thisTy (ArgType [] Nothing) resultTy)
           let args = do
                 comma
-                argTys <- type_' `sepBy` comma
+                argTys <- (type_' thisTy) `sepBy` comma
                 reservedOp "->"
-                resultTy <- type_
+                resultTy <- type_ thisTy
                 return (TArrow thisTy (ArgType argTys Nothing) resultTy)
           noArgs <|> args
         -- ... otherwise, we may fall through to type'
         implicitThis = do
-          argTys <- type_' `sepBy` comma
+          argTys <- (type_' thisTy) `sepBy` comma
           let func = do
                 reservedOp "->"
-                resultTy <- type_
-                return (TArrow (TObject "Window" [] []) 
-                               (ArgType argTys Nothing) 
-                               resultTy)
+                resultTy <- type_ thisTy
+                return (TArrow thisTy (ArgType argTys Nothing) resultTy)
           case argTys of
             []  -> func -- function of zero arguments
             [ty] -> func <|> (return ty)
             otherwise -> func
 
 
-type_' :: CharParser st (Type)
-type_' = do
-  t <- type_''
+type_' :: Type -> CharParser st Type
+type_' thisTy = do
+  t <- type_'' thisTy
   let nullable = do
         reservedOp "?"
         return (TUnion t undefType)
   nullable <|> (return t) <?> "possibly nullable type"
 
-type_'' :: CharParser st (Type)
-type_'' = do
+type_'' :: Type -> CharParser st Type
+type_'' thisTy = do
   let array = do
-        t <- brackets type_
+        t <- brackets (type_ thisTy)
         return (intersectType (TApp "Array" [t]) (openType t freeArrayType))
   let union = do 
         reservedOp "U";
-        elts <- parens (type_'' `sepBy1` comma)
+        elts <- parens (type_'' thisTy `sepBy1` comma)
         case elts of
           [t] -> return t
           (t:ts) -> return (foldr TUnion t ts)
@@ -180,17 +181,19 @@ type_'' = do
           length fields = return fields
         | otherwise = fail "duplicate fields in an object type specification"
   let object = do
-        fields <- braces (field `sepBy` comma)
+        fields <- braces (field thisTy `sepBy` comma)
         fields <- noDupFields fields
         return (TObject "Object" [] fields)
   -- free type variables, type constructors and objects
   let app constr = do
-        args <- (brackets $ type_' `sepBy` comma) <?> "type application"
+        args <- (brackets $ type_' thisTy `sepBy` comma) <?> "type application"
         return (TApp constr args)
   let brandedObject brand = do
-        tyArgs <- option [] $ brackets (type_' `sepBy` comma)
+        tyArgs <- option [] $ brackets (type_' thisTy `sepBy` comma)
+        let thisTy = TObject brand tyArgs []
         colon
-        fields <- option [] $ braces (field `sepBy` comma) >>= noDupFields
+        fields <- option [] $ braces (field thisTy `sepBy` comma) >>= 
+                              noDupFields
         return (TObject brand tyArgs fields)
   let int = do
         reserved "Int"
@@ -208,25 +211,25 @@ type_'' = do
         case isUpper (head id) of
           True -> brandedObject id <|> (return $ TApp id [])
           False ->return (TId id)
-    in parens type_ <|> array <|> any <|> (try union) <|> object <|> int <|> 
+    in parens (type_ thisTy) <|> array <|> any <|> (try union) <|> object <|> int <|> 
        double <|> other
 
 
-field :: CharParser st (String, Bool, Type)
-field = do
+field :: Type -> CharParser st (String, Bool, Type)
+field thisTy = do
   ro <- (reserved "readonly" >> return True) <|> (return False)
   name <- Lexer.identifier
   reservedOp "::"
-  t <- type_'
+  t <- type_' thisTy
   return (name, ro, t)
 
 
 constrTy :: String -> CharParser st Type
 constrTy brand = withForall <|> withoutForall
   where constr tyArgs = do
-          argTys <- type_' `sepBy` comma
+          argTys <- type_' defaultThisTy `sepBy` comma
           reservedOp "->"
-          fields <- braces (field `sepBy` comma)
+          fields <- braces (field defaultThisTy `sepBy` comma)
           return (TConstr argTys boolType -- TODO: wrong!
                           (TObject brand tyArgs fields))
         withForall = do
@@ -239,12 +242,12 @@ constrTy brand = withForall <|> withoutForall
       
  
 parseType' :: CharParser st Type
-parseType' = type_
+parseType' = type_ defaultThisTy
  
 parseType :: TypeParser st
 parseType = do
   reservedOp "::" <?> "type annotation"
-  t <- type_
+  t <- type_ defaultThisTy
   return t
 
 parseMaybeType :: MaybeTypeParser st
@@ -461,7 +464,7 @@ varDecl = do
         e <- parseExpression
         return (VarDeclExpr p id (Just t) e)
   let maybeWithExpr = do
-        t <- type_
+        t <- type_ defaultThisTy
         withExpr t <|> return (VarDecl p id t)
   let withAnnotation = do
         reservedOp "::"
@@ -732,7 +735,7 @@ funcApp e = (parens $ withPos cstr (parseExpression `sepBy` comma)) <?> "(functi
 tyApp e = do
   p <- getPosition
   reservedOp "@"
-  tys <- brackets (type_' `sepBy1` comma)
+  tys <- brackets ((type_' defaultThisTy) `sepBy1` comma)
   return (foldl (\e ty -> TyAppExpr p e ty) e tys)
 
 
@@ -911,8 +914,8 @@ pack = do
       pack_ = do
         p <- getPosition
         reserved "pack"
-        t_c <- type_
-        t <- type_
+        t_c <- type_ defaultThisTy
+        t <- type_ defaultThisTy
         reserved "in"
         e <- pack
         return (PackExpr p e t_c t)
@@ -958,7 +961,7 @@ importStmt = do
         return (ImportConstrStmt p name isAssumed ty)
   let other = do
         reservedOp "::"
-        ty <- type_
+        ty <- type_ defaultThisTy
         return (ImportStmt p name isAssumed ty) 
   constr <|> other
 

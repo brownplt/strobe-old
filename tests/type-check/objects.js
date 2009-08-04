@@ -584,3 +584,12 @@ body {
 
 
 }
+
+body {
+  
+  function f(obj) :: { z :: Int, s :: (-> Int) } -> Int {
+    return obj.s();
+  }
+
+  f({ z : 90, s : function() :: -> Int { return this.z + 999; } });
+}
