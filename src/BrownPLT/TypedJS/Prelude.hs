@@ -1,4 +1,3 @@
--- |Common exports.  Defines a monad instance for 'Either String'.
 module BrownPLT.TypedJS.Prelude
   ( module Data.Generics
   , module Control.Monad
@@ -22,10 +21,9 @@ module BrownPLT.TypedJS.Prelude
   , noPos
   , everythingBut
   , catastrophe
-  , isLeft, isRight, procEither
   , Node
   , trace
-  , car, cdr, cadr, cddr
+  , accumError
   ) where
 
 import Data.Tree
@@ -50,7 +48,7 @@ trace s r = (unsafePerformIO $ putStrLn s) `seq` r
 
 
 noPos :: SourcePos
-noPos = initialPos ""
+noPos = initialPos "unknown position"
 
 
 -- |Similar to 'everything'.  'everythingBut' descends into 'term' only if
@@ -76,19 +74,9 @@ catastrophe :: Monad m
 catastrophe loc msg =
   fail $ printf "CATASTROPHIC FAILURE: %s (at %s)" msg (show loc)
 
-isLeft :: Either a b -> Bool
-isLeft (Left _) = True
-isLeft _ = False
 
-isRight :: Either a b -> Bool
-isRight (Right _) = True
-isRight _ = False
-
-procEither :: (a -> b) -> Either a a -> Either b b
-procEither f (Left t) = Left (f t)
-procEither f (Right t) = Right (f t)
-
-car = fst
-cdr = snd
-cadr = car . cdr
-cddr = cdr . cdr
+accumError :: MonadError String m
+           => String
+           -> m a
+           -> m a
+accumError msg m = catchError m (\msg' -> throwError (msg ++ ('\n':msg')))

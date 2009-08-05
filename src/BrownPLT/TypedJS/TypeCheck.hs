@@ -64,7 +64,7 @@ implicitlyPack (actualTy, declaredTy, e) = case (actualTy, declaredTy) of
   (_, TExists ty) -> freshTVar $ \x -> do
     let ty' = openType (TId x) ty
     (e, actualTy) <- implicitlyPack (actualTy, ty', e)
-    s <-  unify actualTy ty'
+    s <-  accumError "implicitly packing" $ unify actualTy ty'
     let e' = PackExpr (initialPos "implicit pack")
                       e (subst s (TId x)) (subst s (TExists ty))
     return (e', subst s $ TExists ty)
@@ -421,7 +421,7 @@ expr e = case e of
         (tVars, ty) <- openUniversals constrTy
         case ty of
           TConstr formalTys _ _ -> do
-            s <- unifyList formalTys argTys
+            s <- accumError (show p) $ unifyList formalTys argTys
             let tyApp e tVar =
                   TyAppExpr (initialPos "implicit type application at new")
                             e
@@ -440,7 +440,7 @@ expr e = case e of
               fatalTypeError p $ printf 
                 "function expects %s arguments but %s were supplied"
                 (show $ length argTypes) (show $ length args)
-            args <- liftM (map fst) $ 
+            args <- accumError (show p) $ liftM (map fst) $ 
               mapM implicitlyPack (zip3 argTys argTypes args)
             argTys <- mapM expr args
             argsMatch <- liftM and (mapM (uncurry isSubtype) 
@@ -465,7 +465,7 @@ expr e = case e of
         (tVars, ty) <- openUniversals fTy
         case ty of
           TArrow _ (ArgType formalTys Nothing) _ -> do
-            s <- unifyList argTys formalTys
+            s <- accumError (show p) $ unifyList argTys formalTys
             let tyApp e tVar =
                   TyAppExpr (initialPos "implicit TyAppExpr")
                             e
