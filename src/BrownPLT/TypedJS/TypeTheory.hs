@@ -224,7 +224,9 @@ substType x s t = case t of
   TNamedForall y u
     | x == y -> TNamedForall y u
     | otherwise -> case isVarFree x s of
-        True -> error "substType: variable capture"
+        True -> error $ printf 
+          "substType: variable capture; substituting %s into %s" 
+          (renderType s) (renderType t)
         False -> TNamedForall y (substType x s u)
   TConstr argTys initTy retTy -> 
     TConstr (map (substType x s) argTys) (substType x s initTy) 
@@ -734,7 +736,7 @@ intersectBrand :: EnvM m
                -> m [Field]
 intersectBrand brand tyArgs = do
   (ty', parentTy) <- getBrandWithParent brand
-  let ty = tyApp ty' tyArgs
+  let ty = tyApp (lcType ty') tyArgs
   case (ty, parentTy) of
     (TObject _ _ fields, Just (TObject parentBrand _ _)) -> do
       tys <- getBrandPath parentBrand
