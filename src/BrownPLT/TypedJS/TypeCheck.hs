@@ -188,8 +188,14 @@ field :: (Prop SourcePos,  Expression SourcePos)
       -> TypeCheck Field
 field f = case f of
   (PropId p (Id _ x), e) -> do
-    t <- expr e
-    return (x, False, t) -- fields are mutable by default
+    ty <- expr e
+    return (x, False, ty) -- fields are mutable by default
+  (PropString p str, e) -> do
+    ty <- expr e
+    return (str, False, ty)
+  (PropNum p n, e) -> do
+    ty <- expr e
+    return (show n, False, ty)
          
  
 numericOp :: SourcePos -> Expression SourcePos

@@ -949,7 +949,10 @@ parseListExpr =
 -- Parsing top-level definitions
 
 
--- |@import [assumed] name :: type_@
+-- | @
+--   topLevel ::= import [assumed] name :: type_
+--              | import [assumed] constructor name :: type_
+--   @
 importStmt = do
   p <- getPosition
   reserved "import"

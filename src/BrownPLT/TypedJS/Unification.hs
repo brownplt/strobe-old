@@ -18,6 +18,7 @@ doesOccurIn x ty = occ ty
   where occField (_, _, ty) = occ ty 
         occArg (ArgType argTys opt) = any occ argTys || maybe False occ opt
         occ ty = case ty of
+          TArguments arg -> occArg arg
           TAny -> False
           TObject _ argTys fields -> any occ argTys || any occField fields
           TArrow thisTy args retTy -> occ thisTy || occArg args || occ retTy

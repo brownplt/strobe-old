@@ -131,6 +131,32 @@ closeType :: String -> Type -> Type
 closeType x t = closeTypeRec 0 x t
 
 
+isVarFreeArg :: String -> ArgType -> Bool
+isVarFreeArg x (ArgType args opt) = 
+  any (isVarFree x) args || maybe False (isVarFree x) opt
+
+
+isVarFree :: String -> Type -> Bool
+isVarFree x ty = case ty of
+  TObject brand args fields -> any (isVarFree x) args || any f fields
+    where f (_, _, fieldTy) = isVarFree x fieldTy
+  TAny -> False
+  TArguments arg -> isVarFreeArg x arg
+  TArrow this arg ret ->
+    isVarFree x this || isVarFreeArg x arg || isVarFree x ret
+  TIx _ -> False
+  TId x' -> x == x'
+  TApp constr argTys -> any (isVarFree x) argTys
+  TUnion ty1 ty2 -> isVarFree x ty1 || isVarFree x ty2
+  TIntersect ty1 ty2 -> isVarFree x ty1 || isVarFree x ty2
+  TExists ty' -> isVarFree x ty'
+  TForall ty' -> isVarFree x ty'
+  TConstr argTys initTy objTy ->
+    any (isVarFree x) argTys || isVarFree x initTy || isVarFree x objTy
+  TNamedForall x' ty' | x == x' -> False
+                      | otherwise -> isVarFree x ty'
+
+
 -- |'openTypeRec n s t' replaces the bound type variable 'n' in 't' with the 
 -- locally closed type 's'.
 openTypeRec :: Int -> Type -> Type -> Type
@@ -158,6 +184,9 @@ openTypeRec n s t = case t of
     TConstr (map (openTypeRec n s) argTys)
             (openTypeRec n s initTy)
             (openTypeRec n s objTy)
+  TNamedForall x t -> case isVarFree x s of
+    True -> error "openType: variable capture"
+    False -> TNamedForall x (openTypeRec n s t)
 
 
 openArgTypeRec n s (ArgType ts opt) =
@@ -192,9 +221,14 @@ substType x s t = case t of
     TIntersect (substType x s t1) (substType x s t2)
   TExists u -> TExists (substType x s u)
   TForall u -> TForall (substType x s u)
-  TNamedForall y u -- TODO: Not capture free!
+  TNamedForall y u
     | x == y -> TNamedForall y u
-    | otherwise -> TNamedForall y (substType x s u)
+    | otherwise -> case isVarFree x s of
+        True -> error "substType: variable capture"
+        False -> TNamedForall y (substType x s u)
+  TConstr argTys initTy retTy -> 
+    TConstr (map (substType x s) argTys) (substType x s initTy) 
+            (substType x s retTy)
 
 
 substTypeInArgType x s (ArgType ts opt) =

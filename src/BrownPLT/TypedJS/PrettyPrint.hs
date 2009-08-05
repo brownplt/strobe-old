@@ -321,6 +321,17 @@ topLevel tl = case tl of
   ConstructorStmt _ brand args ty body ->
     text "constructor" <+> text brand <+> parens (commas $ map text args) <+>
     text "::" <+> type_ ty <+> stmt body
+  ImportStmt _ name isAssumed ty ->
+    text "import" <+> assumed <> id name <+> text "::" <+> type_ ty
+      where assumed = case isAssumed of
+              True -> text "assumed " 
+              False -> empty
+  ImportConstrStmt _ name isAssumed ty ->
+    text "import" <+> assumed <> text "constructor" <+> id name <+> text "::" 
+    <+> type_ ty
+      where assumed = case isAssumed of
+              True -> text "assumed " 
+              False -> empty
 
 
 prettyTopLevel :: [TopLevel SourcePos] -> String
