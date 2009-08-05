@@ -679,7 +679,17 @@ expressions {
     if (typeof tx == "string")
       return false;
     return false;
-  } :: any -> Bool
+  } :: any -> Bool;
+
+  succeed function (x) :: Int? -> Int {
+    if (typeof x == "undefined") { x = 0; }
+    return x * 2;
+  };
+
+  succeed function (x) :: Int? -> Bool {
+    if (typeof x == "undefined") { x = 0; }
+    return x > 90;
+  }
 }
 
 // type-systems 101

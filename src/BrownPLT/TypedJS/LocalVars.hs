@@ -5,6 +5,7 @@ module BrownPLT.TypedJS.LocalVars
   ( localVars
   , topLevelVars
   , LocalDecl(..)
+  , declaredLocalTypes
   ) where
 
 import BrownPLT.TypedJS.Prelude
@@ -149,7 +150,7 @@ topLevelVars :: MonadError String m
              => [String] -- ^imports
              -> [TopLevel SourcePos]
              -> m ([LocalDecl], [String])
-topLevelVars binds tl = 
+topLevelVars binds tl =
   case runState (runErrorT $ mapM_ topLevel tl)
                 (S [] S.empty (S.fromList binds)) of
     (Left err, _) -> fail err
@@ -157,10 +158,25 @@ topLevelVars binds tl =
              
 
 
-localVars :: [String] -- ^ function arguments
+
+localVars :: MonadError String m
+          => [String] -- ^ function arguments
           -> Statement SourcePos
-          -> Either String ([LocalDecl], [String])
+          -> m ([LocalDecl], [String])
 localVars binds s =
   case runState (runErrorT (stmt s)) (S [] S.empty (S.fromList binds)) of
-    (Left err, _) -> Left err
-    (Right (), S vars tvars _) -> Right (reverse vars, S.toList tvars)
+    (Left err, _) -> fail err
+    (Right (), S vars tvars _) -> return (reverse vars, S.toList tvars)
+
+
+declaredLocalTypes :: MonadError String m
+                   => [String] -- ^function arguments
+                   -> Statement SourcePos
+                   -> m (Map String Type)
+declaredLocalTypes binds body = do
+  (vars, _) <- localVars binds body
+  let isTypeDecl (DeclType _ _) = True
+      isTypeDecl _              = False
+  let unTypeDecl (DeclType x t) = (x, t)
+      unTypeDecl _              = error "declaredLocalTypes: unTypeDecl"
+  return $ M.fromList (map unTypeDecl (filter isTypeDecl vars))

@@ -130,3 +130,18 @@ body fail {
  foo(f, 99, "helo");
 
 }
+
+body {
+
+var slice = function (arr, start, stop) 
+  :: forall a . [a], Int, Int? -> [a] {
+  var i = 0, len :: Int = arr.length, r :: [a] = [];
+  if( typeof stop == "undefined" ) { stop = len; }
+  if( stop < 0 ) { stop = len + stop; }
+  if( start < 0 ) { start = len - start; }
+  if( stop < start ) { i = start; start = stop; stop = i; }
+  for( i = 0; i < stop - start; i++ ) { r[i] = arr[start+i]; }
+  return r;
+}
+
+}

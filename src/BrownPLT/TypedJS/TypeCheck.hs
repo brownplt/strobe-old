@@ -323,7 +323,9 @@ expr e = case e of
                (isSubtype lhs doubleType +++ isSubtype rhs doubleType)
           unless r $
             fatalTypeError p $ printf 
-              "%s may only be applied to numbers and strings" (show op)
+              "%s may only be applied to numbers and strings; arguments \
+              \ have types\n%s\nand\n%s" (show op) (renderType lhs)
+              (renderType rhs)
           return boolType
     case op of
       OpLT -> cmp
@@ -490,16 +492,14 @@ expr e = case e of
           nestEnv $ extendsEnv (zip (map unId args) argTypes) $ 
             extendEnv "this" thisType $ do
             rtEnv <- runtimeEnv
-            case runtimeAnnotations rtEnv body of
-              Left s -> catastrophe p s
-              Right body -> case localVars (map unId args) body of
-                Left err -> fatalTypeError p err -- duplicate name error
-                Right (vars, tvars) -> do
-                  -- Calculating types affects the brand store.  Scope the 
-                  -- effects and recompute in the calculated environment.
-                  env <- tempBrandStore $ bindTVars tvars $ calcTypes vars $ ask
-                  local (const env) $ stmt (Just resultType) body
-                  return (foldr (\x t -> TForall (closeType x t)) t qtVars)
+            localEnv <- declaredLocalTypes (map unId args) body 
+            body <- runtimeAnnotations rtEnv localEnv body
+            (vars, tvars) <- localVars (map unId args) body
+            -- Calculating types affects the brand store.  Scope the 
+            -- effects and recompute in the calculated environment.
+            env <- tempBrandStore $ bindTVars tvars $ calcTypes vars $ ask
+            local (const env) $ stmt (Just resultType) body
+            return (foldr (\x t -> TForall (closeType x t)) t qtVars)
         -- annotation on the function is not a function type
         otherwise -> do
           fatalTypeError p $ printf "expected a function type, received %s" 
@@ -701,7 +701,7 @@ typeCheck init body =
 typeCheckExpr :: InitialStoreEnv -> Expression SourcePos -> Either String Type
 typeCheckExpr init e = do
   [e] <- preTypeCheck (variablesInScope init) [ExprStmt noPos e]
-  body <- runtimeAnnotations M.empty e
+  body <- runtimeAnnotations M.empty M.empty e
   case body of
     ExprStmt _ e -> case runTypeCheck init (withInitEnv $ expr e) of
       Right t -> return t

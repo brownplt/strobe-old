@@ -15,6 +15,7 @@ import BrownPLT.TypedJS.TypeErasure
 import qualified Data.Map as M
 import Control.Monad.Error
 import Control.Monad.Identity
+import BrownPLT.TypedJS.TypeTheory (runtime)
 
 type M a = ErrorT String Identity a
 
@@ -34,6 +35,10 @@ unionEnv env1 env2 = foldM f env1 (M.toList env2)
   where f :: Env -> ((Id, SourcePos), RuntimeTypeInfo) -> M Env
         f env (x, t) = case M.lookup x env of
           Nothing -> return (M.insert x t env)
+          -- Just t' -> case t == t' of
+          --   True -> return env
+          --   False -> catastrophe noPos "%s has distinct types %s and %s"
+          --     (show x) (show t) (show t')
           Just TUnreachable -> return (M.insert x t env)
           Just TUnk -> return env -- necessary for DoWhileStmt
           Just t' -> case t of
@@ -195,26 +200,32 @@ topLevelRuntimeAnnotations env body = do
 
 
 
-runtimeAnnotations :: Map Id RuntimeTypeInfo
+runtimeAnnotations :: MonadError String m
+                   => Map Id RuntimeTypeInfo
                    -- ^types of formal arguments and identifiers in the 
                    -- enclosing environment
+                   -> Map Id Type -- ^declared types of local variables
                    -> Stx.Statement SourcePos
                    -- ^body of a function / top level
-                   -> Either String (Stx.Statement SourcePos)
+                   -> m (Stx.Statement SourcePos)
                    -- ^body with @VarRef@s transformed to @AnnotatedVarRef@s
                    -- where possible.
-runtimeAnnotations env body = do
+runtimeAnnotations env locals body = do
   let body' = everywhere' (mkT removeFunction) body
-  (vars, anf) <- toANF (eraseTypes [body'])
-  let wrapped = SeqStmt noPos ((EnterStmt noPos) : (anf ++ [ExitStmt noPos]))
-  let (anf', _) = numberStmts 0 wrapped
-  let vars' = map (\(x,p) -> (x, (0, p))) vars
-  let (_, _, gr) = intraproc (FuncLit (0, noPos) [] vars' anf')
-  let localEnv = M.fromList (map (\(x, _) -> (x, TUnreachable)) vars)
-  let stmtEnvs = localTypes gr (M.union localEnv env)
-  case runIdentity (runErrorT $ stmt stmtEnvs anf') of
-    Left err -> Left err
-    Right localEnv -> Right $
-      everywhereBut (mkQ False isFunction) 
-                    (mkT (annotateVarRef localEnv)) 
-                    body
+  case toANF (eraseTypes [body']) of
+    Left err -> fail err
+    Right (vars, anf) -> do
+      let wrapped = SeqStmt noPos ((EnterStmt noPos):(anf ++ [ExitStmt noPos]))
+      let (anf', _) = numberStmts 0 wrapped
+      let vars' = map (\(x,p) -> (x, (0, p))) vars
+      let (_, _, gr) = intraproc (FuncLit (0, noPos) [] vars' anf')
+      let localEnv =
+            (M.map runtime locals) `M.union`
+            (M.fromList (map (\(x, _) -> (x, TUnreachable)) vars))
+      let stmtEnvs = localTypes gr (M.union localEnv env)
+      case runIdentity (runErrorT $ stmt stmtEnvs anf') of
+        Left err -> fail err
+        Right localEnv -> return $
+          everywhereBut (mkQ False isFunction) 
+                        (mkT (annotateVarRef localEnv)) 
+                        body

@@ -113,6 +113,12 @@ type Env = Map Id Ref
 
 data S = S {
   sDefs :: Map Node Env, -- environment before evaluating a statement
+  sUnks :: Map String RuntimeTypeInfo,
+  -- |When the dataflow analysis fails to accurately determine the type of
+  -- a variable, without a type system, we must conservatively conclude @TUnk@.
+  -- However, the type system allows us to make a better conclusion.  If
+  -- the declared type of a variable is @T@, we may conservatively conclude
+  -- that it is @runtime(T)@, instead of @TUnk@.
   sGraph :: Graph, -- intraprocedural control flow graph
   sErrs :: [(String, SourcePos)]
 }
@@ -177,8 +183,18 @@ refineEnv id t env = case M.lookup id env of
     Ref id' -> M.insert id' (Type (TKnown (S.singleton t))) env
     otherwise -> M.insert id (Type (TKnown (S.singleton t))) env
 
+
+getStaticUnknown :: Id -> State S RuntimeTypeInfo
+getStaticUnknown x = do
+  s <- get
+  case M.lookup x (sUnks s) of
+    Nothing -> return TUnk
+    Just rt -> return rt
+
+
 assignUnknownEnv :: Id -> Env -> State S Env 
 assignUnknownEnv id env = do
+  unk <- getStaticUnknown id
   let f (thisId, thisType) 
           | thisId == id = return (thisId, Type TUnk)
           | otherwise = case thisType of
@@ -192,7 +208,11 @@ assignEnv :: Id
           -> Ref
           -> Env
           -> State S Env
-assignEnv id type_ env = do
+assignEnv id ty env = do
+  unk <- getStaticUnknown id
+  let type_ = case ty of
+        Type TUnk -> Type unk
+        otherwise -> ty
   let f (thisId, thisType) 
           | thisId == id = return (thisId, type_)
           | otherwise = case thisType of
@@ -395,7 +415,7 @@ expr env e = case e of
   Lit (NumLit _ _) -> return (injRuntimeType RTNumber)
   Lit (IntLit _ _) -> return (injRuntimeType RTNumber)
   Lit (BoolLit _ _) -> return (injRuntimeType RTBoolean)
-  Lit (NullLit _) -> return (Type (TUnk))
+  Lit (NullLit _) -> return (Type TUnk)
   Lit (ArrayLit _ es) -> do
     mapM_ (expr env) es
     return (injRuntimeType RTObject)
@@ -581,7 +601,7 @@ localTypes :: Graph -- ^intraprocedural control flow graph of a function
 localTypes gr env = M.map flattenEnv (sDefs (execState (body enterEnv) s))
   where enterEnv = M.map Type env
         (enterNode, _) = G.nodeRange gr
-        s = S M.empty gr []
+        s = S M.empty env gr []
 
 localRefs :: Graph -- ^intraprocedural control flow graph of a function
            -> Map Id RuntimeTypeInfo -- ^environment of the function
@@ -589,7 +609,7 @@ localRefs :: Graph -- ^intraprocedural control flow graph of a function
 localRefs gr env = sDefs (execState (body enterEnv) s)
   where enterEnv = M.map Type env
         (enterNode, _) = G.nodeRange gr
-        s = S M.empty gr []
+        s = S M.empty env gr []
 
 prettyRefEnv :: Map Id Ref -> PP.Doc
 prettyRefEnv env = PP.cat (PP.punctuate PP.comma (map f $ M.toList env))
