@@ -411,7 +411,7 @@ expr e = case e of
     constrTy <- expr constr
     argTys <- mapM expr args
     let check constrTy = case constrTy of
-          TConstr formalTys _ objTy -> do
+          TConstr brand formalTys _ objTy -> do
             argsMatch <- areSubtypes argTys formalTys
             unless argsMatch $ fatalTypeError p $ printf
               "constructor expects\n%s\n\nbut it received\n%s"
@@ -426,7 +426,7 @@ expr e = case e of
       otherwise -> do
         (tVars, ty) <- openUniversals constrTy
         case ty of
-          TConstr formalTys _ _ -> do
+          TConstr brand formalTys _ _ -> do
             s <- accumError (show p) $ unifyList formalTys argTys
             let tyApp e tVar =
                   TyAppExpr (initialPos "implicit type application at new")

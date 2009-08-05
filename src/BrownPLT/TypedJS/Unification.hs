@@ -32,7 +32,7 @@ doesOccurIn x ty = occ ty
           TNamedForall y ty | x == y -> False
                             | otherwise -> occ ty
           TIntersect ty1 ty2 -> occ ty1 || occ ty2
-          TConstr argTys initTy retTy ->
+          TConstr _ argTys initTy retTy ->
             any occ argTys || occ initTy || occ retTy
 
 

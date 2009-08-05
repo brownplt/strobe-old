@@ -116,8 +116,9 @@ closeTypeRec n x t = case t of
     | otherwise -> TNamedForall y (closeTypeRec (n + 1) x u)
   TIntersect t1 t2 ->
     TIntersect (closeTypeRec n x t1) (closeTypeRec n x t2)
-  TConstr argTys initTy objTy -> 
-    TConstr (map (closeTypeRec n x) argTys) 
+  TConstr brand argTys initTy objTy -> 
+    TConstr brand
+            (map (closeTypeRec n x) argTys) 
             (closeTypeRec n x initTy)
             (closeTypeRec n x objTy)
 
@@ -151,7 +152,7 @@ isVarFree x ty = case ty of
   TIntersect ty1 ty2 -> isVarFree x ty1 || isVarFree x ty2
   TExists ty' -> isVarFree x ty'
   TForall ty' -> isVarFree x ty'
-  TConstr argTys initTy objTy ->
+  TConstr brand argTys initTy objTy ->
     any (isVarFree x) argTys || isVarFree x initTy || isVarFree x objTy
   TNamedForall x' ty' | x == x' -> False
                       | otherwise -> isVarFree x ty'
@@ -180,8 +181,9 @@ openTypeRec n s t = case t of
     TIntersect (openTypeRec n s t1) (openTypeRec n s t2)
   TExists u -> TExists (openTypeRec (n + 1) s u)
   TForall u -> TForall (openTypeRec (n + 1) s u)
-  TConstr argTys initTy objTy -> 
-    TConstr (map (openTypeRec n s) argTys)
+  TConstr brand argTys initTy objTy -> 
+    TConstr brand
+            (map (openTypeRec n s) argTys)
             (openTypeRec n s initTy)
             (openTypeRec n s objTy)
   TNamedForall x t -> case isVarFree x s of
@@ -228,8 +230,8 @@ substType x s t = case t of
           "substType: variable capture; substituting %s into %s" 
           (renderType s) (renderType t)
         False -> TNamedForall y (substType x s u)
-  TConstr argTys initTy retTy -> 
-    TConstr (map (substType x s) argTys) (substType x s initTy) 
+  TConstr brand argTys initTy retTy -> 
+    TConstr brand (map (substType x s) argTys) (substType x s initTy) 
             (substType x s retTy)
 
 
@@ -283,8 +285,8 @@ lcType ty = case ty of
   TIx x -> TIx x
   TExists u -> TExists (lcType u)
   TForall u -> TForall (lcType u)
-  TConstr argTys initTy objTy -> 
-    TConstr (map lcType argTys) (lcType initTy) (lcType objTy)
+  TConstr brand argTys initTy objTy -> 
+    TConstr brand (map lcType argTys) (lcType initTy) (lcType objTy)
   TNamedForall x u -> TForall (lcType (closeType x u))
 
 
@@ -314,8 +316,9 @@ canonize t = case t of
   TIx x -> return (TIx x)
   TExists u -> liftM TExists (canonize u)
   TForall u -> liftM TForall (canonize u)
-  TConstr argTys initTy objTy -> 
-    liftM3 TConstr (mapM canonize argTys) (canonize initTy) (canonize objTy)
+  TConstr brand argTys initTy objTy -> 
+    liftM3 (TConstr brand) (mapM canonize argTys) 
+           (canonize initTy) (canonize objTy)
   TNamedForall x u -> liftM (TNamedForall x) (canonize u)
 
 
@@ -375,7 +378,7 @@ isWfType ty = case ty of
   TIx x -> fail "the type is not locally closed"
   TExists u -> freshTVar $ \x -> bindTVar x $ isWfType (openType (TId x) u)
   TForall u -> freshTVar $ \x -> bindTVar x $ isWfType (openType (TId x) u)
-  TConstr tyArgs initTy constrTy -> do
+  TConstr brand tyArgs initTy constrTy -> do
     --TODO: Check that initTy is well-formed
     mapM_ isWfType tyArgs
     isWfType constrTy
@@ -569,7 +572,7 @@ runtime t = case t of
   TExists t -> runtime t
   TForall t -> runtime t
   TNamedForall _ t -> runtime t
-  TConstr _ _ _ -> injRT RTFunction
+  TConstr _ _ _ _ -> injRT RTFunction
   TAny -> TUnk
   TApp "String" [] ->  injRT RTString
   TApp "Bool" [] ->  injRT RTBoolean
@@ -757,6 +760,6 @@ unForall t = ([], t)
 
 getConstrObj :: Type -> Type
 getConstrObj ty = case ty of
-  TConstr _ _ objTy -> objTy
+  TConstr _ _ _ objTy -> objTy
   TNamedForall x ty' -> TNamedForall x (getConstrObj ty')
   otherwise -> error $ "getConstrObj : missed parse error " ++ show ty

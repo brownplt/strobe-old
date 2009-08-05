@@ -230,7 +230,8 @@ constrTy brand = withForall <|> withoutForall
           argTys <- type_' defaultThisTy `sepBy` comma
           reservedOp "->"
           fields <- braces (field defaultThisTy `sepBy` comma)
-          return (TConstr argTys boolType -- TODO: wrong!
+          let initTy = boolType -- TODO: placeholder until constrs are checked
+          return (TConstr brand argTys initTy
                           (TObject brand tyArgs fields))
         withForall = do
           reserved "forall"

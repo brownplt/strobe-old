@@ -33,7 +33,7 @@ data Type
   | TForall Type
   | TNamedForall String Type
   | TIntersect Type Type
-  | TConstr [Type] Type Type
+  | TConstr Brand [Type] Type Type
   deriving (Show, Eq, Ord, Data, Typeable)
 
 
