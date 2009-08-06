@@ -28,7 +28,8 @@ data RuntimeType
   | RTString
   | RTBoolean
   | RTFunction
-  | RTObject 
+  | RTConstructor String -- ^@RTConstructor brandName@
+  | RTObject String -- ^@RTObject brandName@
   | RTUndefined
   | RTFixedString String
   deriving (Show, Eq, Ord, Data, Typeable)
@@ -140,7 +141,7 @@ stringToType s = case s of
   "string" -> Just RTString
   "number" -> Just RTNumber
   "function" -> Just RTFunction
-  "object" -> Just RTObject
+  "object" -> Just (RTObject "Object")
   "boolean" -> Just RTBoolean
   "undefined" -> Just RTUndefined
   otherwise -> Nothing
@@ -162,15 +163,16 @@ litToType :: Lit a
           -> Maybe RuntimeType
 litToType lit = case lit of
   StringLit _ s -> Just (RTFixedString s)
-  RegexpLit _ _ _ _ -> Just RTObject
+  RegexpLit _ _ _ _ -> Just RTFunction
   NumLit _ _ -> Just RTNumber
   IntLit _ _ -> Just RTNumber
   BoolLit _ _ -> Just RTBoolean
-  NullLit _ -> Just RTObject
-  ArrayLit _ _ -> Just RTObject
+  -- TODO: typeof(null) == "object" but it is not an instance of anything
+  NullLit _ -> Just (RTObject "$null")
+  ArrayLit _ _ -> Just (RTObject "Array")
   FuncLit _ _ _ _ -> Just RTFunction
-  ArgsLit _ _ -> Just RTObject
-  ObjectLit _ _ -> Just RTObject
+  ArgsLit _ _ -> Just (RTObject "Object")
+  ObjectLit _ _ -> Just (RTObject "Object")
 
 
 refineEnv :: Id
@@ -411,21 +413,30 @@ expr :: Env
      -> State S Ref
 expr env e = case e of
   Lit (StringLit _ s) -> return (injRuntimeType (RTFixedString s))
-  Lit (RegexpLit _ _ _ _) -> return (injRuntimeType RTObject)
+  Lit (RegexpLit _ _ _ _) -> return (injRuntimeType RTFunction)
   Lit (NumLit _ _) -> return (injRuntimeType RTNumber)
   Lit (IntLit _ _) -> return (injRuntimeType RTNumber)
   Lit (BoolLit _ _) -> return (injRuntimeType RTBoolean)
   Lit (NullLit _) -> return (Type TUnk)
   Lit (ArrayLit _ es) -> do
     mapM_ (expr env) es
-    return (injRuntimeType RTObject)
+    return (injRuntimeType (RTObject "Array"))
   Lit (ArgsLit _ es) -> do
     mapM_ (expr env) es
-    return (injRuntimeType RTObject)
+    -- In Safari 4
+    -- > function foo() { 
+    --     return typeof(arguments) == "object" && arguments instanceof Object;
+    --   }
+    -- undefined
+    -- > foo()
+    -- true
+    -- > foo(1,2,3)
+    -- true
+    return (injRuntimeType (RTObject "Object"))
   Lit (ObjectLit _ props) -> do
     let es = map (\(_, _, e) -> e) props
     mapM_ (\(_, _, e) -> expr env e) props
-    return (injRuntimeType RTObject)
+    return (injRuntimeType (RTObject "Object"))
   Lit (FuncLit _ _ _ _) -> return (injRuntimeType RTFunction)
   VarRef _ id -> return (Ref id)
   DotRef _ obj field -> do
@@ -483,7 +494,14 @@ expr env e = case e of
       OpGT -> comparison
       OpGEq -> comparison
       OpIn -> comparison
-      OpInstanceof -> comparison
+      OpInstanceof -> do
+        t1 <- expr env lhs
+        t2 <- expr env rhs
+        case projRuntimeType (unRef t2 env) of
+          Just (RTConstructor brand) -> case t1 of
+            Ref x -> return (TypeIs x (TKnown $ S.singleton (RTObject brand)))
+            otherwise -> return (injRuntimeType RTBoolean)
+          otherwise -> return (injRuntimeType RTBoolean)
       PrefixLNot -> do
         t <- expr env lhs
         case t of

@@ -572,20 +572,21 @@ runtime t = case t of
   TExists t -> runtime t
   TForall t -> runtime t
   TNamedForall _ t -> runtime t
-  TConstr _ _ _ _ -> injRT RTFunction
+  TConstr brand _ _ _ -> injRT (RTConstructor brand)
   TAny -> TUnk
   TApp "String" [] ->  injRT RTString
   TApp "Bool" [] ->  injRT RTBoolean
   TApp "Double" [] ->  injRT RTNumber
   TApp "Int" [] ->  injRT RTNumber
   TApp "Undefined" [] ->  injRT RTUndefined
-  TApp "Array" [_] -> injRT RTObject
+  TApp "Array" [_] -> injRT (RTObject "Array")
   TApp x ts -> error $ printf "TypeTheory.hs : argument of runtime contains \
                               \unknown type constructor %s, with args %s"
                               x (show ts) 
   TObject "Number" _ _ -> injRT RTNumber
-  TObject _ _ _ -> injRT RTObject
-  TArguments _ -> injRT RTObject -- the type of the arguments array
+  TObject brand _ _ -> injRT (RTObject brand)
+  -- Confirmed in Safari 4.  See LocalFlows.hs for more information.
+  TArguments _ -> injRT (RTObject "Object")
   TArrow _ _ _ -> injRT RTFunction
   TIntersect t1 t2 -> case (runtime t1, runtime t2) of
     (TUnk, TKnown s2) -> TKnown s2
@@ -609,9 +610,15 @@ flatStatic rt = case rt of
   RTNumber -> desugarType noPos $ intersectType doubleType numberObjectType
   RTUndefined -> return undefType
   RTString -> return stringType
-  RTObject -> return TAny
+  RTObject _ -> return TAny
   RTFunction -> return TAny
   RTFixedString _ -> return stringType
+  RTConstructor brand -> return TAny
+
+
+justWhen :: a -> Bool -> Maybe a
+justWhen a True = Just a
+justWhen _ False = Nothing
 
 
 -- |If the supplied type is canonical, the result is canonical.
@@ -648,9 +655,11 @@ static rt st = case st of
   TApp "Double" [] | S.member RTNumber rt -> return (Just st)
   TApp "Int" [] | S.member RTNumber rt -> return (Just st)
   TApp "Undefined" [] | S.member RTUndefined rt -> return (Just st)
-  TApp "Array" [_] | S.member RTObject rt -> return (Just st)
+  TApp "Array" [_] ->
+    return $ justWhen st $ S.member (RTObject "Array") rt
   TObject "Number" _ _ | S.member RTNumber rt -> return (Just st)
-  TObject _ _ _ | S.member RTObject rt -> return (Just st)
+  TObject brand _ _ -> 
+    return $ justWhen st $ S.member (RTObject brand) rt
   TArrow _ _ _ | S.member RTFunction rt -> return (Just st)
   TUnion t1 t2 -> do
     r1 <- static rt t1
@@ -666,6 +675,8 @@ static rt st = case st of
     case (r1, r2) of
       (Just u1, Just u2) -> return (Just $ intersectType u1 u2)
       otherwise -> return Nothing
+  TConstr brand argTys initTy objTy ->
+    return $ justWhen st $ S.member (RTConstructor brand) rt
   otherwise -> return Nothing
 
 
