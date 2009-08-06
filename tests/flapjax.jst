@@ -1,0 +1,250 @@
+/* Necessary initializers: 1
+ * Variable type annotations: 5
+ * Explicit undefined tests: 1
+ * Ad-hoc rewrites: doNotPropagate, PQ to avoid bounded polymorphism
+ */
+var slice = function (arr, start, stop) 
+  :: forall a . [a], Int, Int? -> [a] {
+  var i = 0, len :: Int = arr.length, r :: [a] = [];
+  if( typeof stop == "undefined" ) { stop = len; }
+  if( stop < 0 ) { stop = len + stop; }
+  if( start < 0 ) { start = len - start; }
+  if( stop < start ) { i = start; start = stop; stop = i; }
+  for( i = 0; i < stop - start; i++ ) { r[i] = arr[start+i]; }
+  return r;
+}
+
+// JST: We intentionally omit isEqual for the moment, since it uses runtime type
+// tests to defeat abstraction created by quantification.  The type system
+// could be altered to support it. 
+/*
+var isEqual = function (a,b) :: forall x . x, x -> Bool {
+  return (a == b) ||
+    ((((typeof(a) == 'number') && isNaN(a)) || a == 'NaN') &&
+     (((typeof(b) == 'number') && isNaN(b)) || b == 'NaN'));
+}
+*/
+
+var forEach = function(fn,arr) :: forall a . (a -> any), [a] -> Undefined {
+  for (var i = 0 ; i < arr.length; i++) {
+    fn(arr[i]);
+  }
+}
+
+var member = function(elt, lst) :: forall a . a, [a] -> Bool {
+  for (var i = 0; i < lst.length; i++) { 
+    // JST: if (isEqual(lst[i], elt)) {return true;} 
+    if (lst[i] == elt) {return true;} 
+  }
+  return false;
+}
+
+// JST: Variable arity
+/*
+var zip = function(arrays) {
+  if (arrays.length == 0) return [];
+  var ret = [];
+  for(var i=0; i<arrays[0].length;i++) {
+    ret.push([]);
+    for(var j=0; j<arrays.length;j++) 
+      ret[i].push(arrays[j][i]);
+  }
+  return ret;
+}
+*/
+
+var map1 = function(f,src) :: forall a b . (a -> b), [a] -> [b]{ 
+  var dest :: [b] = [ ];
+  for (var i = 0; i < src.length; i++) { dest.push(f(src[i])); }
+  return dest;
+}
+
+// JST: variable arity
+/*
+//map: (a * ... -> z) * [a] * ... -> [z]
+var map = function (fn) {
+  var arrays = slice(arguments, 1);
+  if (arrays.length === 0) { return []; }
+  else if (arrays.length === 1) {
+    var ret = [];
+    for(var i=0; i<arrays[0].length; i++) {ret.push(fn(arrays[0][i]));}
+    return ret;
+  }
+  else {
+    var ret = zip(arrays);
+    var o = new Object();
+    for(var i=0; i<ret.length; i++) {ret[i] = fn.apply(o,ret[i]);}
+    return ret;
+  }
+}
+*/
+
+var filter = function (predFn, arr) :: forall a . (a -> Bool), [a] -> [a] {
+  var res :: [a] = [];
+  for (var i = 0; i < arr.length; i++) { 
+    if (predFn(arr[i])) { res.push(arr[i]); }
+  }
+  return res;
+}
+
+// JST: Variable arity
+/*
+//fold: (a * .... * accum -> accum) * accum * [a] * ... -> accum
+//fold over list(s), left to right
+var fold = function(fn, init) {
+  var lists = slice(arguments, 2);
+  if (lists.length === 0) { return init; }
+  else if(lists.length === 1) {
+    var acc = init;
+    for(var i = 0; i < lists[0].length; i++) {
+      acc = fn(lists[0][i],acc);
+    }
+    return acc;
+  }
+  else {
+    var acc = init;
+    for (var i = 0; i < lists[0].length; i++) {
+      var args = map( function (lst) { return lst[i];}, 
+            lists);
+      args.push(acc);
+      acc = fn.apply({}, args);
+    }
+    return acc;
+  }
+};
+  
+//foldR: (a * .... * accum -> accum) * accum * [a] * ... -> accum
+//fold over list(s), right to left, fold more memory efficient (left to right)
+var foldR = function (fn, init) {
+  var lists = slice(arguments, 2);
+  if (lists.length === 0) { return init; }
+  else if(lists.length === 1) {
+    var acc = init;
+    for(var i=lists[0].length - 1; i > -1; i--)
+      acc = fn(lists[0][i],acc);
+    return acc;
+  }
+  else {
+    var acc = init;
+    for (var i = lists[0].length - 1; i > -1; i--) {
+      var args = map( function (lst) { return lst[i];}, 
+            lists);
+      args.push(acc);
+      acc = fn.apply({}, args);
+    }
+    return acc;     
+  }
+};
+*/
+
+constructor DoNotPropagate() :: -> {} {
+}
+
+var doNotPropagate = new DoNotPropagate();
+
+constructor Pulse(stamp, value) :: forall p . Int, p 
+                                -> { stamp :: Int, readonly value :: p }
+{
+  // Timestamps are used by liftB (and ifE). Since liftB may receive multiple
+  // update signals in the same run of the evaluator, it only propagates the
+  // signal if it has a new stamp.
+  this.stamp = stamp;
+  this.value = value;
+}
+
+var lastRank = 0;
+
+constructor EventStream(nodes, updater)
+ :: forall x y . [exists z . EventStream[z, x]:],
+                 (this :: EventStream[x,y]:, Pulse[x]:
+                  -> U(DoNotPropagate:, Pulse[y]:))
+ -> { sendsTo :: [exists z . EventStream[y, z]:],
+      rank :: Int,
+      weaklyHeld :: Bool,
+      updater :: (this :: EventStream[x,y]:,
+                  Pulse[x]: -> U(DoNotPropagate:, Pulse[y]:))
+    }
+{
+ this.sendsTo = []; // forward link
+ this.weaklyHeld = false;
+ this.updater = updater;
+
+ for (var i = 0; i < nodes.length; i++) {
+   nodes[i].attachListener(this);
+ }
+
+ this.rank = ++lastRank;
+}
+
+
+constructor PQ() :: forall a . -> {
+  insert :: (this :: PQ[a]:, Int, a -> Undefined),
+  isEmpty :: (this :: PQ[a]: -> Bool),
+  peek :: (this :: PQ[a]:, -> a),
+  pop :: (this :: PQ[a]:, ->  a)
+}
+{
+  // JST: constructors are unchecked
+};
+
+var stamp = 1;
+var nextStamp = function () :: -> Int { return ++stamp; };
+
+var currentlyPropagating = false;
+
+var timeQueue = 
+  new (PQ@[{ k:: Int, 
+             v :: PQ[(exists x z . { p :: Pulse[x]:, n :: EventStream[x,z]: })]:
+           }])();
+
+
+var propagate = function(now) :: Int -> Undefined {
+  // If when == now,  
+  if (currentlyPropagating) {
+    // If when <= now, pulseQueue will be reached by the existing call to
+    // propagatePulse
+    return;
+  }
+ 
+  currentlyPropagating = true;
+ // try {
+    var pulseQueue_ = timeQueue.peek();
+    if (pulseQueue_ && pulseQueue_.k <= now) {
+      var pulseQueue  = timeQueue.pop().v;
+  
+      var len = 1;
+      while (len) {
+        var qv :: unpack x y = pulseQueue.pop();
+        len--;
+        var nextPulse :: U(DoNotPropagate:, Pulse[y]:)
+              = qv.n.updater(new Pulse(qv.p.stamp, qv.p.value));
+ 
+        var weaklyHeld = true;
+ 
+        if ((nextPulse instanceof Pulse)) {
+          // TODO: Why do we have to name it?
+          var nextPulse_  = nextPulse;
+          for (var i = 0; i < qv.n.sendsTo.length; i++) {
+            var to :: unpack z = qv.n.sendsTo[i];
+            weaklyHeld = weaklyHeld && to.weaklyHeld;
+            len++;
+            pulseQueue.insert(to.rank, { p: nextPulse_, n: to });
+          }
+          if (qv.n.sendsTo.length > 0 && weaklyHeld) {
+            qv.n.weaklyHeld = true;
+          }
+        }
+      }
+  
+      pulseQueue_ = timeQueue.peek();
+         
+    }
+      
+ // }
+ // TODO: try-finally not supported yet, for no good reason
+ // finally {
+ //   currentlyPropagating = false;
+ // }
+ 
+}
+

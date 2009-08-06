@@ -609,6 +609,23 @@ body {
   var r :: Int = f(new A(50)) + f (new B(90));
 }
 
+
+body {
+
+  constructor A(x) :: Int -> { x :: Int } { this.x = x; }
+
+  constructor B(y) :: Int -> { y :: Int } { this.y = y; }
+
+  var f = function(obj) :: U(A:, B:) -> Int {
+    if (!(obj instanceof B)) {
+      return obj.x; }
+    else {
+      return obj.y; }};
+
+  var r :: Int = f(new A(50)) + f (new B(90));
+}
+
+
 body fail {
 
   constructor A(x) :: Int -> { x :: Int } { this.x = x; }
