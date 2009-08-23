@@ -1548,3 +1548,67 @@ body {
     return ((typeof(x)=='number') && myIsNaN(x)) || false;
   };
 }
+
+expressions {
+  succeed function(x) :: U(Int, String) -> Int {
+    while(1) {
+      if (typeof x == "number") {
+        var r :: Int = x;
+      }
+    }
+    return 10;
+  }
+}
+
+expressions {
+  succeed function(x, b) :: U(Int, String), Bool -> Int {
+    while(b) {
+      if (typeof x == "number") {
+        while(b) { var r :: Int = x; }
+      }
+    }
+    return 10;
+  };
+  
+  succeed function(x, b) :: U(HTMLElement:, Int), Bool -> Int {
+      if ((x instanceof HTMLElement)) { }
+      else {
+        var x_ = x;
+        var r :: Int = x_;
+      }
+    return 10;
+  };
+  
+  succeed function(x, b) :: U(HTMLElement:, Int), Bool -> Int {
+      if (!(x instanceof HTMLElement)) {
+        var x_ = x;
+        var r :: Int = x_;
+      }
+    return 10;
+  };
+  
+  succeed function(x, b) :: U(HTMLElement:, Int), Bool -> Int {
+      if (!(x instanceof HTMLElement)) {
+        var r :: Int = x
+      }
+    return 10;
+  };
+  
+  succeed function(x, b) :: U(HTMLElement:, Int), Bool -> Int {
+    while(b) {
+      if (!(x instanceof HTMLElement)) {
+        var r :: Int = x
+      }
+    }
+    return 10;
+  };
+
+  succeed function(x, b) :: U(HTMLElement:, Int), Bool -> Int {
+    while(b) {
+      if (!(x instanceof HTMLElement)) {
+        while(b) { var r :: Int = x; }
+      }
+    }
+    return 10;
+  }
+}
