@@ -1569,6 +1569,18 @@ expressions {
     }
     return 10;
   };
+
+  succeed function(x, b) :: U(HTMLElement:, String), Bool -> String {
+      if ((x instanceof HTMLElement)) { 
+          var y :: HTMLElement: = x;
+      }
+      else {
+        var x_ :: String = x;
+        var r :: String = x_;
+      }
+    return "Hello";
+  };
+
   
   succeed function(x, b) :: U(HTMLElement:, Int), Bool -> Int {
       if ((x instanceof HTMLElement)) { }
@@ -1578,6 +1590,8 @@ expressions {
       }
     return 10;
   };
+
+
   
   succeed function(x, b) :: U(HTMLElement:, Int), Bool -> Int {
       if (!(x instanceof HTMLElement)) {

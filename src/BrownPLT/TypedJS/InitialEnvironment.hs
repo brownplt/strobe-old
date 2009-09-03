@@ -82,7 +82,7 @@ bindingFromIDL def cont = case def of
     fields <- fieldsFromIDL v body
     ty <- canonize (TObject v [] fields)
     newRootBrand ty
-    extendEnv v ty cont -- TODO: this is a hack
+    extendEnv v (TConstr v [] TAny ty) cont -- TODO: this is a hack (also below)
   IDL.Interface v (Just parent) body -> do
     fields <- fieldsFromIDL v body
     ty <- getBrand parent
@@ -90,7 +90,7 @@ bindingFromIDL def cont = case def of
       (TObject _ args fields') -> do
         ty' <- canonize (TObject v [] (overrideFields fields fields'))
         newBrand v ty' (TObject parent args fields')
-        extendEnv v ty' cont
+        extendEnv v (TConstr v [] TAny ty') cont
       otherwise ->
         fail $ "bindingFromIDL: getBrand returned " ++ show ty
   otherwise -> fail $ "bindingFromIDL: unexpected " ++ show def
