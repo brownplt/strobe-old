@@ -249,6 +249,7 @@ remove :: Id
 remove id remove env = M.adjust f (idRoot id env)  env
   where  f (Type exist) = case (remove, simpleType exist) of
              (TKnown r, TKnown e) -> 
+               -- TODO: Document what happens the difference is the empty set.
                Type (TKnown (S.difference e r))
              (TUnk, _) -> error "localTypes: removing TUnk"
              (_, TUnk) -> Type TUnk

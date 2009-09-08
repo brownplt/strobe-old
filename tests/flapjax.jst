@@ -228,7 +228,7 @@ var propagate = function(now) :: Int -> Undefined {
             var to :: unpack z = qv.n.sendsTo[i];
             weaklyHeld = weaklyHeld && to.weaklyHeld;
             len++;
-            pulseQueue.insert(to.rank, { p: nextPulse_, n: to });
+            pulseQueue.insert(to.rank, { p: nextPulse, n: to });
           }
           if (qv.n.sendsTo.length > 0 && weaklyHeld) {
             qv.n.weaklyHeld = true;
