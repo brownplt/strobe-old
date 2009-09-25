@@ -3,7 +3,7 @@
  * Explicit undefined tests: 1
  * Ad-hoc rewrites: doNotPropagate, PQ to avoid bounded polymorphism
  */
-var slice = function (arr, start, stop) 
+var slice = function (arr, start, stop)
   :: forall a . [a], Int, Int? -> [a] {
   var i = 0, len :: Int = arr.length, r :: [a] = [];
   if( typeof stop == "undefined" ) { stop = len; }
@@ -16,7 +16,7 @@ var slice = function (arr, start, stop)
 
 // JST: We intentionally omit isEqual for the moment, since it uses runtime type
 // tests to defeat abstraction created by quantification.  The type system
-// could be altered to support it. 
+// could be altered to support it.
 /*
 var isEqual = function (a,b) :: forall x . x, x -> Bool {
   return (a == b) ||
@@ -32,9 +32,9 @@ var forEach = function(fn,arr) :: forall a . (a -> any), [a] -> Undefined {
 }
 
 var member = function(elt, lst) :: forall a . a, [a] -> Bool {
-  for (var i = 0; i < lst.length; i++) { 
-    // JST: if (isEqual(lst[i], elt)) {return true;} 
-    if (lst[i] == elt) {return true;} 
+  for (var i = 0; i < lst.length; i++) {
+    // JST: if (isEqual(lst[i], elt)) {return true;}
+    if (lst[i] == elt) {return true;}
   }
   return false;
 }
@@ -46,14 +46,14 @@ var zip = function(arrays) {
   var ret = [];
   for(var i=0; i<arrays[0].length;i++) {
     ret.push([]);
-    for(var j=0; j<arrays.length;j++) 
+    for(var j=0; j<arrays.length;j++)
       ret[i].push(arrays[j][i]);
   }
   return ret;
 }
 */
 
-var map1 = function(f,src) :: forall a b . (a -> b), [a] -> [b]{ 
+var map1 = function(f,src) :: forall a b . (a -> b), [a] -> [b]{
   var dest :: [b] = [ ];
   for (var i = 0; i < src.length; i++) { dest.push(f(src[i])); }
   return dest;
@@ -81,7 +81,7 @@ var map = function (fn) {
 
 var filter = function (predFn, arr) :: forall a . (a -> Bool), [a] -> [a] {
   var res :: [a] = [];
-  for (var i = 0; i < arr.length; i++) { 
+  for (var i = 0; i < arr.length; i++) {
     if (predFn(arr[i])) { res.push(arr[i]); }
   }
   return res;
@@ -104,7 +104,7 @@ var fold = function(fn, init) {
   else {
     var acc = init;
     for (var i = 0; i < lists[0].length; i++) {
-      var args = map( function (lst) { return lst[i];}, 
+      var args = map( function (lst) { return lst[i];},
             lists);
       args.push(acc);
       acc = fn.apply({}, args);
@@ -112,7 +112,7 @@ var fold = function(fn, init) {
     return acc;
   }
 };
-  
+
 //foldR: (a * .... * accum -> accum) * accum * [a] * ... -> accum
 //fold over list(s), right to left, fold more memory efficient (left to right)
 var foldR = function (fn, init) {
@@ -127,12 +127,12 @@ var foldR = function (fn, init) {
   else {
     var acc = init;
     for (var i = lists[0].length - 1; i > -1; i--) {
-      var args = map( function (lst) { return lst[i];}, 
+      var args = map( function (lst) { return lst[i];},
             lists);
       args.push(acc);
       acc = fn.apply({}, args);
     }
-    return acc;     
+    return acc;
   }
 };
 */
@@ -142,7 +142,7 @@ constructor DoNotPropagate() :: -> {} {
 
 var doNotPropagate = new DoNotPropagate();
 
-constructor Pulse(stamp, value) :: forall p . Int, p 
+constructor Pulse(stamp, value) :: forall p . Int, p
                                 -> { stamp :: Int, readonly value :: p }
 {
   // Timestamps are used by liftB (and ifE). Since liftB may receive multiple
@@ -192,59 +192,61 @@ var nextStamp = function () :: -> Int { return ++stamp; };
 
 var currentlyPropagating = false;
 
-var timeQueue = 
-  new (PQ@[{ k:: Int, 
+var timeQueue =
+  new (PQ@[{ k:: Int,
              v :: PQ[(exists x z . { p :: Pulse[x]:, n :: EventStream[x,z]: })]:
            }])();
 
 
 var propagate = function(now) :: Int -> Undefined {
-  // If when == now,  
+  // If when == now,
   if (currentlyPropagating) {
     // If when <= now, pulseQueue will be reached by the existing call to
     // propagatePulse
     return;
   }
- 
+
   currentlyPropagating = true;
  // try {
     var pulseQueue_ = timeQueue.peek();
     if (pulseQueue_ && pulseQueue_.k <= now) {
       var pulseQueue  = timeQueue.pop().v;
-  
+
       var len = 1;
       while (len) {
         var qv :: unpack x y = pulseQueue.pop();
         len--;
         var nextPulse :: U(DoNotPropagate:, Pulse[y]:)
               = qv.n.updater(new Pulse(qv.p.stamp, qv.p.value));
- 
+
         var weaklyHeld = true;
- 
+        //should work:
+        //if (nextPulse instanceof DoNotPropagate) continue;
+
         if ((nextPulse instanceof Pulse)) {
-          // TODO: Why do we have to name it?
-          var nextPulse_  = nextPulse;
           for (var i = 0; i < qv.n.sendsTo.length; i++) {
             var to :: unpack z = qv.n.sendsTo[i];
             weaklyHeld = weaklyHeld && to.weaklyHeld;
             len++;
-            pulseQueue.insert(to.rank, { p: nextPulse, n: to });
+            //pulseQueue.insert(to.rank, { p: nextPulse, n: to });
+            var x = { p: nextPulse, n: to };
+            pulseQueue.insert(to.rank, x);
           }
           if (qv.n.sendsTo.length > 0 && weaklyHeld) {
             qv.n.weaklyHeld = true;
           }
         }
       }
-  
+
       pulseQueue_ = timeQueue.peek();
-         
+
     }
-      
+
  // }
  // TODO: try-finally not supported yet, for no good reason
  // finally {
  //   currentlyPropagating = false;
  // }
- 
+
 }
 

@@ -203,18 +203,18 @@ assignUnknownEnv id env = do
               Typeof id' | id' == id -> return (thisId, Type TUnk)
               otherwise -> return (thisId, thisType)
   lst <- mapM f (M.toList env)
-  return (M.fromList lst)
-
-
-assignEnv :: Id
-          -> Ref
-          -> Env
-          -> State S Env
-assignEnv id ty env = do
+  return (M.fromList lst) 
+                          
+                          
+assignEnv :: Id           
+          -> Ref          
+          -> Env          
+          -> State S Env  
+assignEnv id ty env = do  
   unk <- getStaticUnknown id
-  let type_ = case ty of
+  let type_ = case ty of  
         Type TUnk -> Type unk
-        otherwise -> ty
+        otherwise -> ty   
   let f (thisId, thisType) 
           | thisId == id = return (thisId, type_)
           | otherwise = case thisType of
@@ -321,7 +321,7 @@ stmt :: Env
      -> State S [(Node, Env)]
      -- ^The environments to push to each successor of this statement.
 stmt env node s = do
-  succs <-  succs node
+  succs <- succs node
   let noop = return (zip (map fst succs) (repeat env)) 
   case s of
     SeqStmt _ _ -> noop

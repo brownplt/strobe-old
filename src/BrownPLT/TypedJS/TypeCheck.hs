@@ -18,6 +18,7 @@ import qualified Data.Set as S
 import BrownPLT.TypedJS.PreTypeCheck
 import Control.Monad.Reader
 import Control.Monad.Error
+import System.IO.Unsafe
 
 
 runtimeEnv :: TypeCheck (Map String RuntimeTypeInfo)
@@ -76,7 +77,6 @@ openUniversals (TForall ty) = freshTVar $ \x -> do
   (xs, ty') <- openUniversals (openType (TId x) ty)
   return (x:xs, ty')
 openUniversals ty = return ([], ty)
-
 
 -- |JavaScript's function call syntax is overloaded for three kinds of
 -- function invocations.  These are @obj.method(arg, ...)@,
@@ -515,9 +515,10 @@ expr e = case e of
     | S.null rt -> lookupEnv p x -- provably unreachable
     | otherwise -> do
         s <- lookupEnv p x
-        u <- static rt s
+        u <- static rt s   
+        --abba <- return $ unsafePerformIO $ putStr $ printf "%s: %s :: %s got called!!! rt is %s\n\n" (show p) x (renderType s) (show rt)        
         case u of
-          Just t -> return t
+          Just t -> return t --seq abba $ return t
           Nothing -> catastrophe p $ 
             printf "%s :: %s is inconsistent with the runtime type %s" 
                    x (renderType s) (show rt)

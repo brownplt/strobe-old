@@ -16,6 +16,7 @@ import qualified Data.Map as M
 import Control.Monad.Error
 import Control.Monad.Identity
 import BrownPLT.TypedJS.TypeTheory (runtime)
+import System.IO.Unsafe
 
 type M a = ErrorT String Identity a
 
@@ -59,6 +60,12 @@ expr :: Map Id RuntimeTypeInfo
      -- ^annotated result from intraprocedural graph
      -> M Env
 expr env e = case e of
+  Lit (ArrayLit _ es) -> do
+    envs <- mapM (expr env) es
+    return $ M.unions envs
+  Lit (ObjectLit _ fields) -> do
+    envs <- mapM (expr env) $ map (\(_,_,e)->e) fields
+    return $ M.unions envs
   Lit _ -> return empty
   VarRef _ "this" -> return empty
   VarRef (_, p) x -> case M.lookup x env of
@@ -158,6 +165,12 @@ annotateVarRef :: Env
                -> Stx.Expression SourcePos
 annotateVarRef env (Stx.VarRef p (Stx.Id p' x)) = case M.lookup (x, p) env of
   Just (TKnown rt) -> Stx.AnnotatedVarRef p rt x
+  {-Just blank -> seq (unsafePerformIO $ putStr $ printf 
+                      "lookup of %s at %s got: %s\n" x (show p) (show blank))
+                   (Stx.VarRef p (Stx.Id p' x))
+  Nothing    -> seq (unsafePerformIO $ putStr $ printf 
+                      "lookup of %s at %s got: Nothing\n" x (show p))
+                   (Stx.VarRef p (Stx.Id p' x))-}
   otherwise -> Stx.VarRef p (Stx.Id p' x)
 annotateVarRef _ e = e
 
@@ -219,7 +232,7 @@ runtimeAnnotations env locals body = do
       let (anf', _) = numberStmts 0 wrapped
       let vars' = map (\(x,p) -> (x, (0, p))) vars
       let (_, _, gr) = intraproc (FuncLit (0, noPos) [] vars' anf')
-      let localEnv =
+      let localEnv = 
             (M.map runtime locals) `M.union`
             (M.fromList (map (\(x, _) -> (x, TUnreachable)) vars))
       let stmtEnvs = localTypes gr (M.union localEnv env)
