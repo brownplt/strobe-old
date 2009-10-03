@@ -3,8 +3,6 @@ module BrownPLT.TypedJS.LocalFlows
   ( RuntimeType (..)
   , RuntimeTypeInfo (..)
   , localTypes
-  , localRefs
-  , prettyRefEnv
   , prettyEnv
   , unionType
   ) where
@@ -19,6 +17,8 @@ import qualified Data.Graph.Inductive as G
 import qualified Data.Set as S
 import qualified Data.Map as M
 import qualified Text.PrettyPrint.HughesPJ as PP
+import qualified BrownPLT.TypedJS.Presburger as Pres
+import BrownPLT.TypedJS.Presburger
 
 -- |The types discernable by runtime reflection.  These largely correspond
 -- to the possible results of JavaScript's @typeof@ operator.  In addition,
@@ -108,12 +108,23 @@ data Ref
   | TypeIsNot Id RuntimeTypeInfo
   deriving (Show, Eq, Ord)
 
+data OpenFormula
+  = FAnd OpenFormula OpenFormula
+  | FOr OpenFormula OpenFormula
+  | FEq
+
 
 type Env = Map Id Ref
 
+data L = L {
+  propEnv :: Env,
+  propTerms :: Map Id Pres.Term,
+  propFormula :: Pres.Formula
+}
+
 
 data S = S {
-  sDefs :: Map Node Env, -- environment before evaluating a statement
+  sDefs :: Map Node L, -- environment before evaluating a statement
   sUnks :: Map String RuntimeTypeInfo,
   -- |When the dataflow analysis fails to accurately determine the type of
   -- a variable, without a type system, we must conservatively conclude @TUnk@.
@@ -121,18 +132,16 @@ data S = S {
   -- the declared type of a variable is @T@, we may conservatively conclude
   -- that it is @runtime(T)@, instead of @TUnk@.
   sGraph :: Graph, -- intraprocedural control flow graph
-  sErrs :: [(String, SourcePos)]
+  sErrs :: [(String, SourcePos)],
+  sIx :: Int
 }
 
-
--- |The environment before evaluating a statement.
-getEnv :: Node -> State S Env
-getEnv node = do
+gensym :: State S Int
+gensym = do
   s <- get
-  case M.lookup node (sDefs s) of
-    Just env -> return env
-    Nothing -> fail "localTypes: statements out of order"
-
+  let r = sIx s
+  put $ s { sIx = r + 1 }
+  return r
 
 -- |JavaScript's @typeof@ operator returns one of these strings.
 stringToType :: String
@@ -194,8 +203,9 @@ getStaticUnknown x = do
     Just rt -> return rt
 
 
-assignUnknownEnv :: Id -> Env -> State S Env 
-assignUnknownEnv id env = do
+assignUnknownEnv :: Id -> L -> State S L
+assignUnknownEnv id lenv = do
+  let env = propEnv lenv
   unk <- getStaticUnknown id
   let f (thisId, thisType) 
           | thisId == id = return (thisId, Type TUnk)
@@ -203,14 +213,15 @@ assignUnknownEnv id env = do
               Typeof id' | id' == id -> return (thisId, Type TUnk)
               otherwise -> return (thisId, thisType)
   lst <- mapM f (M.toList env)
-  return (M.fromList lst) 
+  return $ lenv { propEnv =  M.fromList lst }
                           
                           
 assignEnv :: Id           
           -> Ref          
-          -> Env          
-          -> State S Env  
-assignEnv id ty env = do  
+          -> L
+          -> State S L
+assignEnv id ty lenv = do  
+  let env = propEnv lenv
   unk <- getStaticUnknown id
   let type_ = case ty of  
         Type TUnk -> Type unk
@@ -225,7 +236,7 @@ assignEnv id ty env = do
                 return (thisId, Type (TKnown (S.singleton RTString)))
               otherwise -> return (thisId, thisType)
   lst <- mapM f (M.toList env)
-  return (M.fromList lst)
+  return $ lenv { propEnv =  M.fromList lst }
 
 idRoot :: Id
        -> Env
@@ -238,16 +249,18 @@ idRoot id env = case M.lookup id env of
 
 restrict :: Id
          -> RuntimeTypeInfo
-         -> Env
-         -> Env
-restrict id type_ env = M.insert (idRoot id env) (Type type_) env
+         -> L
+         -> L
+restrict id type_ lenv = 
+  lenv { propEnv = M.insert (idRoot id (propEnv lenv)) (Type type_) (propEnv lenv) }
 
 remove :: Id
        -> RuntimeTypeInfo
-       -> Env
-       -> Env
-remove id remove env = M.adjust f (idRoot id env)  env
-  where  f (Type exist) = case (remove, simpleType exist) of
+       -> L
+       -> L
+remove id remove lenv = lenv { propEnv = M.adjust f (idRoot id env) env }
+  where  env = propEnv lenv
+         f (Type exist) = case (remove, simpleType exist) of
              (TKnown r, TKnown e) -> 
                -- TODO: Document what happens the difference is the empty set.
                Type (TKnown (S.difference e r))
@@ -286,9 +299,11 @@ unionType _ TUnk = TUnk
 unionType (TKnown ts1) (TKnown ts2) = TKnown (S.union ts1 ts2)
 
 
-intersectEnv :: Env -> Env -> Env
-intersectEnv env1 env2 = M.unionWith f env1 env2
-  where f (Type t1) (Type t2) = Type (unionType t1 t2)
+intersectEnv :: L -> L -> State S L
+intersectEnv l1 l2 = return $ l1 { propEnv = M.unionWith f env1 env2 }
+  where env1 = propEnv l1
+        env2 = propEnv l2
+        f (Type t1) (Type t2) = Type (unionType t1 t2)
         f (Ref id1) (Ref id2) | id1 == id2 = Ref id1
         f (Ref id1) r2 = case M.lookup (idRoot id1 env1) env1 of
           Just root1 -> f root1 r2
@@ -315,21 +330,30 @@ succs node = do
   return (G.lsuc (sGraph state) node)
 
 
-stmt :: Env
+stmt :: L
      -> Node
      -> Stmt (Int, SourcePos)
-     -> State S [(Node, Env)]
+     -> State S [(Node, L)]
      -- ^The environments to push to each successor of this statement.
 stmt env node s = do
   succs <- succs node
-  let noop = return (zip (map fst succs) (repeat env)) 
+  let noop = return (zip (map fst succs) (repeat env))
   case s of
     SeqStmt _ _ -> noop
     EmptyStmt _ -> noop
     AssignStmt _ id e -> do
       t <- expr env e
       env <- assignEnv id t env
-      return (zip (map fst succs) (repeat env))
+
+      ix <- gensym
+      let name = id ++ "!" ++ (show ix)
+      let v = FreeVar name
+      env <- return $ env { propTerms = M.insert id v (propTerms env) }
+      case presTerm (propTerms env) e of
+        Nothing -> return (zip (map fst succs) (repeat env))
+        Just t -> do
+          let env' = env { propFormula = (propFormula env) :/\: (v :=: t) }
+          return (zip (map fst succs) (repeat env'))
     DirectPropAssignStmt _ id field e -> do
       t <- expr env e
       return (zip (map fst succs) (repeat env))
@@ -342,15 +366,25 @@ stmt env node s = do
       env <- assignUnknownEnv result env
       return (zip (map fst succs) (repeat env))
     IfStmt _ e _ _ -> do
-      t <-  expr env e
-      let f (node, Just (BoolLit _ True)) = case unRef t env of
-            TypeIs v t -> return (node, restrict v t env)
-            TypeIsNot v t -> return (node, remove v t env)
-            otherwise -> return (node, env)
+      t <- expr env e
+      let form = presForm (propTerms env) e
+      let trueForm  = case form of
+            Just form' -> (propFormula env) :/\: form'
+            Nothing -> (propFormula env)
+      let falseForm = case form of
+            Just form' -> (propFormula env) :/\: (Not form')
+            Nothing -> (propFormula env)
+
+      let f (node, Just (BoolLit _ True)) = case unRef t env of              
+            TypeIs    v t -> return (node, restrict v t env')
+            TypeIsNot v t -> return (node, remove v t env')
+            otherwise     -> return (node, env')
+           where env' = env { propFormula = trueForm }
           f (node, Just (BoolLit _ False)) = case unRef t env of
-            TypeIs v t -> return (node, remove v t env)
-            TypeIsNot v t -> return (node, restrict v t env)
-            otherwise -> return (node, env)
+            TypeIs    v t -> return (node, remove v t env')
+            TypeIsNot v t -> return (node, restrict v t env')
+            otherwise     -> return (node, env')
+           where env' = env { propFormula = falseForm }
           f (node, other) = fail "localTypes: invalid successor to IfStmt"
       mapM f succs
     --the conditional in the while acts just like an if
@@ -409,7 +443,53 @@ stmt env node s = do
     EnterStmt _ -> noop
     ExitStmt _ -> noop
 
-expr :: Env
+
+-- |Convert an expression into a formula for our Presburger arithmetic
+presTerm :: Map Id Term
+         -> Expr (Int, SourcePos)
+         -> Maybe Term
+presTerm env expr = case expr of
+  VarRef _ x -> M.lookup x env
+  DotRef _ (VarRef _ arr) "length" ->
+    return $ FreeVar (arr ++ "|" ++ "len")
+  Lit lit -> case lit of
+    IntLit _ n -> Just (fromIntegral n)
+    otherwise -> Nothing
+  OpExpr _ PrefixMinus [e'] -> do
+    p <- presTerm env e'
+    return (-1 .* p)
+  OpExpr _ op [e1, e2] -> do
+    t1 <- presTerm env e1
+    t2 <- presTerm env e2
+    case op of
+      OpAdd -> return (t1 + t2)
+      OpSub -> return (t1 - t2)
+      otherwise -> Nothing
+  otherwise -> Nothing
+
+presForm :: Map Id Term
+         -> Expr (Int, SourcePos)
+         -> Maybe Formula
+presForm env expr = case expr of
+  OpExpr _ PrefixLNot [e] -> do
+    f <- presForm env e
+    return (Not f)
+  OpExpr _ op [e1, e2] -> do
+    t1 <- presTerm env e1
+    t2 <- presTerm env e2
+    case op of
+      OpLEq -> return $ t1 :<=: t2
+      OpLT -> return $ t1 :<: t2
+      OpGT -> return $ t1 :>: t2
+      OpGEq -> return $ t1 :>=: t2
+      OpEq -> return $ t1 :=: t2
+      OpNEq -> return $ t1 :/=: t2
+      OpStrictEq -> return $ t1 :=: t2
+      OpStrictNEq -> return $ t1 :/=: t2
+      otherwise -> Nothing
+  otherwise -> Nothing
+
+expr :: L
      -> Expr (Int, SourcePos)
      -> State S Ref
 expr env e = case e of
@@ -443,6 +523,16 @@ expr env e = case e of
   DotRef _ obj field -> do
     _ <- expr env obj
     return (Type TUnk) -- we could do better here
+  BracketRef _ (VarRef _ arr) e2 -> do
+    let ix = presTerm (propTerms env) e2
+    case ix of
+      Nothing -> trace "Unverified BracketRef -- no term" (return $ Type TUnk)
+      Just term -> do
+        let openForm = (propFormula env) :=>: ((term :>=: 0) :/\: (term :<: (FreeVar (arr ++ "|" ++ "len"))))
+        let closedForm = closeFormula openForm (S.toList $ freeVars openForm)
+        trace ("I am checking " ++ show closedForm ++ "\n") (return $ Type TUnk)
+        trace ("YAAAA " ++ show (check closedForm)) (return $ Type TUnk)
+        
   BracketRef _ e1 e2 -> do
     _ <- expr env e1
     _ <- expr env e2
@@ -545,7 +635,7 @@ stmtFromNode gr node = case G.lab gr node of
     "localTypes: %s is not a node" (show node)
 
 
-body :: Env -> State S ()
+body :: L -> State S ()
 body initEnv = do
   state <- get
   let gr = sGraph state
@@ -557,12 +647,12 @@ body initEnv = do
           Nothing -> do
             put $ s { sDefs = M.insert node env defs }
             return True
-          Just env' -> case env == env' of
+          Just env' -> case propEnv env == propEnv env' of
             True -> return False
-            False -> do put $ s { sDefs = M.insert node
-                                                  (intersectEnv env env')
-                                                  defs }
-                        return True
+            False -> do 
+              newEnv <- intersectEnv env env'
+              put $ s { sDefs = M.insert node newEnv defs }
+              return True
 
   let getEnv node = do
         s <- get
@@ -570,7 +660,7 @@ body initEnv = do
           Just env -> return env
           Nothing -> fail "getEnv failure"
 
-  let work :: [(Node, Env)] -> State S ()
+  let work :: [(Node, L)] -> State S ()
       work [] = return ()
       work ((node, env):rest) = do
         r <- setEnv (node, env)
@@ -595,9 +685,9 @@ simpleType (TKnown ts) = TKnown (S.map simpleRuntimeType ts)
 simpleType TUnk = TUnk
 simpleType TUnreachable = TUnreachable
 
-unRef :: Ref -> Env -> Ref
-unRef (Ref id) env = case M.lookup id env of
-  Just r -> unRef r env
+unRef :: Ref -> L -> Ref
+unRef (Ref id) lenv = case M.lookup id (propEnv lenv) of
+  Just r -> unRef r lenv
   Nothing -> error "localTypes: unbound ref"
 unRef r _ = r
 
@@ -617,22 +707,13 @@ localTypes :: Graph -- ^intraprocedural control flow graph of a function
            -> Map Id RuntimeTypeInfo -- ^environment of the function
            -> Map Node (Map Id RuntimeTypeInfo) 
            -- ^environment at each statement
-localTypes gr env = M.map flattenEnv (sDefs (execState (body enterEnv) s))
-  where enterEnv = M.map Type env
+localTypes gr env = M.map (flattenEnv.propEnv)
+                          (sDefs (execState (body enterEnv) s))
+  where enterEnv = L (M.map Type env) initNames Pres.TRUE
         (enterNode, _) = G.nodeRange gr
-        s = S M.empty env gr []
+        s = S M.empty env gr [] 0
+        initNames = M.mapWithKey (\name _ -> Pres.FreeVar name) env
 
-localRefs :: Graph -- ^intraprocedural control flow graph of a function
-           -> Map Id RuntimeTypeInfo -- ^environment of the function
-           -> Map Node (Map Id Ref) -- ^environment at each statement
-localRefs gr env = sDefs (execState (body enterEnv) s)
-  where enterEnv = M.map Type env
-        (enterNode, _) = G.nodeRange gr
-        s = S M.empty env gr []
-
-prettyRefEnv :: Map Id Ref -> PP.Doc
-prettyRefEnv env = PP.cat (PP.punctuate PP.comma (map f $ M.toList env))
-  where f (id, t) = PP.text $ printf "%s = %s" id (show t)
 
 prettyEnv :: Map Id RuntimeTypeInfo -> PP.Doc
 prettyEnv env = PP.cat (PP.punctuate PP.comma (map f $ M.toList env))
