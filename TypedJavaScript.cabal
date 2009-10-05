@@ -37,7 +37,8 @@ Executable tjs
     ansi-terminal,
     HUnit,
     WebBits >= 1.0,
-    javascript-analysis >= 0.7.2
+    javascript-analysis >= 0.7.2,
+    presburger>=0.3
   ghc-options:
     -fwarn-incomplete-patterns
   Extensions:     

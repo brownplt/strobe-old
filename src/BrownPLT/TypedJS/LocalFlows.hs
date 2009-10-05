@@ -17,8 +17,8 @@ import qualified Data.Graph.Inductive as G
 import qualified Data.Set as S
 import qualified Data.Map as M
 import qualified Text.PrettyPrint.HughesPJ as PP
-import qualified BrownPLT.TypedJS.Presburger as Pres
-import BrownPLT.TypedJS.Presburger
+import Data.Integer.Presburger --presburger math
+import BrownPLT.TypedJS.Presburger --support for open formulas
 
 -- |The types discernable by runtime reflection.  These largely correspond
 -- to the possible results of JavaScript's @typeof@ operator.  In addition,
@@ -108,18 +108,12 @@ data Ref
   | TypeIsNot Id RuntimeTypeInfo
   deriving (Show, Eq, Ord)
 
-data OpenFormula
-  = FAnd OpenFormula OpenFormula
-  | FOr OpenFormula OpenFormula
-  | FEq
-
-
 type Env = Map Id Ref
 
 data L = L {
   propEnv :: Env,
-  propTerms :: Map Id Pres.Term,
-  propFormula :: Pres.Formula
+  propTerms :: Map Id OpenTerm,
+  propFormula :: OpenFormula
 }
 
 
@@ -352,7 +346,7 @@ stmt env node s = do
       case presTerm (propTerms env) e of
         Nothing -> return (zip (map fst succs) (repeat env))
         Just t -> do
-          let env' = env { propFormula = (propFormula env) :/\: (v :=: t) }
+          let env' = env { propFormula = (propFormula env) ::/\: (v ::=: t) }
           return (zip (map fst succs) (repeat env'))
     DirectPropAssignStmt _ id field e -> do
       t <- expr env e
@@ -369,10 +363,10 @@ stmt env node s = do
       t <- expr env e
       let form = presForm (propTerms env) e
       let trueForm  = case form of
-            Just form' -> (propFormula env) :/\: form'
+            Just form' -> (propFormula env) ::/\: form'
             Nothing -> (propFormula env)
       let falseForm = case form of
-            Just form' -> (propFormula env) :/\: (Not form')
+            Just form' -> (propFormula env) ::/\: (OpenNot form')
             Nothing -> (propFormula env)
 
       let f (node, Just (BoolLit _ True)) = case unRef t env of              
@@ -445,47 +439,47 @@ stmt env node s = do
 
 
 -- |Convert an expression into a formula for our Presburger arithmetic
-presTerm :: Map Id Term
+presTerm :: Map Id OpenTerm
          -> Expr (Int, SourcePos)
-         -> Maybe Term
+         -> Maybe OpenTerm
 presTerm env expr = case expr of
   VarRef _ x -> M.lookup x env
   DotRef _ (VarRef _ arr) "length" ->
     return $ FreeVar (arr ++ "|" ++ "len")
   Lit lit -> case lit of
-    IntLit _ n -> Just (fromIntegral n)
+    IntLit _ n -> Just (NumberTerm $ fromInteger $ toInteger n)
     otherwise -> Nothing
   OpExpr _ PrefixMinus [e'] -> do
     p <- presTerm env e'
-    return (-1 .* p)
+    return (Minus (NumberTerm 0) p)
   OpExpr _ op [e1, e2] -> do
     t1 <- presTerm env e1
     t2 <- presTerm env e2
     case op of
-      OpAdd -> return (t1 + t2)
-      OpSub -> return (t1 - t2)
+      OpAdd -> return (Plus t1 t2)
+      OpSub -> return (Minus t1 t2)
       otherwise -> Nothing
   otherwise -> Nothing
 
-presForm :: Map Id Term
+presForm :: Map Id OpenTerm
          -> Expr (Int, SourcePos)
-         -> Maybe Formula
+         -> Maybe OpenFormula
 presForm env expr = case expr of
   OpExpr _ PrefixLNot [e] -> do
     f <- presForm env e
-    return (Not f)
+    return (OpenNot f)
   OpExpr _ op [e1, e2] -> do
     t1 <- presTerm env e1
     t2 <- presTerm env e2
     case op of
-      OpLEq -> return $ t1 :<=: t2
-      OpLT -> return $ t1 :<: t2
-      OpGT -> return $ t1 :>: t2
-      OpGEq -> return $ t1 :>=: t2
-      OpEq -> return $ t1 :=: t2
-      OpNEq -> return $ t1 :/=: t2
-      OpStrictEq -> return $ t1 :=: t2
-      OpStrictNEq -> return $ t1 :/=: t2
+      OpLEq -> return $ t1 ::<=: t2
+      OpLT -> return $ t1 ::<: t2
+      OpGT -> return $ t1 ::>: t2
+      OpGEq -> return $ t1 ::>=: t2
+      OpEq -> return $ t1 ::=: t2
+      OpNEq -> return $ t1 ::/=: t2
+      OpStrictEq -> return $ t1 ::=: t2
+      OpStrictNEq -> return $ t1 ::/=: t2
       otherwise -> Nothing
   otherwise -> Nothing
 
@@ -528,8 +522,8 @@ expr env e = case e of
     case ix of
       Nothing -> trace "Unverified BracketRef -- no term" (return $ Type TUnk)
       Just term -> do
-        let openForm = (propFormula env) :=>: ((term :>=: 0) :/\: (term :<: (FreeVar (arr ++ "|" ++ "len"))))
-        let closedForm = closeFormula openForm (S.toList $ freeVars openForm)
+        let openForm = (propFormula env) ::=>: ((term ::>=: NumberTerm 0) ::/\: (term ::<: (FreeVar (arr ++ "|" ++ "len"))))
+        let closedForm = closeFormula openForm
         trace ("I am checking " ++ show closedForm ++ "\n") (return $ Type TUnk)
         trace ("YAAAA " ++ show (check closedForm)) (return $ Type TUnk)
         
@@ -709,10 +703,10 @@ localTypes :: Graph -- ^intraprocedural control flow graph of a function
            -- ^environment at each statement
 localTypes gr env = M.map (flattenEnv.propEnv)
                           (sDefs (execState (body enterEnv) s))
-  where enterEnv = L (M.map Type env) initNames Pres.TRUE
+  where enterEnv = L (M.map Type env) initNames OpenTRUE
         (enterNode, _) = G.nodeRange gr
         s = S M.empty env gr [] 0
-        initNames = M.mapWithKey (\name _ -> Pres.FreeVar name) env
+        initNames = M.mapWithKey (\name _ -> FreeVar name) env
 
 
 prettyEnv :: Map Id RuntimeTypeInfo -> PP.Doc
