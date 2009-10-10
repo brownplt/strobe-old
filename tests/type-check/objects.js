@@ -4,15 +4,15 @@ relations {
   { x :: Int, y :: Bool } <: { x :: Int };
   { x :: Int, y :: String } = { y :: String, x :: Int };
   // Fields are mutable by default.
-  fail { x :: { f1 :: Int, f2 :: String } } 
+  fail { x :: { f1 :: Int, f2 :: String } }
        <: { x :: { f1 :: Int } };
-  { readonly x :: { f1 :: Int, f2 :: String } } 
+  { readonly x :: { f1 :: Int, f2 :: String } }
   <: { readonly x :: { f1 :: Int } };
   fail { readonly x :: { f :: Int } }
   <: { x :: { f :: Int } };
   { x :: { f :: Int } }
   <: { readonly x :: { f :: Int } }
-  
+
 }
 
 expressions {
@@ -21,7 +21,7 @@ expressions {
   { x: 5 } :: {x :: Int};
   { x: 5.0 } :: {x :: Double};
   fail { x : 9, x : 10 };
-  
+
   { point: { x:5, y: 3} } :: {point :: {x::Int,y::Int}};
 
 
@@ -41,13 +41,13 @@ expressions {
   function() :: -> Undefined {
     var gadget = {
       debug : { error: function(s) :: String -> Undefined { return; },
-                trace: function(s) :: this :: Object:, String -> Undefined { 
+                trace: function(s) :: this :: Object:, String -> Undefined {
                          return; },
-                warning: function(s) :: this :: Object:, String -> Undefined { 
+                warning: function(s) :: this :: Object:, String -> Undefined {
                            return; } },
       storage : { extract: function(s) :: (String -> String) { return s; },
                   openText: function(s) :: (String -> String) { return s; } } };
-  
+
     var debugfunc = gadget.debug.warning;
     var extractfunc = gadget.storage.extract;
     // debugfunc(extractfunc("NUMBER_PROCESSORS"));
@@ -60,7 +60,7 @@ expressions {
 }
 
 expressions {
-  
+
   function (obj) :: {readonly x :: Int} -> Int {
     return obj.x;
   } :: {readonly x :: Int} -> Int;
@@ -69,12 +69,12 @@ expressions {
     obj.x = 3;
     return obj.x;
   };
-  
+
   function (obj) :: { x :: Int } -> Int {
     obj.x  = 900;
     return obj.x;
   } :: { x :: Int} -> Int
-  
+
 }
 
 expressions {
@@ -85,9 +85,9 @@ expressions {
   fail function (b,a) :: (Int -> {}), (Int -> {x::String}) -> Undefined
   { a = b; };
 
-  succeed function (b,a) :: ((Double -> Int), (Int -> Int) -> Undefined) 
+  succeed function (b,a) :: ((Double -> Int), (Int -> Int) -> Undefined)
   { a = b; };
-  
+
   fail function (b,a) :: ((Int -> Int), (Double -> Int) -> Undefined)
   { a = b; }
 }
@@ -98,12 +98,12 @@ body {
   Object.prototype.x = 93;
   var v :: Int = (5).x.x.x.x.x.x.x;
 }
-  
+
 body {
     Object.prototype.x = 93;
     var v :: Int = (5).x.x.x.x.x.x.x.x.x.x.x;
 }
-  
+
 body {
   Object.prototype.x = 93;
   var v :: Int = (5).x.x.x.x.x.x.x + (12).x.x;
@@ -123,13 +123,13 @@ body {
 
 body {
   Object.prototype.x = 93;
-  var obj :: { x :: Int } = { y : 900 }; 
+  var obj :: { x :: Int } = { y : 900 };
   var z :: Int = obj.x;
 }
 
 body {
   Object.prototype.x = 93;
-  var obj :: { } = { y : 900 }; 
+  var obj :: { } = { y : 900 };
   var z :: Int = obj.x;
 }
 
@@ -140,20 +140,20 @@ body {
 
 body {
   Object.prototype.x = { z : 3.14159 };
-  var obj = (10).x; 
+  var obj = (10).x;
   var s :: Double = obj.z;
 }
 
 body {
   Object.prototype.x = { z : 3.14159 };
-  var obj :: { z :: Double } = (10).x; 
+  var obj :: { z :: Double } = (10).x;
   var s :: Double = obj.z;
 }
 
 body fail {
   Object.prototype.x = { z : 3.14159 };
-  var obj :: {} = (10).x; 
-  // The Object brand does not have a field z.  So, if obj is declared to 
+  var obj :: {} = (10).x;
+  // The Object brand does not have a field z.  So, if obj is declared to
   // have type  {}, that field is effectively hidden and obj.z fails below.
   var s :: Double = obj.z;
 }
@@ -279,79 +279,79 @@ expressions {
   };
 
   succeed function() :: (-> Undefined) {
-  
+
     // z <: y
     var z :: { field :: Int, field2 :: Int } = { field: 50, field2: 9000 } ;
     var y :: { field :: Int } = { field: 50 };
-  
+
     var t :: Int = y.field;
     y = z; // this assignment should succeed
-  
+
     t = y.field;
   };
 
   fail function() :: (-> Undefined) {
-  
+
     // we do not have z <: y, since subtyping of array elements is invariant
     var z :: [{ field :: Int, field2 :: Int }]
       = [ { field: 50, field2: 9000 }  ];
     var y :: [{ field :: Int }] = [ { field: 50 } ];
-  
+
     var t :: Int = y[0].field;
     y = z; // this assignment fails
   };
 
 
   fail function() :: (-> Undefined) {
-  
+
   	// we do not have z <: y, since mutable fields are invariant for subtyping.
   	var z :: {x :: { field :: Int, field2 :: Int }} =
   		{x : {field: 50, field2: 9000 } };
   	var y :: {x :: { field :: Int }} =
   		{x : {field: 50 }};
-  
+
   	var t :: Int = y.x.field;
-  	y = z; // this assignment fails  
+  	y = z; // this assignment fails
   };
-  
+
   succeed function() :: (-> Undefined) {
-  
+
   	// we have z <: y
   	var z :: {readonly x :: { field :: Int, field2 :: Int }} =
   		{x : {field: 50, field2: 9000 } };
   	var y :: {readonly x :: { field :: Int }} =
   		{x : {field: 50 }};
-  
+
   	var t :: Int = y.x.field;
   	y = z; // this assignment succeeds
   };
 
   succeed function() :: (-> Undefined) {
-  
+
   	// we have z <: y
   	var z :: {readonly x :: { field :: Int, field2 :: Int }} =
   		{x : {field: 50, field2: 9000 } };
   	var y :: {readonly x :: { field :: Int }} =
   		{x : {field: 50 }};
-  
+
   	var t :: Int = y.x.field;
   	y = z;
     y.x.field = 999;
-  
+
   };
 
   fail function() :: (-> Undefined) {
-  
+
   	// we have z <: y
   	var z :: {readonly x :: { field :: Int, field2 :: Int }} =
   		{x : {field: 50, field2: 9000 } };
   	var y :: {readonly x :: { field :: Int }} =
   		{x : {field: 50 }};
-  
+
   	var t :: Int = y.x.field;
   	y = z;
-    y.x = { field : 999 }; 
-  
+    y.x = { field : 999 };
+
   }
 
 }
@@ -371,7 +371,7 @@ body {
 body {
     Object.prototype.x = { };
     var obj = {};
-    while (obj.x) { 
+    while (obj.x) {
       obj = obj.x;
     }
 }
@@ -390,13 +390,13 @@ body {
     this.x = x;
     this.y = y;
   }
-  
+
   var pt = new Point(10, 34);
-  
+
   var zz :: Int = pt.x + pt.y;
 
   Point.prototype.z = "LOL";
-  
+
   var t :: String = pt.z;
 }
 
@@ -462,6 +462,8 @@ body {
 
 body {
   constructor MyObj(y) :: Bool -> {x::U(String,Int),y::Int} {
+    this.x = 0; //defaults
+    this.y = 0;
     if (y)
       this.x = 99;
     else
@@ -478,10 +480,13 @@ body {
 
 body {
   constructor MyObj(y) :: Bool -> {x::U(String,Int),y::Int} {
+    this.x = 0; //defaults
+    this.y = 0;
+
     if (y)
-      var krom = 99;
+      var krom :: U(String, Int) = 99;
     else
-      var krom = "O MY GOD";
+      krom = "O MY GOD";
     this.x = krom;
     this.y = 0;
   }
@@ -586,7 +591,7 @@ body {
 }
 
 body {
-  
+
   function f(obj) :: { z :: Int, s :: (-> Int) } -> Int {
     return obj.s();
   }

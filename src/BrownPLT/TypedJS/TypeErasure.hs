@@ -105,9 +105,10 @@ eraseTypesTopLevel tl = case tl of
                     (JS.LDot p (JS.VarRef p (id brand)) field) 
                     (expr e)
   TopLevelStmt s -> stmt s
-  ConstructorStmt p brand args _ body -> JS.VarDeclStmt p [decl]
+  ConstructorStmt p brand args _ asgns body -> JS.VarDeclStmt p [decl]
     where decl = JS.VarDecl p (JS.Id p brand) (Just e)
-          e = JS.FuncExpr p (map (JS.Id p) args) (stmt body)
+          e = JS.FuncExpr p (map (JS.Id p) args) $ 
+                stmt (constrBodyStmt p asgns body)
   ImportStmt p name isAssumed ty -> JS.EmptyStmt p
   ImportConstrStmt p name isAssumed ty -> JS.EmptyStmt p
 

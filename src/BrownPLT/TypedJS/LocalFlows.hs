@@ -517,7 +517,7 @@ expr env e = case e of
   DotRef _ obj field -> do
     _ <- expr env obj
     return (Type TUnk) -- we could do better here
-  BracketRef _ (VarRef _ arr) e2 -> do
+  {- BracketRef _ (VarRef _ arr) e2 -> do
     let ix = presTerm (propTerms env) e2
     case ix of
       Nothing -> trace "Unverified BracketRef -- no term" (return $ Type TUnk)
@@ -525,7 +525,7 @@ expr env e = case e of
         let openForm = (propFormula env) ::=>: ((term ::>=: NumberTerm 0) ::/\: (term ::<: (FreeVar (arr ++ "|" ++ "len"))))
         let closedForm = closeFormula openForm
         trace ("I am checking " ++ show closedForm ++ "\n") (return $ Type TUnk)
-        trace ("YAAAA " ++ show (check closedForm)) (return $ Type TUnk)
+        trace ("YAAAA " ++ show (check closedForm)) (return $ Type TUnk) -}
         
   BracketRef _ e1 e2 -> do
     _ <- expr env e1

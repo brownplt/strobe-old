@@ -168,7 +168,8 @@ constructor EventStream(nodes, updater)
  this.sendsTo = []; // forward link
  this.weaklyHeld = false;
  this.updater = updater;
-
+ this.rank = 0;
+  
  for (var i = 0; i < nodes.length; i++) {
    nodes[i].attachListener(this);
  }

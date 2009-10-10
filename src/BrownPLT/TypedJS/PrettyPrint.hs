@@ -79,7 +79,7 @@ type_ t = case t of
   TForall t -> text "forall ." <+> type_ t
   TNamedForall x t -> text "forall" <+> text x <+> text "." <+> type_ t
   TIntersect t1 t2 -> parens (type_ t1) <> text " ^ " <> parens (type_ t2)
-  TConstr brand args initTy objTy -> commas (map type_ args) <+> text "->" <+>
+  TConstr brand args initTy objTy -> commas (map type_ args) <+> text "~~>" <+>
     type_ objTy
 
 
@@ -318,9 +318,9 @@ topLevel tl = case tl of
   TopLevelStmt s -> stmt s
   ExternalFieldStmt _ brand field e ->
     id brand <> text ".prototype." <> id field <+> text "=" <+> expr e
-  ConstructorStmt _ brand args ty body ->
+  ConstructorStmt p brand args ty asgns body ->
     text "constructor" <+> text brand <+> parens (commas $ map text args) <+>
-    text "::" <+> type_ ty <+> stmt body
+    text "::" <+> type_ ty <+> (stmt $ constrBodyStmt p asgns body)
   ImportStmt _ name isAssumed ty ->
     text "import" <+> assumed <> id name <+> text "::" <+> type_ ty
       where assumed = case isAssumed of

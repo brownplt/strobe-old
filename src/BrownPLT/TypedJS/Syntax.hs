@@ -2,6 +2,8 @@
 module BrownPLT.TypedJS.Syntax
   ( Expression(..)
   , CaseClause(..)
+  , ConstrFieldAsgn(..)
+  , constrBodyStmt
   , Statement(..)
   , InfixOp(..)
   , CatchClause(..)
@@ -144,9 +146,21 @@ data Statement a
   deriving (Show, Eq, Ord, Data, Typeable)
 
 
+data ConstrFieldAsgn a
+  = ConstrFieldAsgn a String (Expression a)
+  deriving (Show, Eq, Ord, Data, Typeable)
+
+asgnToStmt (ConstrFieldAsgn p n x) =
+  ExprStmt p (AssignExpr p OpAssign (LDot p (ThisRef p) n) x)
+--given a constructorstmt, turn fieldasgns into normal stmts and put in a block
+constrBodyStmt p asgns body = 
+  BlockStmt p $ (map asgnToStmt asgns) ++ [body]
+
 data TopLevel a
-  -- |@ConstructorStmt loc brand args constrTy body@
-  = ConstructorStmt a String [String] Type (Statement a)
+  -- |@ConstructorStmt loc brand args constrTy asgnbody body@
+  -- asgnbody is all the assignments to fields of constructors
+  -- body is the regularly scheduled programming
+  = ConstructorStmt a String [String] Type [ConstrFieldAsgn a] (Statement a)
   -- |@ExternalFieldStmt loc brand field expr@
   -- corresponds to
   -- @brand.prototype.field = expr@

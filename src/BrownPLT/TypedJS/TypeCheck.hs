@@ -20,6 +20,19 @@ import Control.Monad.Reader
 import Control.Monad.Error
 import System.IO.Unsafe
 
+--info for stmt, indicating whether we're in a constructor, or
+--a function, and containing relevant data
+
+data FunctionInfo 
+ = ToplevelInfo --no necessary info here 
+ | FunctionInfo Type --return type
+ --constructor has:
+ --expected this type (right of arrow)
+ --set of fields in this that have not yet been initialzed.
+ --unless the set is empty, the only allowed instructions are assignments to
+ --'this'
+ | ConstructorInfo Type (S.Set String) 
+ 
 
 runtimeEnv :: TypeCheck (Map String RuntimeTypeInfo)
 runtimeEnv = do
@@ -278,8 +291,18 @@ expr e = case e of
   BoolLit _ _ -> return boolType
   NullLit _ -> fail "NullLit NYI"
   ThisRef p -> lookupEnv p "this"
+
+  --empty array literal assignment:
+  AssignExpr p OpAssign lhs (ArrayLit _ []) -> do
+    s <- lvalue lhs
+    moan <- projType isArrayType s
+    case moan of
+      Just (TApp "Array" [r]) -> return $ intersectType (TApp "Array" [r]) 
+                  (openType r freeArrayType)
+      Nothing -> fatalTypeError p "assigning empty array lit to non-array var"
   ArrayLit p [] -> fatalTypeError p $ printf
     "empty array literals must be bound to identifiers with type annotations."
+
   ArrayLit p (e1:es) -> do
     t1 <- expr e1
     ts <- mapM expr es
@@ -379,6 +402,7 @@ expr e = case e of
       False -> do
         fatalTypeError p $ printf
           "incrementing/decrementing an expression of type %s" (renderType t)
+
   AssignExpr p OpAssign lhs rhs -> do
     t <- expr rhs
     s <- lvalue lhs
@@ -504,7 +528,7 @@ expr e = case e of
             -- Calculating types affects the brand store.  Scope the 
             -- effects and recompute in the calculated environment.
             env <- tempBrandStore $ bindTVars tvars $ calcTypes vars $ ask
-            local (const env) $ stmt (Just resultType) body
+            local (const env) $ stmt (FunctionInfo resultType) body
             return (foldr (\x t -> TForall (closeType x t)) t qtVars)
         -- annotation on the function is not a function type
         otherwise -> do
@@ -516,7 +540,7 @@ expr e = case e of
     | otherwise -> do
         s <- lookupEnv p x
         u <- static rt s   
-        --abba <- return $ unsafePerformIO $ putStr $ printf "%s: %s :: %s got called!!! rt is %s\n\n" (show p) x (renderType s) (show rt)        
+        
         case u of
           Just t -> return t --seq abba $ return t
           Nothing -> catastrophe p $ 
@@ -545,38 +569,38 @@ expr e = case e of
         printf "expected a quantified type, received %s" (renderType s)
         
 
-stmt :: Maybe Type -- ^ return type
+stmt :: FunctionInfo -- ^ are we at toplevel, in function, or in constr?
      -> Statement SourcePos
      -> TypeCheck ()
-stmt returnType s = case s of
-  BlockStmt _ ss -> mapM_ (stmt returnType) ss
+stmt finfo s = case s of
+  BlockStmt _ ss -> mapM_ (stmt finfo) ss
   EmptyStmt _ -> ok
   ExprStmt _ e -> expr e >> ok
   IfStmt _ e s1 s2 -> do
     expr e -- we permit non-boolean tests
-    stmt returnType s1
-    stmt returnType s2
+    stmt finfo s1
+    stmt finfo s2
   IfSingleStmt _ e s -> do
     expr e -- we permit non-boolean tests
-    stmt returnType s
+    stmt finfo s
   SwitchStmt _ e cases -> do
     expr e
     let case_ (CaseClause _ e ss) = do
           expr e
-          mapM_ (stmt returnType) ss
+          mapM_ (stmt finfo) ss
         case_ (CaseDefault _ ss) =
-          mapM_ (stmt returnType) ss
+          mapM_ (stmt finfo) ss
     mapM_ case_ cases
   WhileStmt _ e s -> do
     expr e
-    stmt returnType s
+    stmt finfo s
   DoWhileStmt _ s e -> do
-    stmt returnType s
+    stmt finfo s
     expr e
     ok
   BreakStmt _ _ -> ok
   ContinueStmt _ _ -> ok
-  LabelledStmt _ _ s -> stmt returnType s
+  LabelledStmt _ _ s -> stmt finfo s
   ForInStmt _ init e s -> fail "ForInStmt NYI"
   ForStmt _ init test incr s -> do
     case init of
@@ -589,13 +613,19 @@ stmt returnType s = case s of
     case incr of
       Nothing -> ok
       Just e -> expr e >> ok
-    stmt returnType s
+    stmt finfo s
   TryStmt _ body catches finally -> fail "TryStmt NYI"
   ThrowStmt _ e -> expr e >> ok
-  ReturnStmt p ret -> case returnType of
-    Nothing -> fatalTypeError p $ printf 
-      "return used in a constructor or at the top level"
-    Just returnType -> case ret of
+  ReturnStmt p ret -> case finfo of
+    ToplevelInfo -> fatalTypeError p $ printf 
+      "return used at the top level"
+    ConstructorInfo{} -> do 
+      --you can have blank 'return's in constructors
+      case ret of
+        Nothing -> ok
+        Just _ -> fatalTypeError p $ printf
+          "non-empty return used in a constructor"
+    FunctionInfo returnType -> case ret of
       Nothing -> do
         r <- isSubtype undefType returnType
         case r of
@@ -615,7 +645,50 @@ stmt returnType s = case s of
                      (renderType t) (renderType returnType)
   VarDeclStmt p decls -> mapM_ (decl) decls
 
+--returns a set unchecked fieldasgns
+constructorInit :: SourcePos
+                -> Type
+                -> S.Set String
+                -> [ConstrFieldAsgn SourcePos]
+                -> TypeCheck [ConstrFieldAsgn SourcePos]
+constructorInit p (TObject{}) fieldsLeft [] = do
+  if S.null fieldsLeft then return [] else 
+    fatalTypeError p $ printf 
+      "fields %s left uninitialized at end of constructor init block" 
+      (show $ S.toList fieldsLeft)
+constructorInit p (rtt@(TObject brand tyArgs fields)) fieldsLeft 
+                (asgns@((ConstrFieldAsgn p' n x):as)) = if S.null fieldsLeft
+  then return asgns 
+  else do
+    --if we're done initing all fields, can just stop and remove
+    --restrictions on the remaining asgns.
+    --otherwise:
     
+    fields' <- intersectBrand brand tyArgs
+    s <- case fieldType n (overrideFields fields fields') of
+           --even read-only stuff can be set here:
+           Just (s, _) -> return s
+           Nothing -> do
+             fatalTypeError p $ printf
+               "in constructor, this does not have the field %s\n%s"
+               n (show $ overrideFields fields fields')
+    --special-case array literals:
+    rhsTy <- case x of
+      ArrayLit _ [] -> do
+        moan <- projType isArrayType s
+        case moan of
+          Just (TApp "Array" [r]) -> return $ intersectType (TApp "Array" [r]) 
+                      (openType r freeArrayType)
+          Just _ -> catastrophe p "Terrible terrible not given array-ness"
+          Nothing -> fatalTypeError p "assigning mt array lit to non-array fld"
+      otherwise -> expr x
+    r <- isSubtype rhsTy s
+    case r of
+      True -> constructorInit p rtt (S.delete n fieldsLeft) as
+      False -> fatalTypeError p $ printf
+        "Error assigning to field %s in constructor: field has type %s,\
+         \ but given type %s" n (renderType s) (renderType rhsTy)
+constructorInit p _ _ _ = fatalTypeError p "stop fooling around"
 
 decl :: VarDecl SourcePos -> TypeCheck ()
 decl (VarDecl p (Id _ x) t) = do
@@ -664,13 +737,50 @@ topLevel tl = case tl of
     ty <- bindTVars tVars $ expr e
     extendBrand brand field ty
   ImportStmt p name isAssumed ty -> ok
-  TopLevelStmt s -> stmt Nothing s
-  -- TODO: Typecheck the body of the constructor
-  ConstructorStmt p brand args constrTy body -> do
+  TopLevelStmt s -> stmt ToplevelInfo s
+  c@(ConstructorStmt p brand args constrTy asgns body) -> do
     constrTy <- desugarType p constrTy
     newBrand brand (getConstrObj constrTy) (TObject "Object" [] [])
     -- TODO: newBrands need to be added at first. extensions added later
     -- for recursion, etc.
+    
+    --similar code to FuncExpr:
+    let (qtVars, t') = unForall constrTy
+    bindTVars qtVars $ do
+      t <- desugarType p t'
+      case t of
+        TConstr cBrand argTypes initThisType --can be obj, or undefined
+                                resultThisType@(TObject{}) -> do
+          unless (length args == length (nub args)) $
+            fatalTypeError p "function argument names must be unique"
+          unless (length args == length argTypes) $
+            fatalTypeError p "argument count mismatch"
+          nestEnv $ extendsEnv (zip args argTypes) $ 
+            extendEnv "this" resultThisType $ do
+            rtEnv <- runtimeEnv
+            localEnv <- declaredLocalTypes args body 
+            body <- runtimeAnnotations rtEnv localEnv body
+            (vars, tvars) <- localVars args body
+            -- Calculating types affects the brand store.  Scope the 
+            -- effects and recompute in the calculated environment.
+            env <- tempBrandStore $ bindTVars tvars $ calcTypes vars $ ask
+            let cinf = ConstructorInfo resultThisType
+                         (objectFieldNames resultThisType)
+            --make sure every field in resulting 'this' is initialized
+            --but don't have 'this' bound yet
+            
+            unused <- constructorInit p resultThisType 
+                        (objectFieldNames resultThisType) asgns            
+            --type check the rest, keeping that in mind:
+            local (const env) $ stmt cinf (constrBodyStmt p unused body)
+            ok
+        -- annotation on the constructor is not a constructor initThisTypee
+        otherwise -> do
+          fatalTypeError p $ printf "expected a constructor type, received %s" 
+                               (renderType t)
+
+
+--    stmt (ConstructorInfo constrTy S.empty) body
   ImportConstrStmt p (Id _ brand) isAssumed constrTy -> do
     constrTy <- desugarType p constrTy
     newBrand brand (getConstrObj constrTy) (TObject "Object" [] [])

@@ -15,6 +15,7 @@ module BrownPLT.TypedJS.Parser
   , parseTypedJavaScript
   ) where
 
+--import BrownPLT.TypedJS.Prelude(trace)
 import BrownPLT.TypedJS.TypeTheory (undefType)
 import qualified BrownPLT.JavaScript.Analysis.ANF as ANF
 import BrownPLT.TypedJS.Lexer hiding (identifier)
@@ -230,7 +231,8 @@ constrTy brand = withForall <|> withoutForall
           argTys <- type_' defaultThisTy `sepBy` comma
           reservedOp "->"
           fields <- braces (field defaultThisTy `sepBy` comma)
-          let initTy = boolType -- TODO: placeholder until constrs are checked
+          let initTy = TObject "Object" [] []
+          -- TODO: initTy will be something else eventually
           return (TConstr brand argTys initTy
                           (TObject brand tyArgs fields))
         withForall = do
@@ -349,7 +351,21 @@ parseBlockStmt = do
   pos <- getPosition
   statements <- braces (many parseStatement)
   return (BlockStmt pos statements)
-
+  
+parseConstrBlockStmt = do
+  pos <- getPosition
+  statements <- braces (many parseStatement)
+  --extract the set of field assignments to 'this', and separate them
+  
+  --the following is ---- ridiculous
+  let f asgns((ExprStmt p 
+                (ListExpr _ [
+                  (AssignExpr _ OpAssign (LDot _ (ThisRef _) n) x)])):ss) = 
+          f (asgns ++ [ConstrFieldAsgn p n x]) ss
+      f asgns stmts = 
+          (asgns, BlockStmt pos stmts)
+  return $ f [] statements
+    
 parseEmptyStmt:: StatementParser st 
 parseEmptyStmt = do
   pos <- getPosition
@@ -510,8 +526,6 @@ parseStatement = parseIfStmt <|> parseSwitchStmt <|> parseWhileStmt
   <|> parseBlockStmt <|> parseEmptyStmt <|> parseForInStmt <|> parseForStmt
   <|> parseTryStmt <|> parseThrowStmt <|> parseReturnStmt
   <|> varDeclStmt  <|> parseFunctionStmt
-  -- added for tJS
-  -- <|> parseConstructorStmt 
   -- order matters to handle ambiguity
   <|> parseLabelledStmt
   <|> parseExpressionStmt
@@ -992,8 +1006,8 @@ constrStmt = do
   args <- parens (Lexer.identifier `sepBy` comma)
   reservedOp "::"
   ty <- constrTy brand
-  body <- parseBlockStmt
-  return (ConstructorStmt p brand args ty body)
+  (asgns, body) <- parseConstrBlockStmt
+  return (ConstructorStmt p brand args ty asgns body)
 
 topLevel =
   constrStmt <|>

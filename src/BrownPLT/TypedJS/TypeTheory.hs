@@ -34,6 +34,8 @@ module BrownPLT.TypedJS.TypeTheory
   , canonize
   , lcType
   , fieldType
+  , objectFieldNames
+  , isTObject
   , overrideFields
   , intersectBrand
   , brandType
@@ -701,6 +703,14 @@ fieldType name ((name', ro, ty):rest)
   | name' > name = Nothing
   | otherwise = fieldType name rest
 
+objectFieldNames :: Type -> S.Set String
+objectFieldNames (TObject a b ((x,_,_):xs)) = S.union 
+  (S.singleton x) (objectFieldNames (TObject a b xs))
+objectFieldNames _ = S.empty
+
+isTObject :: Type -> Bool
+isTObject (TObject{}) = True
+isTObject _ = False
 
 overrideFields :: [Field] -> [Field] -> [Field]
 overrideFields [] ys = ys
