@@ -137,7 +137,7 @@ expression' idl = do
         Right s -> do
           let f = do
                 t <- desugarType p t
-                isSt <- isSubtype s t
+                isSt <- isSubtypeNc s t
                 return (isSt, t)
           let (r, t) = runTypeCheckWithoutError idl (withInitEnv f)
           let msg = printf "%s: expected subtype of\n%s\n, got\n%s"

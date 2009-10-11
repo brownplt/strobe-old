@@ -20,9 +20,13 @@ interface Object {
   boolean propertyIsEnumerable(in DOMString propname);
 };
 
-interface Math { };
+interface MathInterface { 
+  int floor(in float x);
+
+};
 
 const void undefined = 0;
 
 const HTMLDocument document = 0;
 
+const MathInterface Math = 0;

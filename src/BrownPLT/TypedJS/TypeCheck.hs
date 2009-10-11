@@ -22,17 +22,10 @@ import System.IO.Unsafe
 
 --info for stmt, indicating whether we're in a constructor, or
 --a function, and containing relevant data
-
 data FunctionInfo 
  = ToplevelInfo --no necessary info here 
  | FunctionInfo Type --return type
- --constructor has:
- --expected this type (right of arrow)
- --set of fields in this that have not yet been initialzed.
- --unless the set is empty, the only allowed instructions are assignments to
- --'this'
  | ConstructorInfo Type (S.Set String) 
- 
 
 runtimeEnv :: TypeCheck (Map String RuntimeTypeInfo)
 runtimeEnv = do
@@ -71,15 +64,16 @@ unLVal (LBracket p e1 e2) = BracketRef p e1 e2
 --
 -- pack X in pack Y in e has the type exists X . exists Y . t
 -- pack Y in e has the type exists Y . t
-implicitlyPack :: (Type, Type, Expression SourcePos)
+implicitlyPack :: SourcePos 
+               -> (Type, Type, Expression SourcePos)
                -> TypeCheck (Expression SourcePos, Type)
-implicitlyPack (actualTy, declaredTy, e) = case (actualTy, declaredTy) of
+implicitlyPack p (actualTy, declaredTy, e) = case (actualTy, declaredTy) of
   (TExists _, TExists _) -> return (e, actualTy)
   (_, TExists ty) -> freshTVar $ \x -> do
     let ty' = openType (TId x) ty
-    (e, actualTy) <- implicitlyPack (actualTy, ty', e)
+    (e, actualTy) <- implicitlyPack p (actualTy, ty', e)
     s <-  accumError "implicitly packing" $ unify actualTy ty'
-    let e' = PackExpr (initialPos "implicit pack")
+    let e' = PackExpr (setSourceName p ((sourceName p) ++ "==implicit pack"))
                       e (subst s (TId x)) (subst s (TExists ty))
     return (e', subst s $ TExists ty)
   otherwise -> return (e, actualTy)
@@ -112,7 +106,8 @@ callObj e = case e of
           Nothing -> fatalTypeError p $ printf
             "%s\ndoes not have the field %s" (renderType objTy) method
       Nothing -> fatalTypeError p $ printf
-        "expected an object with a field %s, got\n%s" method (renderType objTy)
+        "callObj dotref: expected an object with a field %s, got\n\
+        \%s" method (renderType objTy)
   BracketRef p obj method -> 
     error "calling BracketRef NYI"
   otherwise -> do
@@ -299,6 +294,7 @@ expr e = case e of
     case moan of
       Just (TApp "Array" [r]) -> return $ intersectType (TApp "Array" [r]) 
                   (openType r freeArrayType)
+      Just _ -> catastrophe p "projType isArrayType didn't give array"
       Nothing -> fatalTypeError p "assigning empty array lit to non-array var"
   ArrayLit p [] -> fatalTypeError p $ printf
     "empty array literals must be bound to identifiers with type annotations."
@@ -324,7 +320,8 @@ expr e = case e of
  
 
       Nothing -> fatalTypeError p $ printf
-        "expected an object with a field %s, got\n%s" x (renderType objTy)
+        "dotref: expected an object with a field %s, got\n\
+        \%s" x (renderType objTy)
   BracketRef p e1 e2 -> do
     t1 <- expr e1 >>= projType isArrayType
     t2 <- expr e2 >>= projType isIntType
@@ -406,6 +403,11 @@ expr e = case e of
   AssignExpr p OpAssign lhs rhs -> do
     t <- expr rhs
     s <- lvalue lhs
+
+    --packing, woo! (?)
+    (rhs, _) <- implicitlyPack p (t, s, rhs)
+    t <- expr rhs
+
     r <- isSubtype t s
     case r of
       True -> return t
@@ -471,7 +473,7 @@ expr e = case e of
                 "function expects %s arguments but %s were supplied"
                 (show $ length argTypes) (show $ length args)
             args <- accumError (show p) $ liftM (map fst) $ 
-              mapM implicitlyPack (zip3 argTys argTypes args)
+              mapM (implicitlyPack p) (zip3 argTys argTypes args)
             argTys <- mapM expr args
             argsMatch <- liftM and (mapM (uncurry isSubtype) 
                                    (zip argTys argTypes))
@@ -542,22 +544,23 @@ expr e = case e of
         u <- static rt s   
         
         case u of
-          Just t -> return t --seq abba $ return t
+          Just t -> return t
           Nothing -> catastrophe p $ 
             printf "%s :: %s is inconsistent with the runtime type %s" 
                    x (renderType s) (show rt)
-  PackExpr p e c t -> do
+  pe@(PackExpr p e c t) -> do
     t <- desugarType p t
     c <- desugarType p c
     case t of
       TExists t' -> do
         s <- expr e
-        isSt <- isSubtype s (openType c t')
+        isSt <- isSubtypeNc s (openType c t')
         case isSt of
           True -> return (TExists t')
           False -> do
-            fatalTypeError p $ printf "expected\n%s\nto have the shape\n%s"
-              (renderType s) (renderType (openType c t'))
+            fatalTypeError p $ printf "expected\n%s\nto have the shape\n%s\n\
+              \in expression\n%s"
+              (renderType s) (renderType (openType c t')) (renderExpr pe)
       otherwise -> fatalTypeError p $ printf
         "expected existential type to pack, received %s" (renderType t)
   TyAppExpr p e t -> do
@@ -635,9 +638,9 @@ stmt finfo s = case s of
                      (renderType returnType)
       Just e -> do
         t <- expr e
-        (e, _) <- implicitlyPack (t, returnType, e)
+        (e, _) <- (implicitlyPack p) (t, returnType, e)
         t <- expr e
-        r <- isSubtype t returnType
+        r <- isSubtypeNc t returnType
         case r of
           True -> ok
           False -> fatalTypeError p $ printf 
@@ -665,15 +668,15 @@ constructorInit p (rtt@(TObject brand tyArgs fields)) fieldsLeft
     --otherwise:
     
     fields' <- intersectBrand brand tyArgs
-    s <- case fieldType n (overrideFields fields fields') of
+    s <- (case fieldType n (overrideFields fields fields') of
            --even read-only stuff can be set here:
            Just (s, _) -> return s
            Nothing -> do
              fatalTypeError p $ printf
                "in constructor, this does not have the field %s\n%s"
-               n (show $ overrideFields fields fields')
+               n (show $ overrideFields fields fields')) >>= canonize
     --special-case array literals:
-    rhsTy <- case x of
+    rhsTy <- (case x of
       ArrayLit _ [] -> do
         moan <- projType isArrayType s
         case moan of
@@ -681,7 +684,7 @@ constructorInit p (rtt@(TObject brand tyArgs fields)) fieldsLeft
                       (openType r freeArrayType)
           Just _ -> catastrophe p "Terrible terrible not given array-ness"
           Nothing -> fatalTypeError p "assigning mt array lit to non-array fld"
-      otherwise -> expr x
+      otherwise -> expr x) >>= canonize
     r <- isSubtype rhsTy s
     case r of
       True -> constructorInit p rtt (S.delete n fieldsLeft) as
@@ -704,11 +707,11 @@ decl (VarDeclExpr p (Id _ x) (Just t) (ArrayLit _ [])) =
 decl (VarDeclExpr p (Id _ x) (Just t) e) = do
   s <- expr e
   t' <- desugarType p t
-  r <- isSubtype s t'
+  r <- isSubtypeNc s t'
   case r of
     True -> ok
     False -> do fatalTypeError p $ printf 
-                  "expression has type\n%s\n, but was declared to have type\n%s"
+                  "expression has type\n%s\n, but was declare to have type\n%s"
                   (renderType s) (renderType t')
 -- e may contain a function, therefore we must recompute the type.
 decl (VarDeclExpr p (Id _ x) Nothing e) = do

@@ -21,6 +21,7 @@ module BrownPLT.TypedJS.TypeTheory
   , unionType
   -- * Subtyping
   , isSubtype
+  , isSubtypeNc
   , areSubtypes
   , projFieldType
   , projType
@@ -61,11 +62,20 @@ doubleType = TApp "Double" []
 
 boolType = TApp "Bool" []
 
+rIntType = intersectType intType numberObjectType
+rDoubleType = intersectType doubleType numberObjectType
 
+--TODO: this shouldst mayhap be in an IDL
 freeArrayType = TObject "Array" [TIx 0]
   [ ("length", True, intersectType intType numberObjectType)
   , ("push", True, TArrow (TApp "Array" [TIx 0]) (ArgType [TIx 0] Nothing)
-                          undefType)
+                          rIntType)
+  , ("unshift", True, TArrow (TApp "Array" [TIx 0]) (ArgType [TIx 0] Nothing)
+                          rIntType)
+  , ("shift", True, TArrow (TApp "Array" [TIx 0]) (ArgType [] Nothing)
+                           (TIx 0))
+  , ("pop", True, TArrow (TApp "Array" [TIx 0]) (ArgType [] Nothing)
+                           (TIx 0))
   ]
 
 -- |Note that field names must be in ascending order.
@@ -241,6 +251,7 @@ substTypeInArgType x s (ArgType ts opt) =
   ArgType (map (substType x s) ts) (liftM (substType x s) opt)
 
 
+--and
 (+++) :: Monad m => m Bool -> m Bool -> m Bool
 m1 +++ m2 = do
   r1 <- m1
@@ -248,6 +259,7 @@ m1 +++ m2 = do
     True -> m2
     False -> return False
 
+--or
 (-=-) :: Monad m => m Bool -> m Bool -> m Bool
 m1 -=- m2 = do
   r1 <- m1
@@ -474,6 +486,15 @@ isSubtype s t = case (s, t) of
     liftM2 (||) (isSubtype s1 t) (isSubtype s2 t)
   otherwise -> return False
 
+-- |isSubtype, which canonizes the names
+isSubtypeNc :: EnvM m
+          => Type
+          -> Type
+          -> m Bool
+isSubtypeNc s t = do
+  s <- canonize s
+  t <- canonize t
+  isSubtype s t
 
 projBrand :: EnvM m => Type -> m (Maybe (String, [Type]))
 projBrand ty = case ty of

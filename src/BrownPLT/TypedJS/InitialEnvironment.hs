@@ -34,21 +34,24 @@ idlFiles =
   , "idl" </> "typedjs-core.idl"
   ]
 
+rIntType = intersectType intType numberObjectType
+rDoubleType = intersectType doubleType numberObjectType
 
 -- |Search for typedef in the DOM IDLs.  We need an entry for each typedef.
 extras :: [(String, Type)]
 extras = 
   [ ("DOMString", stringType)
-  , ("float", doubleType)
+  , ("float", rDoubleType)
+  , ("double", rDoubleType)
   , ("DOMObject", TObject "Object" [] [])
   , ("DOMUserData", TAny)
-  , ("DOMTimeStamp", intType)
+  , ("DOMTimeStamp", rIntType)
   ]
 
 
 parseIDLType :: IDL.Type -> Type
 parseIDLType t = case t of
-  IDL.TInt -> intType
+  IDL.TInt -> rIntType
   IDL.TBool -> boolType
   IDL.TVoid -> undefType
   IDL.TId id -> case lookup id extras of

@@ -8,6 +8,7 @@ module BrownPLT.TypedJS.Prelude
   , module Data.Tree
   , SourcePos
   , initialPos
+  , setSourceName
   , sourceName
   , sourceLine
   , sourceColumn

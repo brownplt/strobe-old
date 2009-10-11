@@ -2,6 +2,18 @@
  * Variable type annotations: 5
  * Explicit undefined tests: 1
  * Ad-hoc rewrites: doNotPropagate, PQ to avoid bounded polymorphism
+ *                  zip --> zip1, return obj vice array from lack of tuples
+ *                  PQ: had to add placeholder functions so the constructor
+ *                     init was happy...
+ *                  line 240: moved aroudn while loop to allow unpacking
+ *
+ * Unhappy things:
+ * Hacked together "Math" to work in typedjs-core.idl by defining
+ * MathInterface, and then a constant Math that has that interface.
+ *
+ * Had to add implicit packing to assignment. dnno if that's good or not.
+ *
+ * Adding lots of local vars to unpack stuff
  */
 var slice = function (arr, start, stop)
   :: forall a . [a], Int, Int? -> [a] {
@@ -17,13 +29,13 @@ var slice = function (arr, start, stop)
 // JST: We intentionally omit isEqual for the moment, since it uses runtime type
 // tests to defeat abstraction created by quantification.  The type system
 // could be altered to support it.
-/*
-var isEqual = function (a,b) :: forall x . x, x -> Bool {
+
+/*var isEqual = function (a,b) :: forall x . x, x -> Bool {
   return (a == b) ||
     ((((typeof(a) == 'number') && isNaN(a)) || a == 'NaN') &&
      (((typeof(b) == 'number') && isNaN(b)) || b == 'NaN'));
-}
-*/
+}*/
+
 
 var forEach = function(fn,arr) :: forall a . (a -> any), [a] -> Undefined {
   for (var i = 0 ; i < arr.length; i++) {
@@ -52,11 +64,14 @@ var zip = function(arrays) {
   return ret;
 }
 */
-
-var map1 = function(f,src) :: forall a b . (a -> b), [a] -> [b]{
-  var dest :: [b] = [ ];
-  for (var i = 0; i < src.length; i++) { dest.push(f(src[i])); }
-  return dest;
+//ad-hoc re-write: turn returned array into object with $0 and $1 fields
+var zip1 = function(array1, array2) :: forall a b . [a], [b] ->
+                                       [{$0 :: a, $1 :: b}] {
+  var ret :: [{$0 :: a, $1 :: b}] = [];
+  for (var i=0; i < array1.length; i++) {
+    ret.push({$0: array1[i], $1: array2[i]});
+  }
+  return ret;
 }
 
 // JST: variable arity
@@ -78,6 +93,12 @@ var map = function (fn) {
   }
 }
 */
+var map1 = function(f,src) :: forall a b . (a -> b), [a] -> [b]{
+  var dest :: [b] = [ ];
+  for (var i = 0; i < src.length; i++) { dest.push(f(src[i])); }
+  return dest;
+}
+
 
 var filter = function (predFn, arr) :: forall a . (a -> Bool), [a] -> [a] {
   var res :: [a] = [];
@@ -137,11 +158,12 @@ var foldR = function (fn, init) {
 };
 */
 
+//////////////////////////////////////////////////////////////////////////////
+// Flapjax core
+
 constructor DoNotPropagate() :: -> {} {
 }
-
 var doNotPropagate = new DoNotPropagate();
-
 constructor Pulse(stamp, value) :: forall p . Int, p
                                 -> { stamp :: Int, readonly value :: p }
 {
@@ -153,44 +175,152 @@ constructor Pulse(stamp, value) :: forall p . Int, p
 }
 
 var lastRank = 0;
-
+//the updater function takes a function and a node and does stuff..?
 constructor EventStream(nodes, updater)
- :: forall x y . [exists z . EventStream[z, x]:],
-                 (this :: EventStream[x,y]:, Pulse[x]:
-                  -> U(DoNotPropagate:, Pulse[y]:))
- -> { sendsTo :: [exists z . EventStream[y, z]:],
+ :: forall x y .
+      [exists z . EventStream[z, x]:],
+      (this :: EventStream[x,y]:,
+       (Pulse[x]: -> Undefined), Pulse[x]: -> U(DoNotPropagate:, Pulse[y]:))
+ -> { sendsTo :: [exists z. EventStream[y, z]:],
       rank :: Int,
-      weaklyHeld :: Bool,
       updater :: (this :: EventStream[x,y]:,
-                  Pulse[x]: -> U(DoNotPropagate:, Pulse[y]:))
+                  (Pulse[x]: -> Undefined),
+                   Pulse[x]: -> U(DoNotPropagate:, Pulse[y]:))
     }
 {
- this.sendsTo = []; // forward link
- this.weaklyHeld = false;
  this.updater = updater;
+ this.sendsTo = []; // forward link
  this.rank = 0;
-  
+
  for (var i = 0; i < nodes.length; i++) {
-   nodes[i].attachListener(this);
+   var ni :: unpack a = nodes[i];
+   ni.sendsTo.push(this);
  }
 
  this.rank = ++lastRank;
 }
 
-
-constructor PQ() :: forall a . -> {
-  insert :: (this :: PQ[a]:, Int, a -> Undefined),
-  isEmpty :: (this :: PQ[a]: -> Bool),
-  peek :: (this :: PQ[a]:, -> a),
-  pop :: (this :: PQ[a]:, ->  a)
+constructor PQ() :: -> {
+  insert :: (this :: PQ:, (exists x z . {
+                             k :: Int,
+                             n :: EventStream[x, z]:,
+                             v :: Pulse[x]:}) -> Undefined),
+  isEmpty :: (this :: PQ: -> Bool),
+  pop :: (this :: PQ:, ->  (exists x z . {
+                             k :: Int,
+                             n :: EventStream[x, z]:,
+                             v :: Pulse[x]:})),
+  val :: [(exists x z . {
+             k :: Int,
+             n :: EventStream[x, z]:,
+             v :: Pulse[x]:})]
 }
 {
-  // JST: constructors are unchecked
+  //placeholders:
+  this.val = [];
+  this.insert = function (b) :: (this :: PQ:, (exists x z . {
+                             k :: Int,
+                             n :: EventStream[x, z]:,
+                             v :: Pulse[x]:}) -> Undefined) {};
+  this.isEmpty = function () :: (this :: PQ:, -> Bool) { return true; }
+  this.pop = function () :: (this :: PQ:, -> (exists x z . {
+                             k :: Int,
+                             n :: EventStream[x, z]:,
+                             v :: Pulse[x]:})) { return this.val[0]; }
+
+  //now the real functions:
+  var ctx = this;
+  this.insert = function (kv_) :: (this :: PQ:, (exists x z . {
+                   k :: Int,
+                   n :: EventStream[x, z]:,
+                   v :: Pulse[x]:}) -> Undefined) {
+    var kv :: unpack x1 z1 = kv_;
+    ctx.val.push(kv);
+    var kvpos = ctx.val.length - 1;
+
+    while (1) {
+      var midval :: unpack x2 z2 = ctx.val[Math.floor((kvpos-1)/2)];
+      if (!(kvpos > 0 && kv.k < midval.k)) break;
+
+      var oldpos = kvpos;
+      kvpos = Math.floor((kvpos-1)/2);
+      ctx.val[oldpos] = ctx.val[kvpos];
+      ctx.val[kvpos] = kv;
+    }
+  };
+  this.isEmpty = function () :: (this :: PQ:, -> Bool) {
+    return ctx.val.length === 0;
+  }
+
+  this.pop = function () :: (
+               this :: PQ:, -> (
+                 exists x z . {
+                   k :: Int,
+                   n :: EventStream[x, z]:,
+                   p :: Pulse[x]:})) {
+    if(ctx.val.length == 1) {
+      var val :: unpack a b = ctx.val.pop();
+      return val; //ctx.val.pop();
+    }
+    var ret = ctx.val.shift();
+    ctx.val.unshift(ctx.val.pop());
+    var kvpos = 0;
+    var kv :: unpack a0 b0 = ctx.val[0];
+    while(1) {
+      var kvp1 :: unpack ap1 bp1 = ctx.val[kvpos*2+1];
+      var kvp2 :: unpack ap2 bp2 = ctx.val[kvpos*2+2];
+
+      var leftChild = (kvpos*2+1 < ctx.val.length
+                       ? kvp1.k
+                       : kv.k+1);
+      var rightChild = (kvpos*2+2 < ctx.val.length
+                        ? kvp2.k
+                        : kv.k+1);
+
+      if(leftChild > kv.k && rightChild > kv.k)
+	break;
+      else if(leftChild < rightChild) {
+	ctx.val[kvpos] = kvp1;   //implicit packing, here
+	ctx.val[kvpos*2+1] = kv;
+	kvpos = kvpos*2+1;
+      }
+      else {
+	ctx.val[kvpos] = kvp2;
+	ctx.val[kvpos*2+2] = kv;
+	kvpos = kvpos*2+2;
+      }
+    }
+    return ret;
+  };
 };
+
 
 var stamp = 1;
 var nextStamp = function () :: -> Int { return ++stamp; };
 
+//propagatePulse: Pulse * Array Node ->
+//Send the pulse to each node
+var propagatePulse = function (pulse, node) ::
+  forall a . Pulse[a]:, (exists z . EventStream[a,z]:) -> Undefined {
+  var queue = new PQ(); //topological queue for current timestep
+
+  queue.insert({k:node.rank,n:node,v:pulse});
+  while(!(queue.isEmpty())) {
+    var qv :: unpack x y = queue.pop();
+    //qv.n is [x, y]
+    //qv.v is [x]
+    //qv.n.updater :: ((Pulse[x] -> Undefined), Pulse[x] -> Pulse[y])
+
+    qv.n.updater(
+      function(nextPulse) :: (Pulse[x]: -> Undefined) {
+        for(var i=0; i<qv.n.sendsTo.length;i++)
+          queue.insert({k:qv.n.sendsTo[i].rank,n:qv.n.sendsTo[i],v:nextPulse});
+      }, new Pulse(qv.v.stamp,qv.v.value));
+  }
+};
+
+
+/*
 var currentlyPropagating = false;
 
 var timeQueue =
@@ -251,3 +381,4 @@ var propagate = function(now) :: Int -> Undefined {
 
 }
 
+*/
