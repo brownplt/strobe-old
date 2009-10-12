@@ -180,12 +180,14 @@ constructor EventStream(nodes, updater)
  :: forall x y .
       [exists z . EventStream[z, x]:],
       (this :: EventStream[x,y]:,
-       (Pulse[x]: -> Undefined), Pulse[x]: -> U(DoNotPropagate:, Pulse[y]:))
+       (Pulse[y]: -> Undefined), Pulse[x]: -> Undefined)
  -> { sendsTo :: [exists z. EventStream[y, z]:],
       rank :: Int,
+      //updater takes an x, transforms it into a y,
+      //and then passes that y along to the sender function.
       updater :: (this :: EventStream[x,y]:,
-                  (Pulse[x]: -> Undefined),
-                   Pulse[x]: -> U(DoNotPropagate:, Pulse[y]:))
+                  (Pulse[y]: -> Undefined),
+                   Pulse[x]: -> Undefined)
     }
 {
  this.updater = updater;
@@ -257,7 +259,7 @@ constructor PQ() :: -> {
                  exists x z . {
                    k :: Int,
                    n :: EventStream[x, z]:,
-                   p :: Pulse[x]:})) {
+                   v :: Pulse[x]:})) {
     if(ctx.val.length == 1) {
       var val :: unpack a b = ctx.val.pop();
       return val; //ctx.val.pop();
@@ -303,18 +305,25 @@ var nextStamp = function () :: -> Int { return ++stamp; };
 var propagatePulse = function (pulse, node) ::
   forall a . Pulse[a]:, (exists z . EventStream[a,z]:) -> Undefined {
   var queue = new PQ(); //topological queue for current timestep
-
-  queue.insert({k:node.rank,n:node,v:pulse});
+  var unnode :: unpack blah = node;
+  queue.insert({k:unnode.rank,n:unnode,v:pulse});
   while(!(queue.isEmpty())) {
     var qv :: unpack x y = queue.pop();
-    //qv.n is [x, y]
-    //qv.v is [x]
-    //qv.n.updater :: ((Pulse[x] -> Undefined), Pulse[x] -> Pulse[y])
+    //qv.n is EventStream taking x, giving y
+    //qv.v is the current pulse to be sent, an x
+    //qv.n.updater :: (y -> Undef), x -> Undef
+    //  that is, it takes an x, makes a y from it, and sends it
 
     qv.n.updater(
-      function(nextPulse) :: (Pulse[x]: -> Undefined) {
-        for(var i=0; i<qv.n.sendsTo.length;i++)
-          queue.insert({k:qv.n.sendsTo[i].rank,n:qv.n.sendsTo[i],v:nextPulse});
+      function(nextPulse) :: (Pulse[y]: -> Undefined) {
+        for(var i=0; i<qv.n.sendsTo.length;i++) {
+          //sendsTo is a node that takes the result, a y, and
+          //outputs anything, a blah2:
+          var sendsTo :: unpack blah2 = qv.n.sendsTo[i];
+          //nextPulse is the next pulse to be sent, an 'x'
+          //this function 'sends' it...
+          queue.insert({k:sendsTo.rank,n:sendsTo,v:nextPulse});
+        }
       }, new Pulse(qv.v.stamp,qv.v.value));
   }
 };
