@@ -66,16 +66,25 @@ rIntType = intersectType intType numberObjectType
 rDoubleType = intersectType doubleType numberObjectType
 
 --TODO: this shouldst mayhap be in an IDL
-freeArrayType = TObject "Array" [TIx 0]
+freeArrayType = let arrType = TApp "Array" [TIx 0] in 
+  TObject "Array" [TIx 0]
   [ ("length", True, intersectType intType numberObjectType)
-  , ("push", True, TArrow (TApp "Array" [TIx 0]) (ArgType [TIx 0] Nothing)
+  , ("push", True, TArrow arrType (ArgType [TIx 0] Nothing)
                           rIntType)
-  , ("unshift", True, TArrow (TApp "Array" [TIx 0]) (ArgType [TIx 0] Nothing)
+  , ("unshift", True, TArrow arrType (ArgType [TIx 0] Nothing)
                           rIntType)
-  , ("shift", True, TArrow (TApp "Array" [TIx 0]) (ArgType [] Nothing)
+  , ("shift", True, TArrow arrType (ArgType [] Nothing)
                            (TIx 0))
-  , ("pop", True, TArrow (TApp "Array" [TIx 0]) (ArgType [] Nothing)
+  , ("pop", True, TArrow arrType (ArgType [] Nothing)
                            (TIx 0))
+  , ("splice", True, 
+     TArrow arrType
+            (ArgType [numberObjectType, numberObjectType] Nothing)
+            arrType)
+  , ("concat", True, 
+     TArrow arrType
+            (ArgType [arrType] Nothing)
+            arrType)
   ]
 
 -- |Note that field names must be in ascending order.

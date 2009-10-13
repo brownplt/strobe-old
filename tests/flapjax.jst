@@ -1,12 +1,15 @@
 /* Necessary initializers: 1
  * Variable type annotations: 5
  * Explicit undefined tests: 1
- * Ad-hoc rewrites: doNotPropagate, PQ to avoid bounded polymorphism
- *                  zip --> zip1, return obj vice array from lack of tuples
- *                  PQ: had to add placeholder functions so the constructor
- *                     init was happy...
- *                  line 240: moved aroudn while loop to allow unpacking
- *
+ * Ad-hoc rewrites:
+ *     - doNotPropagate, PQ to avoid bounded polymorphism
+ *     - zip --> zip1, return obj vice array from lack of tuples
+ *     - PQ: had to add placeholder functions so the constructor
+ *       init was happy...
+ *     - line 240: moved aroudn while loop to allow unpacking
+ *     - attachListener for packing + unpacking workarounds
+ *       notably, have to turn .concat into a for loop so you can
+ *       unpack each thing separately.
  * Unhappy things:
  * Hacked together "Math" to work in typedjs-core.idl by defining
  * MathInterface, and then a constant Math that has that interface.
@@ -328,66 +331,72 @@ var propagatePulse = function (pulse, node) ::
   }
 };
 
-
-/*
-var currentlyPropagating = false;
-
-var timeQueue =
-  new (PQ@[{ k:: Int,
-             v :: PQ[(exists x z . { p :: Pulse[x]:, n :: EventStream[x,z]: })]:
-           }])();
-
-
-var propagate = function(now) :: Int -> Undefined {
-  // If when == now,
-  if (currentlyPropagating) {
-    // If when <= now, pulseQueue will be reached by the existing call to
-    // propagatePulse
-    return;
-  }
-
-  currentlyPropagating = true;
- // try {
-    var pulseQueue_ = timeQueue.peek();
-    if (pulseQueue_ && pulseQueue_.k <= now) {
-      var pulseQueue  = timeQueue.pop().v;
-
-      var len = 1;
-      while (len) {
-        var qv :: unpack x y = pulseQueue.pop();
-        len--;
-        var nextPulse :: U(DoNotPropagate:, Pulse[y]:)
-              = qv.n.updater(new Pulse(qv.p.stamp, qv.p.value));
-
-        var weaklyHeld = true;
-        //should work:
-        //if (nextPulse instanceof DoNotPropagate) continue;
-
-        if ((nextPulse instanceof Pulse)) {
-          for (var i = 0; i < qv.n.sendsTo.length; i++) {
-            var to :: unpack z = qv.n.sendsTo[i];
-            weaklyHeld = weaklyHeld && to.weaklyHeld;
-            len++;
-            //pulseQueue.insert(to.rank, { p: nextPulse, n: to });
-            var x = { p: nextPulse, n: to };
-            pulseQueue.insert(to.rank, x);
-          }
-          if (qv.n.sendsTo.length > 0 && weaklyHeld) {
-            qv.n.weaklyHeld = true;
-          }
-        }
-      }
-
-      pulseQueue_ = timeQueue.peek();
-
-    }
-
- // }
- // TODO: try-finally not supported yet, for no good reason
- // finally {
- //   currentlyPropagating = false;
- // }
-
+var createNode = function (nodes, updater) :: (
+  forall x y . [exists z . EventStream[z, x]:],
+               (this :: EventStream[x, y]:,
+                (Pulse[y]: -> Undefined), Pulse[x]: -> Undefined)
+               -> EventStream[x,y]:) {
+  return new EventStream(nodes, updater);
 }
 
-*/
+var attachListener = function(node, dependent) :: (
+  forall x y z . EventStream[x,y]:,
+                 EventStream[y,z]:
+                 -> Undefined) {
+  node.sendsTo.push(dependent);
+  if (node.rank > dependent.rank) {
+    var lowest = lastRank + 1;
+    //var q = [dependent]; //this line makes type checker thing
+    //                     //it doesn't have 'splice' field. should investigate
+
+    var q :: [exists a b . EventStream[a,b]:] = []; //[dependent]
+    q.push(dependent);
+    while (q.length) {
+      var cur :: unpack a b = q.splice(0,1)[0];
+      cur.rank = ++lastRank;
+      //q = q.concat(sendsTo);
+      for (var i = 0; i < cur.sendsTo.length; i++) {
+        var sendsTo :: unpack c = cur.sendsTo[i];
+        q.push(sendsTo);
+      }
+    }
+  }
+}
+
+//removeListener: Node * Node -> Boolean
+//remove flow from node to dependent
+//note: does not remove flow as counting for rank nor updates parent ranks
+//look ma, no type annotation srequired!
+var removeListener = function (node, dependent) :: (
+  forall x y z . EventStream[x,y]:,
+                 EventStream[y,z]:
+                 -> Bool) {
+  var foundSending = false;
+  for (var i = 0; i < node.sendsTo.length && !foundSending; i++) {
+    if (node.sendsTo[i] == dependent) {
+      node.sendsTo.splice(i, 1);
+      foundSending = true;
+    }
+  }
+
+  return foundSending;
+};
+
+// An internalE is a node that simply propagates all pulses it
+// receives.  It's used internally by various combinators.
+
+var internalE = function(dependsOn)  ::
+  (forall a . U(Undefined, [(exists z . EventStream[z,a]:)])
+     -> EventStream[a,a]:) {
+  var arry :: [(exists z . EventStream[z, a]:)] = [];
+  if (typeof dependsOn != "undefined") {
+    arry = dependsOn;
+  }
+
+  return createNode(
+    arry,
+    function(send,pulse) :: (this :: EventStream[a, a]:,
+                (Pulse[a]: -> Undefined), Pulse[a]: -> Undefined) {
+      send(pulse);
+    });
+}
