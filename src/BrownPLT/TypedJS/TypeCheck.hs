@@ -475,7 +475,7 @@ expr e = case e of
             args <- accumError (show p) $ liftM (map fst) $ 
               mapM (implicitlyPack p) (zip3 argTys argTypes args)
             argTys <- mapM expr args
-            argsMatch <- liftM and (mapM (uncurry isSubtype) 
+            argsMatch <- liftM and (mapM (uncurry isSubtypeNc) 
                                    (zip argTys argTypes))
             unless argsMatch $
               fatalTypeError p $ printf

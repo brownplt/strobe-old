@@ -30,3 +30,5 @@ const void undefined = 0;
 const HTMLDocument document = 0;
 
 const MathInterface Math = 0;
+
+const Window window = 0; //from window.idl

@@ -46,8 +46,8 @@ extras =
   , ("DOMObject", TObject "Object" [] [])
   , ("DOMUserData", TAny)
   , ("DOMTimeStamp", rIntType)
+  , ("AnyFunction", TArrow TAny (ArgType [] (Just TAny)) TAny)
   ]
-
 
 parseIDLType :: IDL.Type -> Type
 parseIDLType t = case t of

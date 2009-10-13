@@ -10,6 +10,7 @@
  *     - attachListener for packing + unpacking workarounds
  *       notably, have to turn .concat into a for loop so you can
  *       unpack each thing separately.
+ *     - lots of re-writing [] into var decls
  * Unhappy things:
  * Hacked together "Math" to work in typedjs-core.idl by defining
  * MathInterface, and then a constant Math that has that interface.
@@ -400,3 +401,62 @@ var internalE = function(dependsOn)  ::
       send(pulse);
     });
 }
+
+var zeroE = function() :: (-> EventStream[Any,Any]:) {
+  var arry :: [exists z. EventStream[z,Any]:] = [];
+  return createNode(
+    arry,
+    function(send,pulse) :: (this :: EventStream[Any,Any]:,
+                             (Pulse[Any]: -> Undefined), Pulse[Any]:
+                              -> Undefined) {
+      //throw ('zeroE : received a value; zeroE should not receive a value; the value was ' + pulse.value);
+  });
+};
+
+//note that this creates a new timestamp and new event queue
+var sendEvent = function (node, value) :: forall a . (
+  (exists z . EventStream[a,z]:), a -> Undefined) {
+  propagatePulse(new Pulse(nextStamp(), value),node);
+};
+
+//immediately send the pulse once
+var oneE = function(val) :: (forall a . a -> EventStream[a,a]:) {
+  var sent = false;
+  var arry :: [exists z . EventStream[z,a]:] = [];
+  var evt = createNode(
+    arry,
+    function(send,pulse) :: (this :: EventStream[a,a]:,
+                             (Pulse[a]: -> Undefined), Pulse[a]:
+                             -> Undefined) {
+      if (sent) {
+        throw ('oneE : received an extra value');
+      }
+      sent = true;
+      send(pulse);
+    });
+  window.setTimeout(
+    function() :: (-> Undefined) {
+      sendEvent@[a](evt,val); },
+    0);
+  return evt;
+};
+
+/*
+  var createNode = function (nodes, updater) :: (
+  forall x y . [exists z . EventStream[z, x]:],
+               (this :: EventStream[x, y]:,
+                (Pulse[y]: -> Undefined), Pulse[x]: -> Undefined)
+               -> EventStream[x,y]:) {
+
+var propagatePulse = function (pulse, node) ::
+  forall a . Pulse[a]:, (exists z . EventStream[a,z]:) -> Undefined {
+
+*/
+
+// a.k.a. mplus; mergeE(e1,e2) == mergeE(e2,e1)
+var mergeE2 = function(e1, e2) :: forall a .
+  (exists z . EventStream[z,a]:), (exists z . EventStream[z,a]:)
+  -> (exists z . EventStream[z,a]:) {
+  return internalE@[a]([e1, e2]);
+};
+
