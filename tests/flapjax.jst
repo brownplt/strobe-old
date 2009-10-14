@@ -12,12 +12,11 @@
  *       unpack each thing separately.
  *     - lots of re-writing [] into var decls
  * Unhappy things:
- * Hacked together "Math" to work in typedjs-core.idl by defining
- * MathInterface, and then a constant Math that has that interface.
- *
- * Had to add implicit packing to assignment. dnno if that's good or not.
- *
- * Adding lots of local vars to unpack stuff
+ * - Hacked together "Math" to work in typedjs-core.idl by defining
+ *   MathInterface, and then a constant Math that has that interface.
+ * - Had to add implicit packing to assignment. dnno if that's good or not.
+ * - Adding lots of local vars to unpack stuff
+ * - dnno what zeroE's type should be.
  */
 var slice = function (arr, start, stop)
   :: forall a . [a], Int, Int? -> [a] {
@@ -179,7 +178,7 @@ constructor Pulse(stamp, value) :: forall p . Int, p
 }
 
 var lastRank = 0;
-//the updater function takes a function and a node and does stuff..?
+
 constructor EventStream(nodes, updater)
  :: forall x y .
       [exists z . EventStream[z, x]:],
@@ -402,12 +401,12 @@ var internalE = function(dependsOn)  ::
     });
 }
 
-var zeroE = function() :: (-> EventStream[Any,Any]:) {
+var zeroE = function() :: forall a . (-> (exists z . EventStream[z,a]:)) {
   var arry :: [exists z. EventStream[z,Any]:] = [];
   return createNode(
     arry,
-    function(send,pulse) :: (this :: EventStream[Any,Any]:,
-                             (Pulse[Any]: -> Undefined), Pulse[Any]:
+    function(send,pulse) :: (this :: EventStream[Any,a]:,
+                             (Pulse[a]: -> Undefined), Pulse[Any]:
                               -> Undefined) {
       //throw ('zeroE : received a value; zeroE should not receive a value; the value was ' + pulse.value);
   });
@@ -441,6 +440,41 @@ var oneE = function(val) :: (forall a . a -> EventStream[a,a]:) {
   return evt;
 };
 
+// a.k.a. mplus; mergeE(e1,e2) == mergeE(e2,e1)
+var mergeE2 = function(e1, e2) :: forall a .
+  (exists z . EventStream[z,a]:), (exists z . EventStream[z,a]:)
+  -> (exists z . EventStream[z,a]:) {
+  return internalE@[a]([e1, e2]);
+};
+var mergeE = function(es) :: forall a .
+  [(exists z . EventStream[z,a]:)] -> (exists z . EventStream[z,a]:) {
+  if (es.length == 0)
+    return zeroE@[a]();
+  return internalE@[a](es);
+};
+
+//you can only merge this event stream if it has 1 type arg?
+var ES_mergeE = function(this_, es) :: (forall a .
+    EventStream[a, a]:, [(exists z . EventStream[z, a]:)]
+    -> EventStream[a, a]:) {
+  var deps = es;
+  deps.push(this_);
+  return internalE@[a](deps);
+}
+
+var ES_constantE = function(this_, constantValue) :: (forall p q a .
+     EventStream[p, q]:, a -> EventStream[q,a]:) {
+  //why is implicit packing failing here?
+  var theAttached :: (exists z . EventStream[z, q]:) = this_;
+  return createNode(
+    theAttached,
+    function(send, pulse) :: (this :: EventStream[q,a]:,
+                              (Pulse[a]: -> Undefined), Pulse[q]: -> Undefined){
+      var newP = new Pulse(pulse.stamp, constantValue);
+      send(newP);
+    });
+}
+
 /*
   var createNode = function (nodes, updater) :: (
   forall x y . [exists z . EventStream[z, x]:],
@@ -452,11 +486,4 @@ var propagatePulse = function (pulse, node) ::
   forall a . Pulse[a]:, (exists z . EventStream[a,z]:) -> Undefined {
 
 */
-
-// a.k.a. mplus; mergeE(e1,e2) == mergeE(e2,e1)
-var mergeE2 = function(e1, e2) :: forall a .
-  (exists z . EventStream[z,a]:), (exists z . EventStream[z,a]:)
-  -> (exists z . EventStream[z,a]:) {
-  return internalE@[a]([e1, e2]);
-};
 
