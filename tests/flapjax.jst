@@ -17,6 +17,7 @@
  * - Had to add implicit packing to assignment. dnno if that's good or not.
  * - Adding lots of local vars to unpack stuff
  * - dnno what zeroE's type should be.
+ * - unification fails in ES_constantE.
  */
 var slice = function (arr, start, stop)
   :: forall a . [a], Int, Int? -> [a] {
@@ -465,9 +466,11 @@ var ES_mergeE = function(this_, es) :: (forall a .
 var ES_constantE = function(this_, constantValue) :: (forall p q a .
      EventStream[p, q]:, a -> EventStream[q,a]:) {
   //why is implicit packing failing here?
-  var theAttached :: (exists z . EventStream[z, q]:) = this_;
-  return createNode(
-    theAttached,
+  var theAttached :: (exists z . EventStream[z, q]:) =
+     pack p (exists z . EventStream[z, q]:) in this_;
+  var attchArray = [theAttached];
+  return createNode@[q,a]( //XXX: unification fails here, must do it manually
+    attchArray,
     function(send, pulse) :: (this :: EventStream[q,a]:,
                               (Pulse[a]: -> Undefined), Pulse[q]: -> Undefined){
       var newP = new Pulse(pulse.stamp, constantValue);
