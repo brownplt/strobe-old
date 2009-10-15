@@ -11,6 +11,9 @@
  *       notably, have to turn .concat into a for loop so you can
  *       unpack each thing separately.
  *     - lots of re-writing [] into var decls
+ *     - re-write Behavior to create local _updater that can't
+ *       be Undefined (replace it w/ identity function if given Undefined)
+ *     - eventually must rewrite bindE to not use union for prevE
  * Unhappy things:
  * - Hacked together "Math" to work in typedjs-core.idl by defining
  *   MathInterface, and then a constant Math that has that interface.
@@ -18,6 +21,10 @@
  * - Adding lots of local vars to unpack stuff
  * - dnno what zeroE's type should be.
  * - unification fails in ES_constantE.
+ * - more needing of placeholders in the Behavior constructor
+ * - 558: why do I have to give it 'undefined' explicitly?
+ * - no initial value is possible in bindE, to prevE. so i dnno how to
+ *   re-write it to not use unions. blargh argh argh argh argh.
  */
 var slice = function (arr, start, stop)
   :: forall a . [a], Int, Int? -> [a] {
@@ -382,6 +389,19 @@ var removeListener = function (node, dependent) :: (
 
   return foundSending;
 };
+//removeListener_undef:
+//does nothing if its first argument is undefined
+//remove flow from node to dependent
+//note: does not remove flow as counting for rank nor updates parent ranks
+//look ma, no type annotation srequired!
+/*
+var removeListener_undef = function (node, dependent) :: (
+  forall x y z . U(Undefined, EventStream[x,y]:),
+                 EventStream[y,z]:
+                 -> Bool) {
+  if (typeof node == "undefined") return false;
+  return removeListener(node, dependent);
+};*/
 
 // An internalE is a node that simply propagates all pulses it
 // receives.  It's used internally by various combinators.
@@ -478,15 +498,128 @@ var ES_constantE = function(this_, constantValue) :: (forall p q a .
     });
 }
 
+var constantE = function(e, v) :: (forall p q a .
+    EventStream[p, q]:, a -> EventStream[q,a]:) {
+  return ES_constantE(e, v);
+}
+
+//TODO: deal w/ this mess later
+/*var createTimeSyncNode = function(nodes) :: (
+  exists a b . EventStream[a,b]: -> {
+  var nqs = map1(
+    function(n) {
+      var qpulse = [];
+      return {
+        q:qpulse,
+        v:createNode(
+          [n],
+          function(s,p) {
+            qpulse.push(p.value);
+            s(p);
+          },
+          nodes)
+      };
+    }, nodes);
+
+  return createNode(
+    map1(function(n) { return n.v; },
+         nqs),
+    function(s,p) {
+      var allfull = fold(
+        function(n,acc) {
+          return n.q.length && acc;
+        }, true, nqs);
+
+      if(allfull) {
+        p.value = map(function(n) {return n.q.shift();}, nqs);
+        s(p);
+      }
+    });
+};*/
+
+
+constructor Behavior(event, init, updater)
+ :: forall a . (exists z . EventStream[z,a]:), a,
+               U(Undefined, (a -> a))
+ -> { last :: a, tmp :: [exists z . EventStream[z,a]:],
+      underlyingRaw :: (exists z . EventStream[z, a]:),
+      underlying :: EventStream[a,a]: } {
+  this.last = init;
+  //sendEvent to this might impact other nodes that depend on this event
+  //sendBehavior defaults to this one
+  this.underlyingRaw = event;
+  this.tmp = [];
+  //need a placeholder for 'underlying'
+  this.underlying = createNode@[a,a](
+    this.tmp,
+    function(s,p)::(this::EventStream[a,a]:,
+                    (Pulse[a]: -> Undefined), Pulse[a]: -> Undefined){});
+
+  //rest of the function:
+  var behave = this;
+
+  //unexposed, sendEvent to this will only impact dependents of this behaviour
+  var _updater = function(x) :: a -> a { return x; }
+  if (typeof updater != "undefined") _updater = updater;
+  this.underlying = createNode@[a,a](
+    [event],
+    function(s, p)::(this::EventStream[a,a]:,
+                        (Pulse[a]: -> Undefined), Pulse[a]: -> Undefined) {
+       behave.last = _updater(p.value);
+       p = new Pulse(p.stamp, behave.last);
+       s(p);
+    });
+}
+
+var receiverE = function() :: (forall a . -> EventStream[a,a]:) {
+  var evt = internalE@[a](undefined); //what happened to implicit arity?
+  //why do some EventStreams have sendEvent, and others don't?
+  /*evt.sendEvent = function(value) {
+    propagatePulse(new Pulse(nextStamp(), value),evt);
+  };*/
+  return evt;
+};
+
+// bindE :: EventStream a * (a -> EventStream b) -> EventStream b
+var ES_bindE = function(this_, k) :: (
+  forall a b q . EventStream[a,b]:, (b -> EventStream[b,q]:) ->
+                 EventStream[q,q]:) {
+  /* m.sendsTo resultE
+   * resultE.sendsTo prevE
+   * prevE.sendsTo returnE
+   */
+  var m = this_;
+  var prevE :: U(Undefined, EventStream[b,q]:) = undefined;
+  var arry :: [exists xx . EventStream[xx, q]:] = []
+
+  var outE = createNode(
+    arry,
+    function(send,pulse) :: (this :: EventStream[q,q]:,
+                             (Pulse[q]: -> Undefined), Pulse[q]:
+                             -> Undefined) { send(pulse); });
+  //outE.name = "bind outE";
+
+  //XXX: unification and implicit packing fails
+  var inE = createNode@[b,b](
+    [pack a (exists q . EventStream[q,b]:) in m],
+    function (send,pulse) :: (this :: EventStream[b,b]:,
+                              (Pulse[b]: -> Undefined), Pulse[b]:
+                              -> Undefined) {
+      if (typeof prevE != "undefined") {
+        removeListener(prevE,outE);
+      }
+      prevE = k(pulse.value);
+      attachListener(prevE,outE);
+    });
+  //inE.name = "bind inE";
+
+  return outE;
+};
+
 /*
-  var createNode = function (nodes, updater) :: (
-  forall x y . [exists z . EventStream[z, x]:],
-               (this :: EventStream[x, y]:,
-                (Pulse[y]: -> Undefined), Pulse[x]: -> Undefined)
-               -> EventStream[x,y]:) {
+ * var attachListener = function(node, dependent) :: (
+  forall x y z . EventStream[x,y]:,
+                 EventStream[y,z]:
+                 -> Undefined) {
 
-var propagatePulse = function (pulse, node) ::
-  forall a . Pulse[a]:, (exists z . EventStream[a,z]:) -> Undefined {
-
-*/
-
+ */
