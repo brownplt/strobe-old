@@ -1,6 +1,18 @@
 //FROM http://www.icefox.net/programs/?program=JavaScript%20Genetic%20Algorithm
 
-//re-writes: Used 'tuples' instead of arrays to store a point
+/* Annotations:
+ * - 7 lines for the object's type
+ * - 6 lines for function annotations, 1 per function
+ * - 74 --> 87 = 17.5% penalty, aww.. but there are many short functions
+ * 
+ * Ad-hoc re-writes:
+ * - Use 'tuples' instead of arrays of 2 to store a point
+ *   Had to modify 1 line a lot, and 6 lines a little (.x instead of [0])
+ *
+ * Minor re-writes:
+ * - 1 line set a Point to 0 instead of [0,0] , had to change that
+ * - changed a 0 to a 0.0
+ */
 
 
 constructor Salesman() :: -> {
@@ -11,17 +23,10 @@ constructor Salesman() :: -> {
     maxArg :: (this :: Salesman:, -> Int),
     getArg :: (this :: Salesman:, Int, Int -> Int),
     paint :: (this :: Salesman:, [Int] -> Undefined)} {
-
-    this.points = [{x:0,y:0},
-                   {x:10,y:10},
-                   {x:6,y:6},
-                   {x:5,y:6},
-                   {x:3,y:3},
-                   {x:7,y:2}];
+    this.points = [{x:0,y:0},{x:10,y:10},{x:6,y:6},{x:5,y:6},{x:3,y:3},{x:7,y:2}];
 
     this.distance = function(a, b) :: (
-      this :: Salesman:,
-      {x::Int,y::Int}, {x::Int,y::Int} -> Double) {
+      this :: Salesman:, {x::Int,y::Int}, {x::Int,y::Int} -> Double) {
         var x = Math.abs(a.x - b.x);
         var y = Math.abs(a.y - b.y);
         return Math. sqrt(x * x + y * y);
@@ -30,7 +35,7 @@ constructor Salesman() :: -> {
     this.fitness = function(values) :: (
       this :: Salesman:, [Int] -> Double) {
         var used = [this.points.length];
-        var length = 0.0;
+        var length = 0.0; //changed from 0
         var previous = values[0];
         var a = this.points[previous];
         used[previous] = 1;
@@ -66,14 +71,13 @@ constructor Salesman() :: -> {
     this.paint = function(values) :: (this :: Salesman:, [Int] -> Undefined) {
         var canvas = document.getElementById('bestimage');
         if (true) { //(canvas.getContext) {
-            var i = 0;
             /*var w = canvas.width;
             var h = canvas.height;
             var canvasContext = canvas.getContext('2d');
             canvasContext.clearRect(0, 0, w, h);*/
 
             // draw points
-            for (i = 0; i < this.points.length; ++i){
+            for (var i = 0; i < this.points.length; ++i){
                 var x = this.points[values[i]].x * 10;
                 var y = this.points[values[i]].y * 10;
                 /*canvasContext.beginPath();
