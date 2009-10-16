@@ -1,0 +1,97 @@
+//FROM http://www.icefox.net/programs/?program=JavaScript%20Genetic%20Algorithm
+
+//re-writes: Used 'tuples' instead of arrays to store a point
+
+
+constructor Salesman() :: -> {
+    points :: [{x::Int,y::Int}],
+    distance :: (this :: Salesman:, {x::Int,y::Int}, {x::Int,y::Int} -> Double),
+    fitness :: (this :: Salesman:, [Int] -> Double),
+    numberOfArgs :: (this :: Salesman:, -> Int),
+    maxArg :: (this :: Salesman:, -> Int),
+    getArg :: (this :: Salesman:, Int, Int -> Int),
+    paint :: (this :: Salesman:, [Int] -> Undefined)} {
+
+    this.points = [{x:0,y:0},
+                   {x:10,y:10},
+                   {x:6,y:6},
+                   {x:5,y:6},
+                   {x:3,y:3},
+                   {x:7,y:2}];
+
+    this.distance = function(a, b) :: (
+      this :: Salesman:,
+      {x::Int,y::Int}, {x::Int,y::Int} -> Double) {
+        var x = Math.abs(a.x - b.x);
+        var y = Math.abs(a.y - b.y);
+        return Math. sqrt(x * x + y * y);
+    };
+
+    this.fitness = function(values) :: (
+      this :: Salesman:, [Int] -> Double) {
+        var used = [this.points.length];
+        var length = 0.0;
+        var previous = values[0];
+        var a = this.points[previous];
+        used[previous] = 1;
+        var b = {x:0,y:0}; //type error-ish?
+        for (var i = 1; i < values.length; ++i) {
+            b = this.points[values[i]];
+            if (used[values[i]] == 1)
+                return 1000;
+            length += this.distance(a, b);
+            previous = values[i];
+            used[previous] = 1;
+            a = b;
+        }
+        return length;
+    };
+
+    // the size of values that should be passed to fitness
+    this.numberOfArgs = function() :: (this :: Salesman:, -> Int) {
+      return this.points.length; };
+
+    // the max value needed for the arguments
+    this.maxArg = function() :: (this :: Salesman:, -> Int) {
+      return this.points.length; };
+
+    // convert the current chromosome value which can have a maxValue
+    // into something fitness can use.
+    this.getArg = function(value, maxValue) :: (
+      this :: Salesman:, Int, Int -> Int) {
+        return Math.round(value * (this.points.length - 1) / maxValue);
+    };
+
+    // Paint the solution onto bestimage
+    this.paint = function(values) :: (this :: Salesman:, [Int] -> Undefined) {
+        var canvas = document.getElementById('bestimage');
+        if (true) { //(canvas.getContext) {
+            var i = 0;
+            /*var w = canvas.width;
+            var h = canvas.height;
+            var canvasContext = canvas.getContext('2d');
+            canvasContext.clearRect(0, 0, w, h);*/
+
+            // draw points
+            for (i = 0; i < this.points.length; ++i){
+                var x = this.points[values[i]].x * 10;
+                var y = this.points[values[i]].y * 10;
+                /*canvasContext.beginPath();
+                canvasContext.arc(x, y, 3, 0, Math.PI*2, true);
+                canvasContext.fill();*/
+            }
+
+            // draw path
+            //canvasContext.beginPath();
+            for (i = 0; i < this.points.length; ++i){
+                x = this.points[values[i]].x * 10;
+                y = this.points[values[i]].y * 10;
+                /*if (i == 0)
+                    canvasContext.moveTo(x, y);
+                else
+                    canvasContext.lineTo(x, y);*/
+            }
+            //canvasContext.stroke();
+        }
+    }
+}

@@ -22,6 +22,9 @@ interface Object {
 
 interface MathInterface { 
   int floor(in float x);
+  float abs(in float x);
+  float sqrt(in float x);
+  int round(in float x);
 
 };
 
