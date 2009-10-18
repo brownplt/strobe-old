@@ -15,5 +15,7 @@ interface Window {
   attribute HTMLDocument document;
 
   int setTimeout(in AnyFunction func, in int timelen);
+  int parseInt(in String s);
+  void alert(in String s);
 
 }

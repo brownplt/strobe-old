@@ -199,6 +199,9 @@ type_'' thisTy = do
   let int = do
         reserved "Int"
         return $ intersectType (TApp "Int" []) numberObjectType
+  let string = do
+        reserved "String"
+        return $ intersectType (TApp "String" []) stringObjectType
   let double = do
         reserved "Double"
         return $ intersectType (TApp "Double" []) numberObjectType
@@ -212,8 +215,8 @@ type_'' thisTy = do
         case isUpper (head id) of
           True -> brandedObject id <|> (return $ TApp id [])
           False ->return (TId id)
-    in parens (type_ thisTy) <|> array <|> any <|> (try union) <|> object <|> int <|> 
-       double <|> other
+    in parens (type_ thisTy) <|> array <|> any <|> (try union) 
+         <|> object <|> int <|> double <|> string <|> other
 
 
 field :: Type -> CharParser st (String, Bool, Type)

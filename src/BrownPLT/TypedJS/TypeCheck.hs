@@ -279,7 +279,7 @@ lvalue lv = case lv of
 expr :: Expression SourcePos 
      -> TypeCheck Type
 expr e = case e of
-  StringLit _ _ -> return stringType
+  StringLit _ _ -> return $ intersectType stringType stringObjectType
   RegexpLit _ _ _ _ -> fail "RegexpLit NYI"
   NumLit p _ -> return $ intersectType doubleType numberObjectType
   IntLit p _ -> return $ intersectType intType numberObjectType
@@ -808,6 +808,7 @@ withInitEnv m = do
   objTy <- brandType "Object" []
   newBrand "Array" (TForall freeArrayType) objTy
   newBrand "Number" numberObjectType objTy
+  newBrand "String" stringObjectType objTy
   m
 
 

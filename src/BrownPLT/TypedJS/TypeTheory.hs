@@ -6,6 +6,7 @@ module BrownPLT.TypedJS.TypeTheory
   , boolType
   , freeArrayType
   , numberObjectType
+  , stringObjectType
   -- * Substitution
   --
   -- | We use a locally nameless representation for quantified types.  These
@@ -111,6 +112,20 @@ numberObjectType = TObject "Number" []
             doubleType)
   ]
 
+-- |Note that field names must be in ascending order.
+stringObjectType = TObject "String" []
+  [ ("charAt", True,
+    TArrow (TObject "String" [] [])
+           (ArgType [intType] Nothing)
+           (TObject "String" [] []))
+  , ("indexOf", True,
+    TArrow (TObject "String" [] [])
+           (ArgType [TObject "String" [] []
+                    -- , unionType intType undefType
+                    ] Nothing)
+           (TObject "String" [] []))
+  , ("length", True, intersectType numberObjectType intType)
+  ]
 
 closeTypeRec :: Int -> String -> Type -> Type
 closeTypeRec n x t = case t of
@@ -641,10 +656,10 @@ flatStatic rt = case rt of
   RTBoolean -> return boolType
   RTNumber -> desugarType noPos $ intersectType doubleType numberObjectType
   RTUndefined -> return undefType
-  RTString -> return stringType
+  RTString -> desugarType noPos $ intersectType stringType stringObjectType
   RTObject _ -> return TAny
   RTFunction -> return TAny
-  RTFixedString _ -> return stringType
+  RTFixedString _ -> desugarType noPos $ intersectType stringType stringObjectType --return stringType
   RTConstructor brand -> return TAny
 
 
@@ -690,6 +705,7 @@ static rt st = case st of
   TApp "Array" [_] ->
     return $ justWhen st $ S.member (RTObject "Array") rt
   TObject "Number" _ _ | S.member RTNumber rt -> return (Just st)
+  TObject "String" _ _ | S.member RTString rt -> return (Just st)
   TObject brand _ _ -> 
     return $ justWhen st $ S.member (RTObject brand) rt
   TArrow _ _ _ | S.member RTFunction rt -> return (Just st)

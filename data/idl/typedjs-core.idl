@@ -7,11 +7,11 @@
   Array<string> exec(in string);
   bool          test(in string);
 };
-
+*//*
 interface String {
   attribute int length;
-  union { Array<string>, undefined } match(in string);
-};*/
+  //union { Array<string>, undefined } match(in string);
+  };*/
 
 interface Object {
   boolean hasOwnProperty(in DOMString propname);

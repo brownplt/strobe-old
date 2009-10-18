@@ -36,11 +36,12 @@ idlFiles =
 
 rIntType = intersectType intType numberObjectType
 rDoubleType = intersectType doubleType numberObjectType
+rStringType = intersectType stringType stringObjectType
 
 -- |Search for typedef in the DOM IDLs.  We need an entry for each typedef.
 extras :: [(String, Type)]
 extras = 
-  [ ("DOMString", stringType)
+  [ ("DOMString", rStringType)
   , ("float", rDoubleType)
   , ("double", rDoubleType)
   , ("DOMObject", TObject "Object" [] [])
