@@ -125,6 +125,22 @@ stringObjectType = TObject "String" []
                     ] Nothing)
            (TObject "String" [] []))
   , ("length", True, intersectType numberObjectType intType)
+  , ("split", True, 
+     TArrow (TObject "String" [] [])
+            (ArgType [TObject "String" [] [],
+                      unionType (intersectType numberObjectType intType)
+                                undefType]
+                     Nothing)
+             (intersectType (TApp "Array" [TObject "String" [] []])
+                            (openType (TObject "String" [] []) freeArrayType)))
+  , ("substring", True, 
+     TArrow (TObject "String" [] [])
+            (ArgType [intersectType numberObjectType intType,
+                      unionType (intersectType numberObjectType intType)
+                                undefType]
+                     Nothing)
+            (TObject "String" [] []))
+                      
   ]
 
 closeTypeRec :: Int -> String -> Type -> Type

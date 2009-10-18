@@ -48,6 +48,9 @@ extras =
   , ("DOMUserData", TAny)
   , ("DOMTimeStamp", rIntType)
   , ("AnyFunction", TArrow TAny (ArgType [] (Just TAny)) TAny)
+  , ("WindowLocation",
+     TObject "Object" [] [
+       ("search", True, rStringType)])
   ]
 
 parseIDLType :: IDL.Type -> Type

@@ -13,6 +13,7 @@
 
 interface Window {
   attribute HTMLDocument document;
+  attribute WindowLocation location;
 
   int setTimeout(in AnyFunction func, in int timelen);
   int parseInt(in String s);
