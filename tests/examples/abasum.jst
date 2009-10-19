@@ -1,0 +1,54 @@
+//from http://javascript.internet.com/forms/aba-routing-number-checksum.html
+
+//1 type annotation on the function
+//re-write alert to window.alert, parseInt to window.parseInt
+//rewrite var temp = 0 to var temp = ""
+function ABAMod10(aba) :: String -> Bool { //v2.0
+  var valid = "0123456789";
+  var len = aba.length;
+  var bNum = true;
+  var iABA = window.parseInt(aba);
+  var sABA = aba.toString();
+  var url = "abaDisplay2.asp?aba=" + sABA;
+  var iTotal = 0;
+  var bResult = false;
+  var temp = "";
+
+  //alert(aba);
+  for (var j=0; j<len; j++) {
+  //TODO: support DOM objects like this
+  //temp = "" + document.abaForm.aba.value.substring(j, j+1);
+  if (valid.indexOf(temp) == "-1") bNum = false;
+  }
+  if(!bNum){window.alert("Not a Number");}
+  if(len !=0) {  // incase they omit the number entirely.
+    if(len != 9) {
+      window.alert("This is not a proper ABA length");
+    } else {
+      for (var i=0; i<len; i += 3) {
+        iTotal += window.parseInt(sABA.charAt(i)) * 3
+          +  window.parseInt(sABA.charAt(i + 1)) * 7
+          +  window.parseInt(sABA.charAt(i + 2));
+        }
+    if (iTotal != 0 && iTotal % 10 == 0){
+      bResult = true;
+      // used for AJAX posting of data
+      // get(this.parentNode);
+    } else {
+      window.alert("This is NOT a valid ABA Routing Number!");
+      bResult = false;
+    }
+  }
+  } else {
+    // zero length do nothing
+  }
+  //  reset the frame detail.
+  if (!bResult) {
+    // used for AJAX posting of data
+    //document.getElementById('myspan').innerHTML = "";
+  } else {
+    window.alert("This COULD BE a valid ABA Routing Number!");
+  }
+  // end of not shown in page version of code
+  return bResult;
+}
