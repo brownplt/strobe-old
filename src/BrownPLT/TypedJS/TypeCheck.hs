@@ -322,11 +322,16 @@ expr e = case e of
         "dotref: expected an object with a field %s, got\n\
         \%s" x (renderType objTy)
   BracketRef p e1 e2 -> do
-    t1 <- expr e1 >>= projType isArrayType
-    t2 <- expr e2 >>= projType isIntType
+    t1' <- expr e1 
+    t2' <- expr e2
+    t1 <- projType isArrayType t1'
+    t2 <- projType isIntType t2'
     case (t1, t2) of
       (Just (TApp "Array" [x]), Just (TApp "Int" [])) -> return x
-      otherwise -> fatalTypeError p "expected array or integer index"
+      (Nothing, _) -> fatalTypeError p (printf 
+        "bracketref: expected array, got %s" (renderType t1'))
+      otherwise -> fatalTypeError p (printf 
+        "bracketref: expected integer index, got %s" (renderType t2'))
   PrefixExpr p op e -> do
     t <- expr e
     isDoubleSubtype <- isSubtype t doubleType

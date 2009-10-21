@@ -124,6 +124,12 @@ interface HTMLCollection {
   Node                      namedItem(in DOMString name);
 };
 
+interface HTMLImageCollection {
+  readonly attribute  unsigned long        length;
+  HTMLImageElement                      item(in unsigned long index);
+  HTMLImageElement                      namedItem(in DOMString name);
+};
+
 interface HTMLDListElement : HTMLElement {
            attribute  boolean              compact;
 };
@@ -142,7 +148,7 @@ interface HTMLDocument : Document {
   readonly attribute  DOMString            domain;
   readonly attribute  DOMString            URL;
            attribute  HTMLElement          body;
-  readonly attribute  HTMLCollection       images;
+  readonly attribute  HTMLImageCollection       images;
   readonly attribute  HTMLCollection       applets;
   readonly attribute  HTMLCollection       links;
   readonly attribute  HTMLCollection       forms;

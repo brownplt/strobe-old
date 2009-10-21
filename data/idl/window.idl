@@ -16,7 +16,9 @@ interface Window {
   attribute WindowLocation location;
 
   int setTimeout(in AnyFunction func, in int timelen);
+  void clearTimeout(in int timerid);
   int parseInt(in String s);
   void alert(in String s);
+  DOMString unescape(in DOMString x);
 
 }

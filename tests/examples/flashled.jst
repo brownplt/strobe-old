@@ -1,0 +1,565 @@
+//- NOTE: This takes a long time to run for some reason. maybe
+//  it's the huge letterArray function?
+
+//FOUND BUG: 'val' was unbound, it should be declared a lgobal var
+//changes:
+//- added function annotations, of course
+//- new Array() to [], added annotations for types
+//- letters --> an array of arrays, and
+//  changed it to use charCodeAt instead of chars.
+//  this is just a limitation of us not having hashmaps, nothing
+//  theoretically interesting here.
+//  changed letterArray to instead return [[String]]
+//  also had to really change letterArray to use charCodeAt, that sucked
+//- changes on and off from being imgs to just being on_src, off_src,
+//  since that's all that was used
+//- changed html.idl to make HTMLImageCollection that actually
+//  returns images. this is because the DOM is under-specified:
+//  yes it is an HTMLCollection, but it's of particular elements.
+//- also had to make code not access it like an array, but like an obj
+//- null --> 0
+//- filling in undefined for optional args - this should go away
+//- changed settimeout to take a function, not a string.
+// Copyright (c) 1996-1997 Tomer Shiran. All rights reserved.
+// Permission given to use the script provided that this notice remains as is.
+// Additional scripts can be found at http://www.geocities.com/~yehuda/
+
+// set messages (specify backslash in double form (i.e, \\)
+var val = 0;
+
+var messages :: [String] = [];
+messages[0] = "welcome to our page"
+messages[1] = "free scripts available"
+messages[2] = "new:scripts by request"
+messages[3] = "this site is updated..."
+messages[4] = "almost every day"
+messages[5] = "we are now working..."
+messages[6] = "on a revolutionary..."
+messages[7] = "javascript book!!!"
+messages[8] = "contact us for more info"
+
+// number of milliseconds to pause between two messages
+var pause = 3000;
+
+// set normal spacing between two characters (no whitespace inbetween)
+var space = 1;
+
+// set height width of each character
+var height = 5;
+var width = 3;
+
+// initialize image variables
+var on_src = "on.gif";
+var off_src = "off.gif";
+
+// get number of images already laid out in page
+var imageNum = document.images.length
+
+// compute width of board
+//var boardWidth = longest * (width + space) - space
+
+// set maximum message length in images
+var boardWidth = 0;
+for (var i = 0; i < messages.length; ++i) {
+	var lengthWithNoSpaces = messages[i].split(" ", undefined).join("").length;
+	var numberOfSpaces = messages[i].length - lengthWithNoSpaces;
+	var currentBoardWidth = lengthWithNoSpaces * (width + space) - space + numberOfSpaces * space * 2;
+	if (boardWidth < currentBoardWidth)
+		boardWidth = currentBoardWidth;
+}
+
+// sign is currently not running
+var running = false;
+var timerID = 0;
+
+function letterArray() :: (-> [[String]]) {
+  var rez :: [[String]] = [];
+
+rez['a'.charCodeAt(0)] = []
+rez['a'.charCodeAt(0)][0] = " * "
+rez['a'.charCodeAt(0)][1] = "* *"
+rez['a'.charCodeAt(0)][2] = "***"
+rez['a'.charCodeAt(0)][3] = "* *"
+rez['a'.charCodeAt(0)][4] = "* *"
+
+rez['b'.charCodeAt(0)] = []
+rez['b'.charCodeAt(0)][0] = "** "
+rez['b'.charCodeAt(0)][1] = "* *"
+rez['b'.charCodeAt(0)][2] = "** "
+rez['b'.charCodeAt(0)][3] = "* *"
+rez['b'.charCodeAt(0)][4] = "** "
+
+rez['c'.charCodeAt(0)] = []
+rez['c'.charCodeAt(0)][0] = "***"
+rez['c'.charCodeAt(0)][1] = "*  "
+rez['c'.charCodeAt(0)][2] = "*  "
+rez['c'.charCodeAt(0)][3] = "*  "
+rez['c'.charCodeAt(0)][4] = "***"
+
+rez['d'.charCodeAt(0)] = []
+rez['d'.charCodeAt(0)][0] = "** "
+rez['d'.charCodeAt(0)][1] = "* *"
+rez['d'.charCodeAt(0)][2] = "* *"
+rez['d'.charCodeAt(0)][3] = "* *"
+rez['d'.charCodeAt(0)][4] = "** "
+
+rez['e'.charCodeAt(0)] = []
+rez['e'.charCodeAt(0)][0] = "*** "
+rez['e'.charCodeAt(0)][1] = "*  "
+rez['e'.charCodeAt(0)][2] = "***"
+rez['e'.charCodeAt(0)][3] = "*  "
+rez['e'.charCodeAt(0)][4] = "***"
+
+rez['f'.charCodeAt(0)] = []
+rez['f'.charCodeAt(0)][0] = "***"
+rez['f'.charCodeAt(0)][1] = "*  "
+rez['f'.charCodeAt(0)][2] = "***"
+rez['f'.charCodeAt(0)][3] = "*  "
+rez['f'.charCodeAt(0)][4] = "*  "
+
+rez['g'.charCodeAt(0)] = []
+rez['g'.charCodeAt(0)][0] = "***"
+rez['g'.charCodeAt(0)][1] = "*  "
+rez['g'.charCodeAt(0)][2] = "***"
+rez['g'.charCodeAt(0)][3] = "* *"
+rez['g'.charCodeAt(0)][4] = "***"
+
+rez['h'.charCodeAt(0)] = []
+rez['h'.charCodeAt(0)][0] = "* *"
+rez['h'.charCodeAt(0)][1] = "* *"
+rez['h'.charCodeAt(0)][2] = "***"
+rez['h'.charCodeAt(0)][3] = "* *"
+rez['h'.charCodeAt(0)][4] = "* *"
+
+rez['i'.charCodeAt(0)] = []
+rez['i'.charCodeAt(0)][0] = "***"
+rez['i'.charCodeAt(0)][1] = " * "
+rez['i'.charCodeAt(0)][2] = " * "
+rez['i'.charCodeAt(0)][3] = " * "
+rez['i'.charCodeAt(0)][4] = "***"
+
+rez['j'.charCodeAt(0)] = []
+rez['j'.charCodeAt(0)][0] = "  *"
+rez['j'.charCodeAt(0)][1] = "  *"
+rez['j'.charCodeAt(0)][2] = "  *"
+rez['j'.charCodeAt(0)][3] = "* *"
+rez['j'.charCodeAt(0)][4] = "***"
+
+rez['k'.charCodeAt(0)] = []
+rez['k'.charCodeAt(0)][0] = "* *"
+rez['k'.charCodeAt(0)][1] = "* *"
+rez['k'.charCodeAt(0)][2] = "** "
+rez['k'.charCodeAt(0)][3] = "* *"
+rez['k'.charCodeAt(0)][4] = "* *"
+
+rez['l'.charCodeAt(0)] = []
+rez['l'.charCodeAt(0)][0] = "*  "
+rez['l'.charCodeAt(0)][1] = "*  "
+rez['l'.charCodeAt(0)][2] = "*  "
+rez['l'.charCodeAt(0)][3] = "*  "
+rez['l'.charCodeAt(0)][4] = "***"
+
+rez['m'.charCodeAt(0)] = []
+rez['m'.charCodeAt(0)][0] = "* *"
+rez['m'.charCodeAt(0)][1] = "***"
+rez['m'.charCodeAt(0)][2] = "***"
+rez['m'.charCodeAt(0)][3] = "* *"
+rez['m'.charCodeAt(0)][4] = "* *"
+
+rez['n'.charCodeAt(0)] = []
+rez['n'.charCodeAt(0)][0] = "* *"
+rez['n'.charCodeAt(0)][1] = "***"
+rez['n'.charCodeAt(0)][2] = "***"
+rez['n'.charCodeAt(0)][3] = "***"
+rez['n'.charCodeAt(0)][4] = "* *"
+
+rez['o'.charCodeAt(0)] = []
+rez['o'.charCodeAt(0)][0] = "***"
+rez['o'.charCodeAt(0)][1] = "* *"
+rez['o'.charCodeAt(0)][2] = "* *"
+rez['o'.charCodeAt(0)][3] = "* *"
+rez['o'.charCodeAt(0)][4] = "***"
+
+rez['p'.charCodeAt(0)] = []
+rez['p'.charCodeAt(0)][0] = "** "
+rez['p'.charCodeAt(0)][1] = "* *"
+rez['p'.charCodeAt(0)][2] = "** "
+rez['p'.charCodeAt(0)][3] = "*  "
+rez['p'.charCodeAt(0)][4] = "*  "
+
+rez['q'.charCodeAt(0)] = []
+rez['q'.charCodeAt(0)][0] = "***"
+rez['q'.charCodeAt(0)][1] = "* *"
+rez['q'.charCodeAt(0)][2] = "* *"
+rez['q'.charCodeAt(0)][3] = "***"
+rez['q'.charCodeAt(0)][4] = "***"
+
+rez['r'.charCodeAt(0)] = []
+rez['r'.charCodeAt(0)][0] = "** "
+rez['r'.charCodeAt(0)][1] = "* *"
+rez['r'.charCodeAt(0)][2] = "** "
+rez['r'.charCodeAt(0)][3] = "* *"
+rez['r'.charCodeAt(0)][4] = "* *"
+
+rez['s'.charCodeAt(0)] = []
+rez['s'.charCodeAt(0)][0] = "***"
+rez['s'.charCodeAt(0)][1] = "*  "
+rez['s'.charCodeAt(0)][2] = "***"
+rez['s'.charCodeAt(0)][3] = "  *"
+rez['s'.charCodeAt(0)][4] = "***"
+
+rez['t'.charCodeAt(0)] = []
+rez['t'.charCodeAt(0)][0] = "***"
+rez['t'.charCodeAt(0)][1] = " * "
+rez['t'.charCodeAt(0)][2] = " * "
+rez['t'.charCodeAt(0)][3] = " * "
+rez['t'.charCodeAt(0)][4] = " * "
+
+rez['u'.charCodeAt(0)] = []
+rez['u'.charCodeAt(0)][0] = "* *"
+rez['u'.charCodeAt(0)][1] = "* *"
+rez['u'.charCodeAt(0)][2] = "* *"
+rez['u'.charCodeAt(0)][3] = "* *"
+rez['u'.charCodeAt(0)][4] = "***"
+
+rez['v'.charCodeAt(0)] = []
+rez['v'.charCodeAt(0)][0] = "* *"
+rez['v'.charCodeAt(0)][1] = "* *"
+rez['v'.charCodeAt(0)][2] = "* *"
+rez['v'.charCodeAt(0)][3] = "* *"
+rez['v'.charCodeAt(0)][4] = " * "
+
+rez['w'.charCodeAt(0)] = []
+rez['w'.charCodeAt(0)][0] = "* *"
+rez['w'.charCodeAt(0)][1] = "* *"
+rez['w'.charCodeAt(0)][2] = "***"
+rez['w'.charCodeAt(0)][3] = "***"
+rez['w'.charCodeAt(0)][4] = "***"
+
+rez['x'.charCodeAt(0)] = []
+rez['x'.charCodeAt(0)][0] = "* *"
+rez['x'.charCodeAt(0)][1] = "* *"
+rez['x'.charCodeAt(0)][2] = " * "
+rez['x'.charCodeAt(0)][3] = "* *"
+rez['x'.charCodeAt(0)][4] = "* *"
+
+rez['y'.charCodeAt(0)] = []
+rez['y'.charCodeAt(0)][0] = "* *"
+rez['y'.charCodeAt(0)][1] = "* *"
+rez['y'.charCodeAt(0)][2] = "***"
+rez['y'.charCodeAt(0)][3] = " * "
+rez['y'.charCodeAt(0)][4] = " * "
+
+rez['z'.charCodeAt(0)] = []
+rez['z'.charCodeAt(0)][0] = "***"
+rez['z'.charCodeAt(0)][1] = "  *"
+rez['z'.charCodeAt(0)][2] = " * "
+rez['z'.charCodeAt(0)][3] = "*  "
+rez['z'.charCodeAt(0)][4] = "***"
+
+rez['!'.charCodeAt(0)] = []
+rez['!'.charCodeAt(0)][0] = " * "
+rez['!'.charCodeAt(0)][1] = " * "
+rez['!'.charCodeAt(0)][2] = " * "
+rez['!'.charCodeAt(0)][3] = "   "
+rez['!'.charCodeAt(0)][4] = " * "
+
+rez[':'.charCodeAt(0)] = []
+rez[':'.charCodeAt(0)][0] = "   "
+rez[':'.charCodeAt(0)][1] = " * "
+rez[':'.charCodeAt(0)][2] = "   "
+rez[':'.charCodeAt(0)][3] = " * "
+rez[':'.charCodeAt(0)][4] = "   "
+
+rez['.'.charCodeAt(0)] = []
+rez['.'.charCodeAt(0)][0] = "   "
+rez['.'.charCodeAt(0)][1] = "   "
+rez['.'.charCodeAt(0)][2] = "   "
+rez['.'.charCodeAt(0)][3] = "   "
+rez['.'.charCodeAt(0)][4] = " * "
+
+rez['='.charCodeAt(0)] = []
+rez['='.charCodeAt(0)][0] = "   "
+rez['='.charCodeAt(0)][1] = "***"
+rez['='.charCodeAt(0)][2] = "   "
+rez['='.charCodeAt(0)][3] = "***"
+rez['='.charCodeAt(0)][4] = "   "
+
+rez['='.charCodeAt(0)] = []
+rez['='.charCodeAt(0)][0] = "   "
+rez['='.charCodeAt(0)][1] = "***"
+rez['='.charCodeAt(0)][2] = "   "
+rez['='.charCodeAt(0)][3] = "***"
+rez['='.charCodeAt(0)][4] = "   "
+
+rez['+'.charCodeAt(0)] = []
+rez['+'.charCodeAt(0)][0] = "   "
+rez['+'.charCodeAt(0)][1] = " * "
+rez['+'.charCodeAt(0)][2] = "***"
+rez['+'.charCodeAt(0)][3] = " * "
+rez['+'.charCodeAt(0)][4] = "   "
+
+rez['-'.charCodeAt(0)] = []
+rez['-'.charCodeAt(0)][0] = "   "
+rez['-'.charCodeAt(0)][1] = "   "
+rez['-'.charCodeAt(0)][2] = "***"
+rez['-'.charCodeAt(0)][3] = "   "
+rez['-'.charCodeAt(0)][4] = "   "
+
+rez['/'.charCodeAt(0)] = []
+rez['/'.charCodeAt(0)][0] = "  *"
+rez['/'.charCodeAt(0)][1] = "  *"
+rez['/'.charCodeAt(0)][2] = " * "
+rez['/'.charCodeAt(0)][3] = "*  "
+rez['/'.charCodeAt(0)][4] = "*  "
+
+rez['\\'.charCodeAt(0)]= []
+rez['\\'.charCodeAt(0)][0] = "*  "
+rez['\\'.charCodeAt(0)][1] = "*  "
+rez['\\'.charCodeAt(0)][2] = " * "
+rez['\\'.charCodeAt(0)][3] = "  *"
+rez['\\'.charCodeAt(0)][4] = "  *"
+
+rez['"'.charCodeAt(0)] = []
+rez['"'.charCodeAt(0)][0] = "* *"
+rez['"'.charCodeAt(0)][1] = "* *"
+rez['"'.charCodeAt(0)][2] = "* *"
+rez['"'.charCodeAt(0)][3] = "   "
+rez['"'.charCodeAt(0)][4] = "   "
+
+rez["'".charCodeAt(0)] = []
+rez["'".charCodeAt(0)][0] = " * "
+rez["'".charCodeAt(0)][1] = " * "
+rez["'".charCodeAt(0)][2] = " * "
+rez["'".charCodeAt(0)][3] = "   "
+rez["'".charCodeAt(0)][4] = "   "
+
+rez['('.charCodeAt(0)] = []
+rez['('.charCodeAt(0)][0] = "  *"
+rez['('.charCodeAt(0)][1] = " * "
+rez['('.charCodeAt(0)][2] = " * "
+rez['('.charCodeAt(0)][3] = " * "
+rez['('.charCodeAt(0)][4] = "  *"
+
+rez[')'.charCodeAt(0)] = []
+rez[')'.charCodeAt(0)][0] = "*  "
+rez[')'.charCodeAt(0)][1] = " * "
+rez[')'.charCodeAt(0)][2] = " * "
+rez[')'.charCodeAt(0)][3] = " * "
+rez[')'.charCodeAt(0)][4] = "*  "
+
+rez['*'.charCodeAt(0)] = []
+rez['*'.charCodeAt(0)][0] = "   "
+rez['*'.charCodeAt(0)][1] = "***"
+rez['*'.charCodeAt(0)][2] = "***"
+rez['*'.charCodeAt(0)][3] = "***"
+rez['*'.charCodeAt(0)][4] = "   "
+
+rez['?'.charCodeAt(0)] = []
+rez['?'.charCodeAt(0)][0] = "** "
+rez['?'.charCodeAt(0)][1] = "  *"
+rez['?'.charCodeAt(0)][2] = " * "
+rez['?'.charCodeAt(0)][3] = "   "
+rez['?'.charCodeAt(0)][4] = " * "
+
+rez['0'.charCodeAt(0)] = []
+rez['0'.charCodeAt(0)][0] = " * "
+rez['0'.charCodeAt(0)][1] = "* *"
+rez['0'.charCodeAt(0)][2] = "* *"
+rez['0'.charCodeAt(0)][3] = "* *"
+rez['0'.charCodeAt(0)][4] = " * "
+
+rez['1'.charCodeAt(0)] = []
+rez['1'.charCodeAt(0)][0] = " * "
+rez['1'.charCodeAt(0)][1] = " * "
+rez['1'.charCodeAt(0)][2] = " * "
+rez['1'.charCodeAt(0)][3] = " * "
+rez['1'.charCodeAt(0)][4] = " * "
+
+rez['2'.charCodeAt(0)] = []
+rez['2'.charCodeAt(0)][0] = "***"
+rez['2'.charCodeAt(0)][1] = "  *"
+rez['2'.charCodeAt(0)][2] = "***"
+rez['2'.charCodeAt(0)][3] = "*  "
+rez['2'.charCodeAt(0)][4] = "***"
+
+rez['3'.charCodeAt(0)] = []
+rez['3'.charCodeAt(0)][0] = "***"
+rez['3'.charCodeAt(0)][1] = "  *"
+rez['3'.charCodeAt(0)][2] = "***"
+rez['3'.charCodeAt(0)][3] = "  *"
+rez['3'.charCodeAt(0)][4] = "***"
+
+rez['4'.charCodeAt(0)] = []
+rez['4'.charCodeAt(0)][0] = "* *"
+rez['4'.charCodeAt(0)][1] = "* *"
+rez['4'.charCodeAt(0)][2] = "***"
+rez['4'.charCodeAt(0)][3] = "  *"
+rez['4'.charCodeAt(0)][4] = "  *"
+
+rez['5'.charCodeAt(0)] = []
+rez['5'.charCodeAt(0)][0] = "***"
+rez['5'.charCodeAt(0)][1] = "*  "
+rez['5'.charCodeAt(0)][2] = "***"
+rez['5'.charCodeAt(0)][3] = "  *"
+rez['5'.charCodeAt(0)][4] = "** "
+
+rez['6'.charCodeAt(0)] = []
+rez['6'.charCodeAt(0)][0] = "** "
+rez['6'.charCodeAt(0)][1] = "*  "
+rez['6'.charCodeAt(0)][2] = "***"
+rez['6'.charCodeAt(0)][3] = "* *"
+rez['6'.charCodeAt(0)][4] = "***"
+
+rez['7'.charCodeAt(0)] = []
+rez['7'.charCodeAt(0)][0] = "***"
+rez['7'.charCodeAt(0)][1] = "  *"
+rez['7'.charCodeAt(0)][2] = " * "
+rez['7'.charCodeAt(0)][3] = "*  "
+rez['7'.charCodeAt(0)][4] = "*  "
+
+rez['8'.charCodeAt(0)] = []
+rez['8'.charCodeAt(0)][0] = "***"
+rez['8'.charCodeAt(0)][1] = "* *"
+rez['8'.charCodeAt(0)][2] = "***"
+rez['8'.charCodeAt(0)][3] = "* *"
+rez['8'.charCodeAt(0)][4] = "***"
+
+rez['9'.charCodeAt(0)] = []
+rez['9'.charCodeAt(0)][0] = "***"
+rez['9'.charCodeAt(0)][1] = "* *"
+rez['9'.charCodeAt(0)][2] = "***"
+rez['9'.charCodeAt(0)][3] = "  *"
+rez['9'.charCodeAt(0)][4] = "***"
+
+  return rez;
+}
+
+// create object of all supported characters in font
+var letters :: [[String]] = letterArray();
+
+function drawBlank() :: (-> Undefined) {
+	// assign greater than symbol to variable
+	var gt = window.unescape("%3e");
+
+	document.write('<TABLE BORDER=2 CELLPADDING=8' + gt + '<TR' + gt + '<TD BGCOLOR ALIGN="center" VALIGN="center"' + gt)
+
+	// print entire board of off images
+	for (var y = 0; y < height; ++y) {
+		for (var x = 0; x < boardWidth; ++x) {
+			document.write('<IMG SRC="' + off_src + '" HEIGHT=5 WIDTH=5' + gt)
+		}
+		document.write('<BR' + gt)
+	}
+	document.write('</TD' + gt + '</TR' + gt + '</TABLE' + gt)
+}
+
+function setLight(state, x, y) :: (Bool, Int, Int -> Undefined) {
+	// set a specific light in sign to on (true) or off (false)
+	if (state)
+		document.images.item(computeIndex(x, y)).src = on_src
+	else
+		document.images.item(computeIndex(x, y)).src = off_src
+}
+
+function drawLetter(letter, startX) :: (String, Int -> Undefined) {
+	// draws a letter at the given x coordinate
+	for (var x = 0; x < width; ++x) {
+		for (var y = 0; y < height; ++y) {
+			setLight(letters[letter.charCodeAt(0)][y].charAt(x) == "*", startX + x, y)
+		}
+	}
+}
+
+function drawSpace(startX) :: (Int -> Undefined) {
+	// create a small space between each two characters
+	for (var x = 0; x < space; ++x) {
+		for (var y = 0; y < height; ++y) {
+			setLight(false, startX + x, y)
+		}
+	}
+}
+
+function computeIndex(x, y) :: (Int, Int -> Int) {
+	// compute the document index of an image in the sign, based on the x-y coordinates
+	return (y * boardWidth + x) + imageNum
+}
+
+function floodBoard(startX) :: (Int -> Undefined) {
+	// set all lights from startX to off
+	for (var x = startX; x < boardWidth; ++x) {
+		for (var y = 0; y < height; ++y) {
+			setLight(false, x, y)
+		}
+	}
+}
+
+function drawMessage(num) :: (Int -> Undefined) {
+	// initialize variable to current message
+	var text = messages[num];
+
+	// initialize two counters (j - current character in message, i - current x coordinate)
+	var i = 0;
+	var j = 0;
+
+	while (1) {
+		if (text.charAt(j) != " ") {
+			// draw current letter
+			drawLetter(text.charAt(j), i)
+
+			// increment i by the constant width of an image
+			i += width
+		} else {
+			// add an extra space (do not advance j yet)
+			drawSpace(i)
+			i += space
+		}
+
+		// if j is less that index of last character
+		if (j < text.length - 1) {
+			drawSpace(i)
+			i += space
+		} else // j is the index of the last character (lsat character already printed)
+			break
+
+		// increment j by one because one letter was printed
+		++j
+	}
+
+	// flood the remaining piece of the sign (turn it off)
+	floodBoard(i)
+
+	// if message printed this time was not the last one in the array
+	if (num < messages.length - 1)
+		// val *must* be a global variable for use with the timeout
+		val = ++num;
+	else
+		val = 0; // start cycle over again
+
+	// recursive call after waiting 3 seconds (some of the time already passed during printing)
+	timerID = window.setTimeout(function () :: (-> Undefined) {
+                                      drawMessage(val)}, pause);
+}
+
+function startSign() :: (-> Undefined) {
+	running = true;
+
+	// wait 3 seconds and then call function to print first message
+	drawMessage(0);
+}
+
+function stopSign() :: (-> Undefined) {
+	if(running)
+		window.clearTimeout(timerID)
+	running = false;
+}
+
+// open form
+document.write('<FORM>')
+
+// create initial sign (all sign is off)
+drawBlank()
+
+document.write('<INPUT TYPE="button" VALUE="start" onClick="startSign()">')
+document.write('<INPUT TYPE="button" VALUE="stop" onClick="stopSign(); floodBoard(0)">')
+document.write('</FORM>')

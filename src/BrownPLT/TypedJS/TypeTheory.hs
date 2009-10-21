@@ -131,8 +131,12 @@ numberObjectType = TObject "Number" []
 stringObjectType = TObject "String" []
   [ ("charAt", True,
     TArrow (TObject "String" [] [])
-           (ArgType [intType] Nothing)
+           (ArgType [rIntType] Nothing)
            rStrType)
+  , ("charCodeAt", True,
+    TArrow (TObject "String" [] [])
+           (ArgType [rIntType] Nothing)
+           rIntType)
   , ("indexOf", True,
     TArrow (TObject "String" [] [])
            (ArgType [TObject "String" [] []
