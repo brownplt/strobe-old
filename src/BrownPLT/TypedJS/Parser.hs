@@ -166,7 +166,7 @@ type_'' :: Type -> CharParser st Type
 type_'' thisTy = do
   let array = do
         t <- brackets (type_ thisTy)
-        return (intersectType (TApp "Array" [t]) (openType t freeArrayType))
+        return (openType t rArrType)
   let union = do 
         reservedOp "U";
         elts <- parens (type_'' thisTy `sepBy1` comma)
@@ -198,13 +198,13 @@ type_'' thisTy = do
         return (TObject brand tyArgs fields)
   let int = do
         reserved "Int"
-        return $ intersectType (TApp "Int" []) numberObjectType
+        return $ intersectType (TApp "Int" []) (TObject "Number" [] [])
   let string = do
         reserved "String"
-        return $ intersectType (TApp "String" []) stringObjectType
+        return $ intersectType (TApp "String" []) (TObject "String" [] [])
   let double = do
         reserved "Double"
-        return $ intersectType (TApp "Double" []) numberObjectType
+        return $ intersectType (TApp "Double" []) (TObject "Number" [] [])
   -- If the first letter is upper-case, an unapplied identifier is a nullary
   -- type constructor.  If it is lower-case, it is a free type variable.
   -- Therefore, basic types such as integers, booleans, etc. must be "Int",
@@ -978,6 +978,7 @@ importStmt = do
   name <- identifier
   let constr = do
         reserved "constructor"
+        reservedOp "::"
         ty <- constrTy (unId name)
         return (ImportConstrStmt p name isAssumed ty)
   let other = do

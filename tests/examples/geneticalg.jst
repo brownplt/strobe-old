@@ -4,7 +4,7 @@
  * - 7 lines for the object's type
  * - 6 lines for function annotations, 1 per function
  * - 74 --> 87 = 17.5% penalty, aww.. but there are many short functions
- * 
+ *
  * Ad-hoc re-writes:
  * - Use 'tuples' instead of arrays of 2 to store a point
  *   Had to modify 1 line a lot, and 6 lines a little (.x instead of [0])
@@ -13,6 +13,8 @@
  * - 1 line set a Point to 0 instead of [0,0] , had to change that
  * - changed a 0 to a 0.0
  */
+
+import assumed
 
 
 constructor Salesman() :: -> {
@@ -70,6 +72,7 @@ constructor Salesman() :: -> {
     // Paint the solution onto bestimage
     this.paint = function(values) :: (this :: Salesman:, [Int] -> Undefined) {
         var canvas = document.getElementById('bestimage');
+        //untyped var canvas :: HTMLCanvas = document.getElementById("bestimage");
         if (true) { //(canvas.getContext) {
             /*var w = canvas.width;
             var h = canvas.height;

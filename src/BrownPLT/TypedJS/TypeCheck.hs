@@ -210,7 +210,7 @@ numericOp :: SourcePos -> Expression SourcePos
           -> Type -> Type -> Bool -> Bool -> TypeCheck Type
 numericOp loc e lhs rhs requireInts returnDouble = do
   result <- case returnDouble of
-    True -> return $ intersectType doubleType numberObjectType
+    True -> return rDoubleType
     False -> do
       r <- isSubtype lhs intType
       case r of
@@ -279,10 +279,10 @@ lvalue lv = case lv of
 expr :: Expression SourcePos 
      -> TypeCheck Type
 expr e = case e of
-  StringLit _ _ -> return $ intersectType stringType stringObjectType
+  StringLit _ _ -> return rStrType
   RegexpLit _ _ _ _ -> fail "RegexpLit NYI"
-  NumLit p _ -> return $ intersectType doubleType numberObjectType
-  IntLit p _ -> return $ intersectType intType numberObjectType
+  NumLit p _ -> return rDoubleType
+  IntLit p _ -> return rIntType
   BoolLit _ _ -> return boolType
   NullLit _ -> fail "NullLit NYI"
   ThisRef p -> lookupEnv p "this"
@@ -292,8 +292,7 @@ expr e = case e of
     s <- lvalue lhs
     moan <- projType isArrayType s
     case moan of
-      Just (TApp "Array" [r]) -> return $ intersectType (TApp "Array" [r]) 
-                  (openType r freeArrayType)
+      Just (TApp "Array" [r]) -> return $ openType r rArrType
       Just _ -> catastrophe p "projType isArrayType didn't give array"
       Nothing -> fatalTypeError p "assigning empty array lit to non-array var"
   ArrayLit p [] -> fatalTypeError p $ printf
@@ -303,7 +302,7 @@ expr e = case e of
     t1 <- expr e1
     ts <- mapM expr es
     let t = foldr unionType t1 ts
-    return $ intersectType (TApp "Array" [t]) (openType t freeArrayType)
+    return $ openType t rArrType
   VarRef p (Id _ x) -> lookupEnv p x
   DotRef p e (Id _ x) -> do
     objTy <- expr e
@@ -336,7 +335,7 @@ expr e = case e of
       PrefixBNot | isDoubleSubtype -> return t
       PrefixPlus | isDoubleSubtype -> return t
       PrefixMinus | isDoubleSubtype -> return t
-      PrefixTypeof -> return stringType
+      PrefixTypeof -> return rStrType
       PrefixVoid -> fail "PrefixVoid NYI"
       PrefixDelete -> fail "PrefioxDelete NYI"
       otherwise -> fail $ printf "%s applied to an expression of type %s"
@@ -377,11 +376,11 @@ expr e = case e of
       OpAdd -> do
         r <- isSubtype lhs stringType
         case r of
-          True -> return stringType
+          True -> return rStrType
           False -> do 
             r <- isSubtype rhs stringType
             case r of
-              True -> return stringType
+              True -> return rStrType
               False -> numericOp p e lhs rhs False False          
       OpLAnd -> canonicalUnion rhs boolType
       OpLOr -> canonicalUnion lhs rhs
@@ -680,8 +679,7 @@ constructorInit p (rtt@(TObject brand tyArgs fields)) fieldsLeft
       ArrayLit _ [] -> do
         moan <- projType isArrayType s
         case moan of
-          Just (TApp "Array" [r]) -> return $ intersectType (TApp "Array" [r]) 
-                      (openType r freeArrayType)
+          Just (TApp "Array" [r]) -> return $ openType r rArrType
           Just _ -> catastrophe p "Terrible terrible not given array-ness"
           Nothing -> fatalTypeError p "assigning mt array lit to non-array fld"
       otherwise -> expr x) >>= canonize

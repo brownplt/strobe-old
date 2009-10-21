@@ -1,16 +1,24 @@
 //AJS library, from http://orangoo.com/labs/AJS/
 
-//re-writes:
-//- ajaxErrorHandler stars off not as null, but as func that does nothing
-//- null --> undefined, generally
+//functions that show off flow control:
+//AJS_getIndex
 
-var AJS = {
+//re-writes:
+// - ajaxErrorHandler stars off not as null, but as func that does nothing
+// - null --> undefined, generally
+//xx createArray
+    //TODO: support restrict/remove on stuff containing quantified types
+    //TODO: support instanceof Array, Number, etc
+
+//import assumed Array constructor (forall a . -> {});
+
+var _AJS = {
     BASE_URL: "",
     ajaxErrorHandler: function (txt, req) :: (String, String ->
                                               U(String, Undefined)) {
       },
 
-    /*getQueryArgument: function(var_name) :: (String -> U(String, Undefined)) {
+    getQueryArgument: function(var_name) :: (String -> U(String, Undefined)) {
         var query = window.location.search.substring(1, undefined);
         var vars = query.split("&", undefined);
         for (var i=0;i<vars.length;i++) {
@@ -20,8 +28,263 @@ var AJS = {
             }
         }
         return undefined;
-    },*/
-  
+    },
 
+    isIe: function() :: (-> Bool) {
+        return (navigator.userAgent.toLowerCase().indexOf("msie") != -1 && navigator.userAgent.toLowerCase().indexOf("opera") == -1);
+    },
+    isNetscape7: function() :: (-> Bool)  {
+        return (navigator.userAgent.toLowerCase().indexOf("netscape") != -1 && navigator.userAgent.toLowerCase().indexOf("7.") != -1);
+    },
+    isSafari: function() :: (-> Bool)  {
+        return (navigator.userAgent.toLowerCase().indexOf("khtml") != -1);
+    },
+    isOpera: function() :: (-> Bool)  {
+        return (navigator.userAgent.toLowerCase().indexOf("opera") != -1);
+    },
+    isMozilla: function() :: (-> Bool)  {
+        return (navigator.userAgent.toLowerCase().indexOf("gecko") != -1 && navigator.productSub >= 20030210);
+    },
+    isMac: function() :: (-> Bool)  {
+        return (navigator.userAgent.toLowerCase().indexOf('macintosh') != -1);
+    },
+    isCamino: function() :: (-> Bool)  {
+        return (navigator.userAgent.toLowerCase().indexOf("camino") != -1);
+    },
+
+/*   isArray: function(obj) :: Any -> Bool {
+        return obj instanceof Array;
+    },*/
+    isString: function(obj) :: Any: -> Bool {
+        return (typeof obj == 'string');
+    },
+
+    /*createArray: function(v) :: forall a . U(Undefined, a, [a]) -> [a] {
+        if(v instanceof Array) //AJS.isArray(v) && !AJS.isString(v))
+            return v;
+        else if(typeof v == "undefined")
+            return [];
+        else
+            return [v];
+    },*/
 
 };
+
+//separating stuff away from AJS for now so that the funcs
+//can call each other
+
+//this 'map' is not the one that we know and cherish...
+//it's more like a for-each, where the 'fn' is expected
+//to have side-effects.
+var AJS_map = function(list, fn,/*optional*/ start_index, end_index) ::
+  forall a b . [a], (a, Int -> U(b, Undefined)),
+               U(Int, Undefined), U(Int, Undefined) -> U(Undefined, b) {
+        var i = 0, l = list.length;
+        if(typeof start_index != "undefined")
+             i = start_index;
+        if(typeof end_index != "undefined")
+             l = end_index;
+        for(i; i < l; i++) {
+            var val = fn(list[i], i);
+            if(val != undefined)
+                return val;
+        }
+    };
+
+var AJS_filter = function(list, fn, /*optional*/ start_index, end_index) ::
+  forall a . [a], (a -> Bool), U(Int, Undefined), U(Int, Undefined) -> [a] {
+        var r :: [a] = [];
+        AJS_map@[a,a](list, function(elm, i) :: (a, Int -> Undefined) {
+            if(fn(elm))
+                r.push(elm);
+        }, start_index, end_index);
+        return r;
+    };
+
+//forcearray is unnecessary with typing..?
+/*var AJS_forceArray = function(args) {
+        var r = [];
+        AJS.map(args, function(elm) {
+            r.push(elm);
+        });
+        return r;
+    },*/
+
+//re-wrote to assume list.join works, since it WILL
+var AJS_join = function(delim, list) :: (String, [Any] -> String) {
+    return list.join(delim);
+};
+
+var AJS_getIndex = function(elm, list/*optional*/, eval_fn) ::
+  forall a . a, [a], U(Undefined, (a -> Bool)) -> Int {
+  for(var i=0; i < list.length; i++) {
+    if(((typeof eval_fn != "undefined") && eval_fn(list[i])) || elm == list[i])
+      return i;
+  }
+  return -1;
+};
+
+var AJS_isIn = function(elm, list) :: forall a . a, [a] -> Bool {
+        var i = AJS_getIndex@[a](elm, list, undefined);
+        if(i != -1)
+            return true;
+        else
+            return false;
+    };
+
+//can't type partial, since it has var arg wacky
+/*    partial: function(fn) {
+        var args = AJS.$FA(arguments);
+        args.shift();
+        return function() {
+            args = args.concat(AJS.$FA(arguments));
+            return fn.apply(window, args);
+        }
+    },*/
+
+var AJS_getElement = function(id) :: (U(Element:, String) -> Element:) {
+  if (typeof id == "string") {//      if(AJS.isString(id) || AJS.isNumber(id))
+    return document.getElementById(id);
+  }
+  else {
+    return id;
+  }
+};
+
+//this would be a 'map' if the authors were real FPers..
+var AJS_getElements = function(args) :: [U(Element:, String)] -> [Element:] {
+        var elements :: [Element:] = [];
+            for (var i = 0; i < args.length; i++) {
+                var element = AJS_getElement(args[i]);
+                elements.push(element);
+            }
+            return elements;
+    };
+
+var AJS_nodeName = function(elm) :: (Element: -> String) {
+  return elm.nodeName.toLowerCase();
+};
+var AJS_hasClass = function(elm, cls) :: (Element:, String -> Bool) {
+        if(!elm.className)
+            return false;
+        return elm.className == cls || elm.className.search(cls) != -1;
+               //elm.className.search(new RegExp(" " + cls + "|^" + cls)) != -1
+    };
+
+var AJS__nodeWalk = function(elm, tag_name, class_name, fn_next_elm) ::
+  Element:, String, String, (Element: -> Element:) -> U(Undefined, Element:) {
+    var p = fn_next_elm(elm);
+
+    var checkFn = function(p) :: (Element: -> Bool)
+    { return false; } //placeholder
+
+    if(tag_name && class_name) {
+      checkFn = function(p) :: (Element: -> Bool) {
+        return AJS_nodeName(p) == tag_name && AJS_hasClass(p, class_name);
+      };
+    }
+    else if(tag_name) {
+      checkFn = function(p) :: (Element: -> Bool) {
+        return AJS_nodeName(p) == tag_name; };
+    }
+    else {
+      checkFn = function(p) :: (Element: -> Bool) {
+        return AJS_hasClass(p, class_name); };
+    }
+
+    while(p) {
+      if(checkFn(p))
+        return p;
+      p = fn_next_elm(p);
+    }
+    return undefined;
+  };
+
+var AJS_TN = function(text) :: (String -> Node:) {
+  return document.createTextNode(text) };
+
+//THIS CODE WORKS:
+/*var test1 = function(elm, blag, n) :: (Element:, U(String, Node:), Node: -> Node:) {
+  var y :: Node: = n;
+  if (typeof blag == "string")
+    blag = n;
+  y = blag;
+  return n; };
+*/
+/*
+//BUT THIS CODE DOESNT:
+var test1_bad = function(elm, blag) :: (Element:, U(String, Node:) -> Node:) {
+  var n :: Node: = AJS_TN("HI");
+  var y :: Node: = n;
+  if (typeof blag == "string")
+    blag = n;
+  y = blag;
+  return n; };
+*/
+
+var AJS_appendChildNodes = function(elm, rests) ::
+  (Node:, [U(String, Node:)] -> Node:) {
+
+    function tryit(n, i) :: U(String, Node:), Int -> Undefined {
+      var n2 :: Node: =
+         (typeof n == "string" ? AJS_TN(n) : n);
+      //if (typeof n == "string")
+      //  n = AJS_TN(n);
+      elm.appendChild(n2);
+    };
+
+     // forall a b . [a], (a, Int -> U(b, Undefined)),
+     //          U(Int, Undefined), U(Int, Undefined) -> U(Undefined, b) {
+
+    if(rests.length >= 1) {
+        AJS_map@[U(String, Node:), Undefined](
+          rests, tryit, 1, undefined);
+    }
+    return elm;
+};
+
+//this shouldn't need such a re-write:
+var AJS_swapDOM = function(dest, src) ::
+  (U(Element:, String), U(Undefined, Element:, String) ->
+     U(Undefined, Element:)) {
+/*        dest = AJS_getElement(dest);
+        var parent = dest.parentNode;
+        if (typeof src != "undefined") {
+            src = AJS_getElement(src);
+            parent.replaceChild(src, dest);
+        } else {
+            parent.removeChild(dest);
+        }
+
+        return src;*/
+        var dest2 :: Element: = AJS_getElement(dest);
+        var parent = dest2.parentNode;
+        var src2 :: U(Undefined, Element:) = undefined;
+        if (typeof src != "undefined") {
+            var src3 = AJS_getElement(src);
+            src2 = src3;
+            parent.replaceChild(src3, dest2);
+        } else {
+            parent.removeChild(dest2);
+        }
+
+        return src2;
+
+    };
+
+/*var AJS_appendChildNodes = function(elm, rests) ::
+  (Node:, [U(String, Node:)] -> Node:) {*/
+
+var AJS_replaceChildNodes = function(elm, rest) :: (
+  (Node:, [U(String, Node:)] -> Node:)) {
+        var child :: Node: = elm;
+        child = elm.firstChild;
+        /*while ((child = elm.firstChild))
+            AJS_swapDOM(child, undefined);*/
+
+        if (rest.length == 0)
+            return elm;
+        else {
+            return AJS_appendChildNodes(elm, rest);
+        }
+    };

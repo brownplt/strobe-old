@@ -282,6 +282,9 @@
   };
 
   interface Element : Node {
+    //seems to be part of every element:
+    readonly attribute DOMString       className;
+
     readonly attribute DOMString       tagName;
     DOMString          getAttribute(in DOMString name);
     void               setAttribute(in DOMString name, 

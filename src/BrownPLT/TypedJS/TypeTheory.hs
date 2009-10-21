@@ -4,7 +4,13 @@ module BrownPLT.TypedJS.TypeTheory
   , intType
   , doubleType
   , boolType
-  , freeArrayType
+  --the 'real' type, e.g. Int ^ Int{}
+  , rIntType
+  , rStrType
+  , rDoubleType
+  , rArrType
+  --these contain the actual methods:
+  , freeArrayType 
   , numberObjectType
   , stringObjectType
   -- * Substitution
@@ -63,83 +69,97 @@ doubleType = TApp "Double" []
 
 boolType = TApp "Bool" []
 
-rIntType = intersectType intType numberObjectType
-rDoubleType = intersectType doubleType numberObjectType
+rIntType = intersectType intType (TObject "Number" [] [])
+rDoubleType = intersectType doubleType (TObject "Number" [] [])
+rStrType = (intersectType (TApp "String" []) (TObject "String" [] []))
 
---TODO: this shouldst mayhap be in an IDL
-freeArrayType = let arrType = TApp "Array" [TIx 0] in 
-  TObject "Array" [TIx 0]
-  [ ("length", True, intersectType intType numberObjectType)
-  , ("push", True, TArrow arrType (ArgType [TIx 0] Nothing)
-                          rIntType)
-  , ("unshift", True, TArrow arrType (ArgType [TIx 0] Nothing)
-                          rIntType)
-  , ("shift", True, TArrow arrType (ArgType [] Nothing)
+appArrType = TApp "Array" [TIx 0]
+brandArrType = TObject "Array" [TIx 0] []
+rArrType = intersectType appArrType brandArrType
+
+--TODO: this should mayhap be in an IDL
+freeArrayType = TObject "Array" [TIx 0]
+  [ ("concat", True, 
+     TArrow brandArrType
+            (ArgType [rArrType] Nothing)
+            rArrType)
+  , ("join", True,
+     TArrow brandArrType
+            (ArgType [unionType rStrType undefType] Nothing)
+            rStrType)
+  , ("length", True, rIntType)
+  , ("pop", True, TArrow brandArrType (ArgType [] Nothing)
                            (TIx 0))
-  , ("pop", True, TArrow arrType (ArgType [] Nothing)
+  , ("push", True, TArrow brandArrType (ArgType [TIx 0] Nothing)
+                          rIntType)
+  , ("shift", True, TArrow brandArrType (ArgType [] Nothing)
                            (TIx 0))
   , ("splice", True, 
-     TArrow arrType
-            (ArgType [numberObjectType, numberObjectType] Nothing)
-            arrType)
-  , ("concat", True, 
-     TArrow arrType
-            (ArgType [arrType] Nothing)
-            arrType)
+     TArrow brandArrType
+            (ArgType [rIntType, rIntType] Nothing)
+            rArrType)
+  , ("unshift", True, TArrow brandArrType (ArgType [TIx 0] Nothing)
+                          rIntType)
   ]
 
 -- |Note that field names must be in ascending order.
 numberObjectType = TObject "Number" []
   [ ("toExponential", True,
      TArrow (TObject "Number" [] []) 
-            (ArgType [unionType intType undefType] Nothing)
-            stringType)
+            (ArgType [unionType rIntType undefType] Nothing)
+            rStrType)
   , ("toFixed", True,
      TArrow (TObject "Number" [] []) 
-            (ArgType [unionType intType undefType] Nothing)
-            stringType)
+            (ArgType [unionType rIntType undefType] Nothing)
+            rStrType)
   , ("toLocaleString", True,
      TArrow (TObject "Number" [] []) 
             (ArgType [] Nothing)
-            stringType)
+            rStrType)
   , ("toPrecision", True,
      TArrow (TObject "Number" [] []) 
-            (ArgType [unionType intType undefType] Nothing)
-            stringType)
+            (ArgType [unionType rIntType undefType] Nothing)
+            rStrType)
   , ("valueOf", True,
      TArrow (TObject "Number" [] []) 
             (ArgType [] Nothing)
-            doubleType)
+            rDoubleType)
   ]
+
 
 -- |Note that field names must be in ascending order.
 stringObjectType = TObject "String" []
   [ ("charAt", True,
     TArrow (TObject "String" [] [])
            (ArgType [intType] Nothing)
-           (TObject "String" [] []))
+           rStrType)
   , ("indexOf", True,
     TArrow (TObject "String" [] [])
            (ArgType [TObject "String" [] []
                     -- , unionType intType undefType
                     ] Nothing)
-           (TObject "String" [] []))
-  , ("length", True, intersectType numberObjectType intType)
+           rStrType)
+  , ("length", True, rIntType)
+  , ("search", True,
+     TArrow (TObject "String" [] [])
+            (ArgType [TObject "String" [] []] Nothing)
+            rIntType)
   , ("split", True, 
      TArrow (TObject "String" [] [])
             (ArgType [TObject "String" [] [],
-                      unionType (intersectType numberObjectType intType)
-                                undefType]
+                      unionType rIntType undefType]
                      Nothing)
-             (intersectType (TApp "Array" [TObject "String" [] []])
-                            (openType (TObject "String" [] []) freeArrayType)))
+             (intersectType (TApp "Array" [rStrType])
+                            (openType (rStrType) rArrType)))
   , ("substring", True, 
      TArrow (TObject "String" [] [])
-            (ArgType [intersectType numberObjectType intType,
-                      unionType (intersectType numberObjectType intType)
-                                undefType]
+            (ArgType [rIntType, unionType rIntType undefType]
                      Nothing)
-            (TObject "String" [] []))
+            rStrType)
+  , ("toLowerCase", True,
+     TArrow (TObject "String" [] [])
+            (ArgType [] Nothing)
+            rStrType)
                       
   ]
 
@@ -647,6 +667,7 @@ runtime t = case t of
                               \unknown type constructor %s, with args %s"
                               x (show ts) 
   TObject "Number" _ _ -> injRT RTNumber
+  TObject "String" _ _ -> injRT RTString
   TObject brand _ _ -> injRT (RTObject brand)
   -- Confirmed in Safari 4.  See LocalFlows.hs for more information.
   TArguments _ -> injRT (RTObject "Object")
@@ -670,12 +691,12 @@ runtime t = case t of
 flatStatic :: EnvM m => RuntimeType -> m Type
 flatStatic rt = case rt of
   RTBoolean -> return boolType
-  RTNumber -> desugarType noPos $ intersectType doubleType numberObjectType
+  RTNumber -> desugarType noPos rDoubleType
   RTUndefined -> return undefType
-  RTString -> desugarType noPos $ intersectType stringType stringObjectType
+  RTString -> desugarType noPos rStrType
   RTObject _ -> return TAny
   RTFunction -> return TAny
-  RTFixedString _ -> desugarType noPos $ intersectType stringType stringObjectType --return stringType
+  RTFixedString _ -> desugarType noPos rStrType
   RTConstructor brand -> return TAny
 
 
