@@ -1,7 +1,11 @@
+WARNING: This is the original Haskell implementation of Typed JavaScript,
+replaced by the OCaml implementation.  We did not describe this software in
+any papers or theses.
+
 Typed JavaScript
 ================
 
-Copyright (c) 2009 Claudiu Saftoiu and Arjun Guha.
+Copyright (c) 2009 Brown University and Claudiu Saftoiu
 All Rights Reserved.
 
 Coding Guidelines

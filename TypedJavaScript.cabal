@@ -1,8 +1,8 @@
 Name:           TypedJavaScript
 Version:        1.0
 Cabal-Version:	>= 1.2.3
-Copyright:      Copyright (c) 2009 Claudiu Saftoiu and Arjun Guha
-License:        AllRightsReserved
+Copyright:      Copyright (c) 2009 Brown University and Claudiu Saftoiu
+License:        BSD2
 License-file:   LICENSE
 Author:         Claudiu Saftoiu, Arjun Guha
 Maintainer:     Arjun Guha <arjun@cs.brown.edu>,
