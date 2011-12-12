@@ -1,6 +1,7 @@
-WARNING: This is the original Haskell implementation of Typed JavaScript,
-replaced by the OCaml implementation.  We did not describe this software in
-any papers or theses.
+WARNING: This is the original Haskell implementation of Strobe,
+replaced by the OCaml implementation:
+
+http://www.github.com/brownplt/strobe
 
 Typed JavaScript
 ================
